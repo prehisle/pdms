@@ -11,6 +11,7 @@ This module hosts the Go backend for the YDMS question bank.
 YDMS_NDR_BASE_URL=http://localhost:9001
 YDMS_NDR_API_KEY=your-ndr-key
 YDMS_HTTP_PORT=9180
+YDMS_DEFAULT_USER_ID=system
 ```
 
 3. From this directory, run:
