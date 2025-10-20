@@ -12,6 +12,7 @@ YDMS_NDR_BASE_URL=http://localhost:9001
 YDMS_NDR_API_KEY=your-ndr-key
 YDMS_HTTP_PORT=9180
 YDMS_DEFAULT_USER_ID=system
+YDMS_ADMIN_KEY=your-ndr-admin-key
 ```
 
 3. From this directory, run:

@@ -17,8 +17,9 @@ type Handler struct {
 }
 
 type HeaderDefaults struct {
-	APIKey string
-	UserID string
+	APIKey   string
+	UserID   string
+	AdminKey string
 }
 
 // NewHandler returns a Handler wiring dependencies.
@@ -262,7 +263,17 @@ func (h *Handler) metaFromRequest(r *http.Request) service.RequestMeta {
 		APIKey:    apiKey,
 		UserID:    userID,
 		RequestID: requestID,
+		AdminKey:  headerFallback(r.Header.Get("x-admin-key"), h.defaults.AdminKey),
 	}
+}
+
+func headerFallback(values ...string) string {
+	for _, v := range values {
+		if strings.TrimSpace(v) != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 func respondError(w http.ResponseWriter, status int, err error) {

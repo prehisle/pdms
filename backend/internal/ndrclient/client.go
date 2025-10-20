@@ -37,6 +37,7 @@ type RequestMeta struct {
 	APIKey    string
 	UserID    string
 	RequestID string
+	AdminKey  string
 }
 
 type httpClient struct {
@@ -217,6 +218,9 @@ func (c *httpClient) newRequestWithQuery(ctx context.Context, method, endpoint s
 	}
 	if meta.RequestID != "" {
 		req.Header.Set("x-request-id", meta.RequestID)
+	}
+	if meta.AdminKey != "" {
+		req.Header.Set("x-admin-key", meta.AdminKey)
 	}
 	return req, nil
 }

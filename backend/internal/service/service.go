@@ -16,7 +16,21 @@ type Service struct {
 }
 
 // RequestMeta propagates authentication info to downstream services.
-type RequestMeta = ndrclient.RequestMeta
+type RequestMeta struct {
+	APIKey    string
+	UserID    string
+	RequestID string
+	AdminKey  string
+}
+
+func toNDRMeta(meta RequestMeta) ndrclient.RequestMeta {
+	return ndrclient.RequestMeta{
+		APIKey:    meta.APIKey,
+		UserID:    meta.UserID,
+		RequestID: meta.RequestID,
+		AdminKey:  meta.AdminKey,
+	}
+}
 
 // NewService wires dependencies together.
 func NewService(cache cache.Provider, ndr ndrclient.Client) *Service {

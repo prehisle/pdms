@@ -59,7 +59,7 @@ func (s *Service) GetCategory(ctx context.Context, meta RequestMeta, id int64, i
 	if includeDeleted {
 		opts.IncludeDeleted = ptr(true)
 	}
-	node, err := s.ndr.GetNode(ctx, meta, id, opts)
+	node, err := s.ndr.GetNode(ctx, toNDRMeta(meta), id, opts)
 	if err != nil {
 		return Category{}, fmt.Errorf("get node: %w", err)
 	}
@@ -78,7 +78,7 @@ func (s *Service) CreateCategory(ctx context.Context, meta RequestMeta, req Cate
 	// TODO: 需要 NDR 支持同级节点唯一约束或返回冲突错误。
 	var parentPath *string
 	if req.ParentID != nil {
-		parent, err := s.ndr.GetNode(ctx, meta, *req.ParentID, ndrclient.GetNodeOptions{})
+		parent, err := s.ndr.GetNode(ctx, toNDRMeta(meta), *req.ParentID, ndrclient.GetNodeOptions{})
 		if err != nil {
 			log.Printf("[category] create fetch parent failed id=%d err=%v", *req.ParentID, err)
 			return Category{}, fmt.Errorf("fetch parent: %w", err)
@@ -96,7 +96,7 @@ func (s *Service) CreateCategory(ctx context.Context, meta RequestMeta, req Cate
 		ParentPath: parentPath,
 	}
 
-	node, err := s.ndr.CreateNode(ctx, meta, body)
+	node, err := s.ndr.CreateNode(ctx, toNDRMeta(meta), body)
 	if err != nil {
 		log.Printf("[category] create node failed name=%q err=%v", req.Name, err)
 		return Category{}, fmt.Errorf("create node: %w", err)
@@ -120,7 +120,7 @@ func (s *Service) UpdateCategory(ctx context.Context, meta RequestMeta, id int64
 	if slug == "" {
 		slug = fmt.Sprintf("node-%d", time.Now().UnixNano())
 	}
-	node, err := s.ndr.UpdateNode(ctx, meta, id, ndrclient.NodeUpdate{
+	node, err := s.ndr.UpdateNode(ctx, toNDRMeta(meta), id, ndrclient.NodeUpdate{
 		Name: req.Name,
 		Slug: &slug,
 	})
@@ -137,7 +137,7 @@ func (s *Service) UpdateCategory(ctx context.Context, meta RequestMeta, id int64
 // DeleteCategory performs a soft delete in NDR.
 func (s *Service) DeleteCategory(ctx context.Context, meta RequestMeta, id int64) error {
 	log.Printf("[category] delete id=%d", id)
-	if err := s.ndr.DeleteNode(ctx, meta, id); err != nil {
+	if err := s.ndr.DeleteNode(ctx, toNDRMeta(meta), id); err != nil {
 		log.Printf("[category] delete node failed id=%d err=%v", id, err)
 		return fmt.Errorf("delete node: %w", err)
 	}
@@ -147,7 +147,7 @@ func (s *Service) DeleteCategory(ctx context.Context, meta RequestMeta, id int64
 // RestoreCategory reactivates a soft-deleted node.
 func (s *Service) RestoreCategory(ctx context.Context, meta RequestMeta, id int64) (Category, error) {
 	log.Printf("[category] restore id=%d", id)
-	node, err := s.ndr.RestoreNode(ctx, meta, id)
+	node, err := s.ndr.RestoreNode(ctx, toNDRMeta(meta), id)
 	if err != nil {
 		log.Printf("[category] restore node failed id=%d err=%v", id, err)
 		return Category{}, fmt.Errorf("restore node: %w", err)
@@ -162,7 +162,7 @@ func (s *Service) MoveCategory(ctx context.Context, meta RequestMeta, id int64, 
 	log.Printf("[category] move id=%d new_parent=%v", id, req.NewParentID)
 	var parentPath *string
 	if req.NewParentID != nil {
-		parent, err := s.ndr.GetNode(ctx, meta, *req.NewParentID, ndrclient.GetNodeOptions{})
+		parent, err := s.ndr.GetNode(ctx, toNDRMeta(meta), *req.NewParentID, ndrclient.GetNodeOptions{})
 		if err != nil {
 			log.Printf("[category] move fetch parent failed id=%d err=%v", *req.NewParentID, err)
 			return Category{}, fmt.Errorf("fetch new parent: %w", err)
@@ -170,7 +170,7 @@ func (s *Service) MoveCategory(ctx context.Context, meta RequestMeta, id int64, 
 		parentPath = &parent.Path
 	}
 
-	node, err := s.ndr.UpdateNode(ctx, meta, id, ndrclient.NodeUpdate{
+	node, err := s.ndr.UpdateNode(ctx, toNDRMeta(meta), id, ndrclient.NodeUpdate{
 		ParentPath: parentPath,
 	})
 	if err != nil {
@@ -194,7 +194,7 @@ func (s *Service) GetCategoryTree(ctx context.Context, meta RequestMeta, include
 		params.Size = 100
 	}
 
-	page, err := s.ndr.ListNodes(ctx, meta, params)
+	page, err := s.ndr.ListNodes(ctx, toNDRMeta(meta), params)
 	if err != nil {
 		log.Printf("[category] list nodes failed err=%v", err)
 		return nil, fmt.Errorf("list nodes: %w", err)
@@ -210,7 +210,7 @@ func (s *Service) GetCategoryTree(ctx context.Context, meta RequestMeta, include
 func (s *Service) GetDeletedCategories(ctx context.Context, meta RequestMeta) ([]Category, error) {
 	log.Printf("[category] trash list")
 	params := ndrclient.ListNodesParams{Page: 1, Size: 100, IncludeDeleted: ptr(true)}
-	page, err := s.ndr.ListNodes(ctx, meta, params)
+	page, err := s.ndr.ListNodes(ctx, toNDRMeta(meta), params)
 	if err != nil {
 		log.Printf("[category] trash list nodes failed err=%v", err)
 		return nil, fmt.Errorf("list nodes: %w", err)
@@ -231,7 +231,7 @@ func (s *Service) GetDeletedCategories(ctx context.Context, meta RequestMeta) ([
 // PurgeCategory permanently deletes a node in NDR.
 func (s *Service) PurgeCategory(ctx context.Context, meta RequestMeta, id int64) error {
 	log.Printf("[category] purge id=%d", id)
-	if err := s.ndr.PurgeNode(ctx, meta, id); err != nil {
+	if err := s.ndr.PurgeNode(ctx, toNDRMeta(meta), id); err != nil {
 		log.Printf("[category] purge node failed id=%d err=%v", id, err)
 		return fmt.Errorf("purge node: %w", err)
 	}
@@ -246,7 +246,7 @@ func (s *Service) ReorderCategories(ctx context.Context, meta RequestMeta, req C
 
 	log.Printf("[category] reorder parent=%v ids=%v", req.ParentID, req.OrderedIDs)
 
-	nodes, err := s.ndr.ReorderNodes(ctx, meta, ndrclient.NodeReorderPayload{
+	nodes, err := s.ndr.ReorderNodes(ctx, toNDRMeta(meta), ndrclient.NodeReorderPayload{
 		ParentID:   req.ParentID,
 		OrderedIDs: req.OrderedIDs,
 	})
