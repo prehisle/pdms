@@ -77,3 +77,19 @@ export async function reorderCategories(payload: CategoryReorderPayload) {
     body: JSON.stringify(payload),
   });
 }
+
+export async function restoreCategory(id: number) {
+  return http<Category>(`/api/v1/categories/${id}/restore`, {
+    method: "POST",
+  });
+}
+
+export async function getDeletedCategories(): Promise<Category[]> {
+  return http<Category[]>("/api/v1/categories/trash");
+}
+
+export async function purgeCategory(id: number) {
+  return http<void>(`/api/v1/categories/${id}/purge`, {
+    method: "DELETE",
+  });
+}

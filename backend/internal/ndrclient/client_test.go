@@ -89,6 +89,8 @@ func TestClientNodeOperations(t *testing.T) {
 			writeJSON(http.StatusOK, node)
 		case r.URL.Path == path.Join("/api/v1/nodes", "reorder"):
 			writeJSON(http.StatusOK, []Node{node, child})
+		case r.URL.Path == path.Join("/api/v1/nodes", "1", "purge"):
+			writeJSON(http.StatusNoContent, nil)
 		default:
 			http.NotFound(w, r)
 		}
@@ -141,6 +143,10 @@ func TestClientNodeOperations(t *testing.T) {
 		OrderedIDs: []int64{2, 1},
 	}); err != nil {
 		t.Fatalf("ReorderNodes failed: %v", err)
+	}
+
+	if err := client.PurgeNode(ctx, meta, 1); err != nil {
+		t.Fatalf("PurgeNode failed: %v", err)
 	}
 
 	if len(calls) == 0 {

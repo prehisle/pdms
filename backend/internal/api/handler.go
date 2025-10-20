@@ -94,6 +94,8 @@ func (h *Handler) CategoryRoutes(w http.ResponseWriter, r *http.Request) {
 		h.restoreCategory(w, r, meta, id)
 	case "move":
 		h.moveCategory(w, r, meta, id)
+	case "purge":
+		h.purgeCategory(w, r, meta, id)
 	default:
 		respondError(w, http.StatusNotFound, errors.New("not found"))
 	}
@@ -232,6 +234,18 @@ func (h *Handler) listDeletedCategories(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 	writeJSON(w, http.StatusOK, items)
+}
+
+func (h *Handler) purgeCategory(w http.ResponseWriter, r *http.Request, meta service.RequestMeta, id int64) {
+	if r.Method != http.MethodDelete {
+		respondError(w, http.StatusMethodNotAllowed, errors.New("method not allowed"))
+		return
+	}
+	if err := h.service.PurgeCategory(r.Context(), meta, id); err != nil {
+		respondError(w, http.StatusBadGateway, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *Handler) metaFromRequest(r *http.Request) service.RequestMeta {

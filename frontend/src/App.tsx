@@ -10,12 +10,16 @@ import {
   Popconfirm,
   Space,
   Spin,
+  Table,
+  Tabs,
+  Tag,
   Tree,
   Typography,
   message,
 } from "antd";
 import type { TreeProps } from "antd";
 import type { DataNode, EventDataNode } from "antd/es/tree";
+import type { ColumnsType } from "antd/es/table";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -24,9 +28,12 @@ import {
   CategoryUpdatePayload,
   createCategory,
   deleteCategory,
+  getDeletedCategories,
   getCategoryTree,
   moveCategory,
+  purgeCategory,
   reorderCategories,
+  restoreCategory,
   updateCategory,
 } from "./api/categories";
 
@@ -48,6 +55,7 @@ const App = () => {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [isMutating, setIsMutating] = useState(false);
   const [messageApi, contextHolder] = message.useMessage();
+  const [activeTab, setActiveTab] = useState<"tree" | "trash">("tree");
   const [showCreateModal, setShowCreateModal] = useState<{
     open: boolean;
     parentId: number | null;
@@ -58,11 +66,26 @@ const App = () => {
   const [expandedKeys, setExpandedKeys] = useState<string[]>([]);
   const [autoExpandParent, setAutoExpandParent] = useState(true);
 
+  const trashQuery = useQuery({
+    queryKey: ["categories-trash"],
+    queryFn: () => getDeletedCategories(),
+    enabled: activeTab === "trash",
+  });
+
+  useEffect(() => {
+    if (activeTab === "trash") {
+      setSelectedId(null);
+    }
+  }, [activeTab]);
+
   const createMutation = useMutation({
     mutationFn: (payload: CategoryCreatePayload) => createCategory(payload),
     onSuccess: async () => {
       messageApi.success("目录创建成功");
-      await queryClient.invalidateQueries({ queryKey: ["categories-tree"] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["categories-tree"] }),
+        queryClient.invalidateQueries({ queryKey: ["categories-trash"] }),
+      ]);
       setShowCreateModal({ open: false, parentId: null });
     },
     onError: (err: unknown) => {
@@ -89,7 +112,10 @@ const App = () => {
     mutationFn: (id: number) => deleteCategory(id),
     onSuccess: async () => {
       messageApi.success("目录删除成功");
-      await queryClient.invalidateQueries({ queryKey: ["categories-tree"] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["categories-tree"] }),
+        queryClient.invalidateQueries({ queryKey: ["categories-trash"] }),
+      ]);
       setSelectedId(null);
     },
     onError: (err: unknown) => {
@@ -97,6 +123,44 @@ const App = () => {
       messageApi.error(msg);
     },
   });
+
+  const restoreMutation = useMutation({
+    mutationFn: (id: number) => restoreCategory(id),
+    onSuccess: async () => {
+      messageApi.success("目录已恢复");
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["categories-tree"] }),
+        queryClient.invalidateQueries({ queryKey: ["categories-trash"] }),
+      ]);
+    },
+    onError: (err: unknown) => {
+      const msg = err instanceof Error ? err.message : "恢复目录失败";
+      messageApi.error(msg);
+    },
+  });
+
+  const purgeMutation = useMutation({
+    mutationFn: (id: number) => purgeCategory(id),
+    onSuccess: async () => {
+      messageApi.success("目录已彻底删除");
+      await queryClient.invalidateQueries({ queryKey: ["categories-trash"] });
+    },
+    onError: (err: unknown) => {
+      const msg = err instanceof Error ? err.message : "彻底删除失败";
+      messageApi.error(msg);
+    },
+  });
+
+  const trashTableColumns = useMemo(
+    () =>
+      buildTrashColumns(
+        restoreMutation.isPending,
+        purgeMutation.isPending,
+        (id: number) => restoreMutation.mutate(id),
+        (id: number) => purgeMutation.mutate(id),
+      ),
+    [restoreMutation.isPending, purgeMutation.isPending, restoreMutation.mutate, purgeMutation.mutate],
+  );
 
   const filteredTree = useMemo(() => {
     if (!data) {
@@ -221,97 +285,139 @@ const App = () => {
             borderRight: "1px solid #f0f0f0",
           }}
         >
-          <Space style={{ marginBottom: 16 }} wrap>
-            <Input.Search
-              placeholder="搜索目录"
-              allowClear
-              value={searchValue}
-              onChange={(e) => setSearchValue(e.target.value)}
-              onSearch={(val) => setSearchValue(val)}
-              style={{ width: 200 }}
-            />
-            <Button onClick={() => refetch()} loading={isFetching || isMutating}>
-              刷新目录
-            </Button>
-            <Button
-              type="primary"
-              onClick={() => {
-                form.resetFields();
-                setShowCreateModal({ open: true, parentId: null });
-              }}
-              loading={createMutation.isPending}
-            >
-              新建根目录
-            </Button>
-            <Button
-              onClick={() => {
-                form.resetFields();
-                setShowCreateModal({ open: true, parentId: selectedId });
-              }}
-              disabled={selectedId === null}
-              loading={createMutation.isPending}
-            >
-              新建子目录
-            </Button>
-            <Button
-              onClick={() => {
-                const current = selectedId ? lookups.byId.get(selectedId) : null;
-                if (!current) return;
-                form.setFieldsValue({ name: current.name });
-                setShowRenameModal(true);
-              }}
-              disabled={!selectedId}
-              loading={updateMutation.isPending}
-            >
-              重命名
-            </Button>
-            <Popconfirm
-              title="确认删除该目录？"
-              okText="删除"
-              cancelText="取消"
-              okButtonProps={{ danger: true }}
-              onConfirm={() => selectedId && deleteMutation.mutate(selectedId)}
-              disabled={!selectedId}
-            >
-              <Button danger disabled={!selectedId} loading={deleteMutation.isPending}>
-                删除
-              </Button>
-            </Popconfirm>
-          </Space>
-          {isLoading ? (
-            <div style={{ display: "flex", justifyContent: "center", marginTop: 32 }}>
-              <Spin />
-            </div>
-          ) : error ? (
-            <Alert
-              type="error"
-              message="目录树加载失败"
-              description={(error as Error).message}
-            />
-          ) : treeData.length === 0 ? (
-            <Empty description="暂无目录" />
-          ) : (
-            <Tree
-              blockNode
-              draggable={{ icon: false }}
-              showLine={{ showLeafIcon: false }}
-              treeData={treeData}
-              onDrop={handleDrop}
-              selectedKeys={selectedId ? [selectedId.toString()] : []}
-              onSelect={(keys) => {
-                const key = keys[0];
-                setSelectedId(key ? Number(key) : null);
-              }}
-              expandedKeys={expandedKeys}
-              autoExpandParent={autoExpandParent}
-              onExpand={(keys) => {
-                setExpandedKeys(keys.map(String));
-                setAutoExpandParent(false);
-              }}
-              height={600}
-              style={{ userSelect: "none" }}
-            />
-          )}
+          <Tabs
+            activeKey={activeTab}
+            onChange={(key) => setActiveTab(key as "tree" | "trash")}
+            items={[
+              {
+                key: "tree",
+                label: "目录树",
+                children: (
+                  <>
+                    <Space style={{ marginBottom: 16 }} wrap>
+                      <Input.Search
+                        placeholder="搜索目录"
+                        allowClear
+                        value={searchValue}
+                        onChange={(e) => setSearchValue(e.target.value)}
+                        onSearch={(val) => setSearchValue(val)}
+                        style={{ width: 200 }}
+                      />
+                      <Button onClick={() => refetch()} loading={isFetching || isMutating}>
+                        刷新目录
+                      </Button>
+                      <Button
+                        type="primary"
+                        onClick={() => {
+                          form.resetFields();
+                          setShowCreateModal({ open: true, parentId: null });
+                        }}
+                        loading={createMutation.isPending}
+                      >
+                        新建根目录
+                      </Button>
+                      <Button
+                        onClick={() => {
+                          form.resetFields();
+                          setShowCreateModal({ open: true, parentId: selectedId });
+                        }}
+                        disabled={selectedId === null}
+                        loading={createMutation.isPending}
+                      >
+                        新建子目录
+                      </Button>
+                      <Button
+                        onClick={() => {
+                          const current = selectedId ? lookups.byId.get(selectedId) : null;
+                          if (!current) return;
+                          form.setFieldsValue({ name: current.name });
+                          setShowRenameModal(true);
+                        }}
+                        disabled={!selectedId}
+                        loading={updateMutation.isPending}
+                      >
+                        重命名
+                      </Button>
+                      <Popconfirm
+                        title="确认删除该目录？"
+                        okText="删除"
+                        cancelText="取消"
+                        okButtonProps={{ danger: true }}
+                        onConfirm={() => selectedId && deleteMutation.mutate(selectedId)}
+                        disabled={!selectedId}
+                      >
+                        <Button danger disabled={!selectedId} loading={deleteMutation.isPending}>
+                          删除
+                        </Button>
+                      </Popconfirm>
+                    </Space>
+                    {isLoading ? (
+                      <div style={{ display: "flex", justifyContent: "center", marginTop: 32 }}>
+                        <Spin />
+                      </div>
+                    ) : error ? (
+                      <Alert
+                        type="error"
+                        message="目录树加载失败"
+                        description={(error as Error).message}
+                      />
+                    ) : treeData.length === 0 ? (
+                      <Empty description="暂无目录" />
+                    ) : (
+                      <Tree
+                        blockNode
+                        draggable={{ icon: false }}
+                        showLine={{ showLeafIcon: false }}
+                        treeData={treeData}
+                        onDrop={handleDrop}
+                        selectedKeys={selectedId ? [selectedId.toString()] : []}
+                        onSelect={(keys) => {
+                          const key = keys[0];
+                          setSelectedId(key ? Number(key) : null);
+                        }}
+                        expandedKeys={expandedKeys}
+                        autoExpandParent={autoExpandParent}
+                        onExpand={(keys) => {
+                          setExpandedKeys(keys.map(String));
+                          setAutoExpandParent(false);
+                        }}
+                        height={600}
+                        style={{ userSelect: "none" }}
+                      />
+                    )}
+                  </>
+                ),
+              },
+              {
+                key: "trash",
+                label: "回收站",
+                children: (
+                  <>
+                    {trashQuery.isLoading ? (
+                      <div style={{ display: "flex", justifyContent: "center", marginTop: 32 }}>
+                        <Spin />
+                      </div>
+                    ) : trashQuery.error ? (
+                      <Alert
+                        type="error"
+                        message="回收站加载失败"
+                        description={(trashQuery.error as Error).message}
+                      />
+                    ) : (trashQuery.data ?? []).length === 0 ? (
+                      <Empty description="暂无已删除目录" />
+                    ) : (
+                      <Table
+                        rowKey="id"
+                        pagination={false}
+                        dataSource={trashQuery.data ?? []}
+                        columns={trashTableColumns}
+                      />
+                    )}
+                  </>
+                ),
+              },
+            ]}
+          />
         </Sider>
         <Content style={{ padding: "24px" }}>
           <Typography.Title level={4}>目录详情</Typography.Title>
@@ -504,6 +610,66 @@ function getParentId(node: EventDataNode<DataNode>): number | null {
   return (node as TreeDataNode & EventDataNode<DataNode>).parentId ?? null;
 }
 
+function buildTrashColumns(
+  restoreLoading: boolean,
+  purgeLoading: boolean,
+  onRestore: (id: number) => void,
+  onPurge: (id: number) => void,
+): ColumnsType<Category> {
+  return [
+    {
+      title: "名称",
+      dataIndex: "name",
+      key: "name",
+      render: (value: string, record: Category) => (
+        <Space>
+          <Typography.Text>{value}</Typography.Text>
+          <Tag color="red">已删除</Tag>
+        </Space>
+      ),
+    },
+    {
+      title: "路径",
+      dataIndex: "path",
+      key: "path",
+      render: (value: string) => <Typography.Text code>{value}</Typography.Text>,
+    },
+    {
+      title: "删除时间",
+      dataIndex: "deleted_at",
+      key: "deleted_at",
+      render: (value?: string | null) => (value ? new Date(value).toLocaleString() : "-"),
+    },
+    {
+      title: "操作",
+      key: "actions",
+      render: (_, record) => (
+        <Space>
+          <Button
+            type="link"
+            onClick={() => onRestore(record.id)}
+            disabled={restoreLoading}
+            loading={restoreLoading}
+          >
+            恢复
+          </Button>
+          <Popconfirm
+            title="彻底删除后无法恢复，确认操作？"
+            okText="删除"
+            cancelText="取消"
+            onConfirm={() => onPurge(record.id)}
+            disabled={purgeLoading}
+          >
+            <Button type="link" danger disabled={purgeLoading} loading={purgeLoading}>
+              彻底删除
+            </Button>
+          </Popconfirm>
+        </Space>
+      ),
+    },
+  ];
+}
+
 interface CategoryDetailProps {
   category: Category | null;
 }
@@ -520,7 +686,10 @@ function CategoryDetail({ category }: CategoryDetailProps) {
     <Card style={{ maxWidth: 480 }}>
       <Space direction="vertical">
         <Typography.Text strong>名称</Typography.Text>
-        <Typography.Text>{category.name}</Typography.Text>
+        <Space>
+          <Typography.Text>{category.name}</Typography.Text>
+          {category.deleted_at ? <Tag color="red">已删除</Tag> : null}
+        </Space>
         <Typography.Text strong>路径</Typography.Text>
         <Typography.Text code>{category.path}</Typography.Text>
         <Typography.Text strong>父级 ID</Typography.Text>
@@ -535,6 +704,14 @@ function CategoryDetail({ category }: CategoryDetailProps) {
         <Typography.Text>
           {new Date(category.updated_at).toLocaleString()}
         </Typography.Text>
+        {category.deleted_at ? (
+          <>
+            <Typography.Text strong>删除时间</Typography.Text>
+            <Typography.Text>
+              {new Date(category.deleted_at).toLocaleString()}
+            </Typography.Text>
+          </>
+        ) : null}
       </Space>
     </Card>
   );

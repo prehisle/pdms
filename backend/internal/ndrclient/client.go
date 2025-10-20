@@ -23,6 +23,7 @@ type Client interface {
 	ListNodes(ctx context.Context, meta RequestMeta, params ListNodesParams) (NodesPage, error)
 	ListChildren(ctx context.Context, meta RequestMeta, id int64, params ListChildrenParams) ([]Node, error)
 	ReorderNodes(ctx context.Context, meta RequestMeta, payload NodeReorderPayload) ([]Node, error)
+	PurgeNode(ctx context.Context, meta RequestMeta, id int64) error
 }
 
 // NDRConfig describes the minimal configuration required by the client.
@@ -166,6 +167,16 @@ func (c *httpClient) ReorderNodes(ctx context.Context, meta RequestMeta, payload
 	var resp []Node
 	_, err = c.do(req, &resp)
 	return resp, err
+}
+
+func (c *httpClient) PurgeNode(ctx context.Context, meta RequestMeta, id int64) error {
+	endpoint := fmt.Sprintf("/api/v1/nodes/%d/purge", id)
+	req, err := c.newRequest(ctx, http.MethodDelete, endpoint, meta, nil)
+	if err != nil {
+		return err
+	}
+	_, err = c.do(req, nil)
+	return err
 }
 
 func (c *httpClient) newRequest(ctx context.Context, method, endpoint string, meta RequestMeta, body any) (*http.Request, error) {

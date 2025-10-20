@@ -19,6 +19,7 @@ type fakeNDR struct {
 	}
 	deletedNodes  []int64
 	restoredNodes []int64
+	purgedNodes   []int64
 	listResponse  ndrclient.NodesPage
 	getNodes      map[int64]ndrclient.Node
 	createResp    ndrclient.Node
@@ -34,6 +35,7 @@ type fakeNDR struct {
 	deleteErr     error
 	getErr        error
 	restoreErr    error
+	purgeErr      error
 }
 
 func newFakeNDR() *fakeNDR {
@@ -91,6 +93,11 @@ func (f *fakeNDR) ListChildren(context.Context, ndrclient.RequestMeta, int64, nd
 func (f *fakeNDR) ReorderNodes(_ context.Context, _ ndrclient.RequestMeta, payload ndrclient.NodeReorderPayload) ([]ndrclient.Node, error) {
 	f.reorderInput = &payload
 	return f.reorderResp, f.reorderErr
+}
+
+func (f *fakeNDR) PurgeNode(_ context.Context, _ ndrclient.RequestMeta, id int64) error {
+	f.purgedNodes = append(f.purgedNodes, id)
+	return f.purgeErr
 }
 
 func TestCreateCategory(t *testing.T) {
@@ -256,6 +263,42 @@ func TestReorderCategories(t *testing.T) {
 	}
 	if len(res) != 2 || res[0].Position != 2 || res[1].Position != 1 {
 		t.Fatalf("unexpected reorder result: %+v", res)
+	}
+}
+
+func TestGetDeletedCategories(t *testing.T) {
+	fake := newFakeNDR()
+	now := time.Now().UTC()
+	deletedAt := now.Add(-time.Hour)
+	deletedNode := sampleNode(5, "Trash", "/trash", nil, 1, now, now)
+	deletedNode.DeletedAt = &deletedAt
+	fake.listResponse = ndrclient.NodesPage{Items: []ndrclient.Node{
+		deletedNode,
+		sampleNode(6, "Active", "/active", nil, 2, now, now),
+	}}
+	svc := NewService(cache.NewNoop(), fake)
+
+	items, err := svc.GetDeletedCategories(context.Background(), RequestMeta{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("expected 1 deleted item, got %d", len(items))
+	}
+	if items[0].ID != 5 || items[0].DeletedAt == nil {
+		t.Fatalf("unexpected item %+v", items[0])
+	}
+}
+
+func TestPurgeCategory(t *testing.T) {
+	fake := newFakeNDR()
+	svc := NewService(cache.NewNoop(), fake)
+
+	if err := svc.PurgeCategory(context.Background(), RequestMeta{}, 42); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(fake.purgedNodes) != 1 || fake.purgedNodes[0] != 42 {
+		t.Fatalf("expected purge call for id 42")
 	}
 }
 

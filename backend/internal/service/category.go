@@ -228,6 +228,16 @@ func (s *Service) GetDeletedCategories(ctx context.Context, meta RequestMeta) ([
 	return deleted, nil
 }
 
+// PurgeCategory permanently deletes a node in NDR.
+func (s *Service) PurgeCategory(ctx context.Context, meta RequestMeta, id int64) error {
+	log.Printf("[category] purge id=%d", id)
+	if err := s.ndr.PurgeNode(ctx, meta, id); err != nil {
+		log.Printf("[category] purge node failed id=%d err=%v", id, err)
+		return fmt.Errorf("purge node: %w", err)
+	}
+	return nil
+}
+
 // ReorderCategories updates the order of sibling nodes.
 func (s *Service) ReorderCategories(ctx context.Context, meta RequestMeta, req CategoryReorderRequest) ([]Category, error) {
 	if len(req.OrderedIDs) == 0 {
