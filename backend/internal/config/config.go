@@ -22,7 +22,7 @@ type NDRConfig struct {
 // AuthConfig contains defaults for user/request metadata.
 type AuthConfig struct {
 	DefaultUserID string
-    AdminKey     string
+	AdminKey      string
 }
 
 // Load builds a Config object from environment variables, providing sane defaults.
@@ -35,7 +35,7 @@ func Load() Config {
 		},
 		Auth: AuthConfig{
 			DefaultUserID: firstNonEmpty(os.Getenv("YDMS_DEFAULT_USER_ID"), "system"),
-			AdminKey:     firstNonEmpty(os.Getenv("YDMS_ADMIN_KEY"), "not_set"),
+			AdminKey:      firstNonEmpty(os.Getenv("YDMS_ADMIN_KEY"), "not_set"),
 		},
 	}
 }
