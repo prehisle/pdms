@@ -43,6 +43,24 @@ air
 
 The provided `.air.toml` will rebuild `./cmd/server` into `./tmp/server` and restart it whenever Go source files change.
 
+## Testing
+
+Run the backend unit tests:
+
+```bash
+go test ./...
+```
+
+To exercise the real NDR integration (requires a reachable NDR service and valid credentials):
+
+```bash
+go test ./internal/ndrclient \
+  -run TestRealNDRIntegration \
+  -ndr.url=http://localhost:9001 \
+  -ndr.apikey=your-ndr-key \
+  -ndr.user=test-user
+```
+
 ## Project structure
 
 - `cmd/server`: application entrypoint
