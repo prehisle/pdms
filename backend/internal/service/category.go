@@ -206,6 +206,28 @@ func (s *Service) GetCategoryTree(ctx context.Context, meta RequestMeta, include
 	return tree, nil
 }
 
+// GetDeletedCategories returns nodes that are soft deleted.
+func (s *Service) GetDeletedCategories(ctx context.Context, meta RequestMeta) ([]Category, error) {
+	log.Printf("[category] trash list")
+	params := ndrclient.ListNodesParams{Page: 1, Size: 100, IncludeDeleted: ptr(true)}
+	page, err := s.ndr.ListNodes(ctx, meta, params)
+	if err != nil {
+		log.Printf("[category] trash list nodes failed err=%v", err)
+		return nil, fmt.Errorf("list nodes: %w", err)
+	}
+	deleted := make([]Category, 0)
+	for i := range page.Items {
+		node := page.Items[i]
+		if node.DeletedAt == nil {
+			continue
+		}
+		cat := mapNode(node, node.ParentID)
+		deleted = append(deleted, *cat)
+	}
+	log.Printf("[category] trash result count=%d", len(deleted))
+	return deleted, nil
+}
+
 // ReorderCategories updates the order of sibling nodes.
 func (s *Service) ReorderCategories(ctx context.Context, meta RequestMeta, req CategoryReorderRequest) ([]Category, error) {
 	if len(req.OrderedIDs) == 0 {

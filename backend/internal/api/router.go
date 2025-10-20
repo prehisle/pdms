@@ -4,23 +4,31 @@ import (
 	"log"
 	"net/http"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // NewRouter creates the HTTP router and wires handler endpoints.
 func NewRouter(h *Handler) http.Handler {
 	mux := http.NewServeMux()
 
-	mux.Handle("/healthz", applyMiddleware(http.HandlerFunc(h.Health)))
-	mux.Handle("/api/v1/healthz", applyMiddleware(http.HandlerFunc(h.Health)))
-	mux.Handle("/api/v1/ping", applyMiddleware(http.HandlerFunc(h.Ping)))
-	mux.Handle("/api/v1/categories", applyMiddleware(http.HandlerFunc(h.Categories)))
-	mux.Handle("/api/v1/categories/", applyMiddleware(http.HandlerFunc(h.CategoryRoutes)))
+	wrap := h.applyMiddleware
+
+	mux.Handle("/healthz", wrap(http.HandlerFunc(h.Health)))
+	mux.Handle("/api/v1/healthz", wrap(http.HandlerFunc(h.Health)))
+	mux.Handle("/api/v1/ping", wrap(http.HandlerFunc(h.Ping)))
+	mux.Handle("/api/v1/categories", wrap(http.HandlerFunc(h.Categories)))
+	mux.Handle("/api/v1/categories/", wrap(http.HandlerFunc(h.CategoryRoutes)))
 
 	return mux
 }
 
-func applyMiddleware(next http.Handler) http.Handler {
-	return loggingMiddleware(corsMiddleware(next))
+func (h *Handler) applyMiddleware(next http.Handler) http.Handler {
+	handler := next
+	handler = requestContextMiddleware(h.defaults.UserID)(handler)
+	handler = corsMiddleware(handler)
+	handler = loggingMiddleware(handler)
+	return handler
 }
 
 func loggingMiddleware(next http.Handler) http.Handler {
@@ -59,4 +67,18 @@ func corsMiddleware(next http.Handler) http.Handler {
 
 		next.ServeHTTP(w, r)
 	})
+}
+
+func requestContextMiddleware(defaultUserID string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Header.Get("x-user-id") == "" && defaultUserID != "" {
+				r.Header.Set("x-user-id", defaultUserID)
+			}
+			if r.Header.Get("x-request-id") == "" {
+				r.Header.Set("x-request-id", uuid.NewString())
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
 }

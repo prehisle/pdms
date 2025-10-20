@@ -3,18 +3,25 @@ package config
 import (
 	"fmt"
 	"os"
+	"strings"
 )
 
 // Config holds application level configuration.
 type Config struct {
 	HTTPPort int
 	NDR      NDRConfig
+	Auth     AuthConfig
 }
 
 // NDRConfig stores settings for the upstream NDR service.
 type NDRConfig struct {
 	BaseURL string
 	APIKey  string
+}
+
+// AuthConfig contains defaults for user/request metadata.
+type AuthConfig struct {
+	DefaultUserID string
 }
 
 // Load builds a Config object from environment variables, providing sane defaults.
@@ -24,6 +31,9 @@ func Load() Config {
 		NDR: NDRConfig{
 			BaseURL: os.Getenv("YDMS_NDR_BASE_URL"),
 			APIKey:  os.Getenv("YDMS_NDR_API_KEY"),
+		},
+		Auth: AuthConfig{
+			DefaultUserID: firstNonEmpty(os.Getenv("YDMS_DEFAULT_USER_ID"), "system"),
 		},
 	}
 }
@@ -44,4 +54,13 @@ func parseEnvInt(key string, defaultValue int) int {
 		return defaultValue
 	}
 	return value
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if strings.TrimSpace(v) != "" {
+			return v
+		}
+	}
+	return ""
 }

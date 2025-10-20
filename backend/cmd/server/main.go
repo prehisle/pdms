@@ -31,7 +31,10 @@ func main() {
 		APIKey:  cfg.NDR.APIKey,
 	})
 	svc := service.NewService(cacheProvider, ndr)
-	handler := api.NewHandler(svc)
+	handler := api.NewHandler(svc, api.HeaderDefaults{
+		APIKey: cfg.NDR.APIKey,
+		UserID: cfg.Auth.DefaultUserID,
+	})
 	router := api.NewRouter(handler)
 
 	server := &http.Server{

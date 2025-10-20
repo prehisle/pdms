@@ -12,12 +12,18 @@ import (
 
 // Handler exposes HTTP handlers that delegate to the service layer.
 type Handler struct {
-	service *service.Service
+	service  *service.Service
+	defaults HeaderDefaults
+}
+
+type HeaderDefaults struct {
+	APIKey string
+	UserID string
 }
 
 // NewHandler returns a Handler wiring dependencies.
-func NewHandler(service *service.Service) *Handler {
-	return &Handler{service: service}
+func NewHandler(service *service.Service, defaults HeaderDefaults) *Handler {
+	return &Handler{service: service, defaults: defaults}
 }
 
 // Health reports basic liveness.
@@ -37,7 +43,7 @@ func (h *Handler) Ping(w http.ResponseWriter, r *http.Request) {
 
 // Categories handles collection-level operations.
 func (h *Handler) Categories(w http.ResponseWriter, r *http.Request) {
-	meta := metaFromHeaders(r)
+	meta := h.metaFromRequest(r)
 	switch r.Method {
 	case http.MethodPost:
 		h.createCategory(w, r, meta)
@@ -55,11 +61,16 @@ func (h *Handler) CategoryRoutes(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if relPath == "reorder" {
-		h.reorderCategories(w, r, metaFromHeaders(r))
+		h.reorderCategories(w, r, h.metaFromRequest(r))
 		return
 	}
 
-	meta := metaFromHeaders(r)
+	if relPath == "trash" {
+		h.listDeletedCategories(w, r, h.metaFromRequest(r))
+		return
+	}
+
+	meta := h.metaFromRequest(r)
 
 	if relPath == "tree" {
 		h.listCategoryTree(w, r, meta)
@@ -210,11 +221,33 @@ func (h *Handler) reorderCategories(w http.ResponseWriter, r *http.Request, meta
 	writeJSON(w, http.StatusOK, categories)
 }
 
-func metaFromHeaders(r *http.Request) service.RequestMeta {
+func (h *Handler) listDeletedCategories(w http.ResponseWriter, r *http.Request, meta service.RequestMeta) {
+	if r.Method != http.MethodGet {
+		respondError(w, http.StatusMethodNotAllowed, errors.New("method not allowed"))
+		return
+	}
+	items, err := h.service.GetDeletedCategories(r.Context(), meta)
+	if err != nil {
+		respondError(w, http.StatusBadGateway, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, items)
+}
+
+func (h *Handler) metaFromRequest(r *http.Request) service.RequestMeta {
+	apiKey := r.Header.Get("x-api-key")
+	if apiKey == "" {
+		apiKey = h.defaults.APIKey
+	}
+	userID := r.Header.Get("x-user-id")
+	if userID == "" {
+		userID = h.defaults.UserID
+	}
+	requestID := r.Header.Get("x-request-id")
 	return service.RequestMeta{
-		APIKey:    r.Header.Get("x-api-key"),
-		UserID:    r.Header.Get("x-user-id"),
-		RequestID: r.Header.Get("x-request-id"),
+		APIKey:    apiKey,
+		UserID:    userID,
+		RequestID: requestID,
 	}
 }
 
