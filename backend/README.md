@@ -1,0 +1,31 @@
+# YDMS Backend Skeleton
+
+This module hosts the Go backend for the YDMS question bank.
+
+## Getting started
+
+1. Ensure Go 1.22+ is installed.
+2. From this directory, run:
+
+```bash
+go run ./cmd/server
+```
+
+3. The server listens on `:9180` by default (override with `YDMS_HTTP_PORT`).
+4. Test the hello endpoint:
+
+```bash
+curl http://localhost:9180/api/v1/ping
+```
+
+## Project structure
+
+- `cmd/server`: application entrypoint
+- `internal/api`: HTTP handlers and routing
+- `internal/service`: domain services
+- `internal/ndrclient`: placeholder for the NDR integration
+- `internal/cache`: cache abstraction with no-op implementation
+- `internal/config`: configuration loading utilities
+
+Caching is disabled by default but the `cache.Provider` interface allows plugging
+in Redis or other providers without touching the service layer.

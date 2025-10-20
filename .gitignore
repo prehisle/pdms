@@ -1,0 +1,19 @@
+# Environment and secrets
+.env
+
+# Archives / binaries
+*.tar.gz
+*.zip
+*.log
+
+# IDEs
+.vscode/
+.idea/
+
+# Dependencies and build outputs
+frontend/node_modules/
+frontend/dist/
+backend/bin/
+
+# OS files
+.DS_Store
