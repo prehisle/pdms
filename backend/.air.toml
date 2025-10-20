@@ -1,0 +1,14 @@
+# Config for air live-reload tool
+root = "."
+tmp_dir = "tmp"
+
+[build]
+cmd = "go build -o ./tmp/server ./cmd/server"
+bin = "./tmp/server"
+include_ext = ["go", "tpl", "tmpl", "html"]
+exclude_dir = ["tmp", "vendor", ".git"]
+exclude_file = ["README.md"]
+delay = 1000
+
+[log]
+time = true

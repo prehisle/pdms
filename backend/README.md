@@ -18,6 +18,22 @@ go run ./cmd/server
 curl http://localhost:9180/api/v1/ping
 ```
 
+### Auto reload during development
+
+For automatic rebuild on file changes, install [air](https://github.com/air-verse/air):
+
+```bash
+go install github.com/air-verse/air@latest
+```
+
+Then run the watcher from this directory:
+
+```bash
+air
+```
+
+The provided `.air.toml` will rebuild `./cmd/server` into `./tmp/server` and restart it whenever Go source files change.
+
 ## Project structure
 
 - `cmd/server`: application entrypoint
