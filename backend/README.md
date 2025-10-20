@@ -5,14 +5,22 @@ This module hosts the Go backend for the YDMS question bank.
 ## Getting started
 
 1. Ensure Go 1.22+ is installed.
-2. From this directory, run:
+2. Configure the connection to the NDR service by setting environment variables or editing `.env`:
+
+```
+YDMS_NDR_BASE_URL=http://localhost:9001
+YDMS_NDR_API_KEY=your-ndr-key
+YDMS_HTTP_PORT=9180
+```
+
+3. From this directory, run:
 
 ```bash
 go run ./cmd/server
 ```
 
-3. The server listens on `:9180` by default (override with `YDMS_HTTP_PORT`).
-4. Test the hello endpoint:
+4. The server listens on `:9180` by default (override with `YDMS_HTTP_PORT`).
+5. Test the hello endpoint:
 
 ```bash
 curl http://localhost:9180/api/v1/ping

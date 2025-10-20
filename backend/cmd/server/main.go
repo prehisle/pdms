@@ -8,6 +8,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/joho/godotenv"
 	"github.com/yjxt/ydms/backend/internal/api"
 	"github.com/yjxt/ydms/backend/internal/cache"
 	"github.com/yjxt/ydms/backend/internal/config"
@@ -16,6 +17,12 @@ import (
 )
 
 func main() {
+	// Load environment variables from .env if present.
+	if err := godotenv.Load(".env"); err != nil {
+		// Attempt to load from project root as fallback.
+		_ = godotenv.Load()
+	}
+
 	cfg := config.Load()
 
 	cacheProvider := cache.NewNoop()
