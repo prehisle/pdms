@@ -24,6 +24,7 @@ func main() {
 	}
 
 	cfg := config.Load()
+	log.Printf("config loaded: ndr_base=%s default_user=%s admin_key_set=%t", cfg.NDR.BaseURL, cfg.Auth.DefaultUserID, cfg.Auth.AdminKey != "not_set")
 
 	cacheProvider := cache.NewNoop()
 	ndr := ndrclient.NewClient(ndrclient.NDRConfig{
@@ -32,8 +33,9 @@ func main() {
 	})
 	svc := service.NewService(cacheProvider, ndr)
 	handler := api.NewHandler(svc, api.HeaderDefaults{
-		APIKey: cfg.NDR.APIKey,
-		UserID: cfg.Auth.DefaultUserID,
+		APIKey:   cfg.NDR.APIKey,
+		UserID:   cfg.Auth.DefaultUserID,
+		AdminKey: cfg.Auth.AdminKey,
 	})
 	router := api.NewRouter(handler)
 
