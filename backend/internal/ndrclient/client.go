@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"path"
@@ -30,6 +31,7 @@ type Client interface {
 type NDRConfig struct {
 	BaseURL string
 	APIKey  string
+	Debug   bool
 }
 
 // RequestMeta contains per-request metadata forwarded to NDR.
@@ -44,6 +46,7 @@ type httpClient struct {
 	baseURL    *url.URL
 	apiKey     string
 	httpClient *http.Client
+	debug      bool
 }
 
 // NewClient returns an HTTP backed NDR client.
@@ -56,6 +59,7 @@ func NewClient(cfg NDRConfig) Client {
 		baseURL:    parsed,
 		apiKey:     cfg.APIKey,
 		httpClient: &http.Client{Timeout: 10 * time.Second},
+		debug:      cfg.Debug,
 	}
 }
 
@@ -189,12 +193,14 @@ func (c *httpClient) newRequestWithQuery(ctx context.Context, method, endpoint s
 		return nil, fmt.Errorf("ndr base url is not configured")
 	}
 	var payload io.Reader
+	var bodyBytes []byte
 	if body != nil {
-		buf := bytes.NewBuffer(nil)
-		if err := json.NewEncoder(buf).Encode(body); err != nil {
+		var err error
+		bodyBytes, err = json.Marshal(body)
+		if err != nil {
 			return nil, err
 		}
-		payload = buf
+		payload = bytes.NewReader(bodyBytes)
 	}
 	fullURL := *c.baseURL
 	fullURL.Path = path.Join(c.baseURL.Path, endpoint)
@@ -222,6 +228,9 @@ func (c *httpClient) newRequestWithQuery(ctx context.Context, method, endpoint s
 	if meta.AdminKey != "" {
 		req.Header.Set("x-admin-key", meta.AdminKey)
 	}
+	if c.debug {
+		log.Printf("[ndr] request %s %s meta=%+v body=%s", method, fullURL.String(), meta, truncateForLog(bodyBytes))
+	}
 	return req, nil
 }
 
@@ -230,17 +239,39 @@ func (c *httpClient) do(req *http.Request, out any) (*http.Response, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer func() {
-		io.Copy(io.Discard, resp.Body)
-		resp.Body.Close()
-	}()
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return resp, err
+	}
+
+	if c.debug {
+		log.Printf("[ndr] response %s %s status=%d body=%s", req.Method, req.URL.Path, resp.StatusCode, truncateForLog(respBody))
+	}
+
 	if resp.StatusCode >= 400 {
+		io.Copy(io.Discard, bytes.NewReader(respBody))
 		return resp, fmt.Errorf("ndr request failed: %s", resp.Status)
 	}
 	if out != nil {
-		if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
+		if len(respBody) == 0 {
+			return resp, nil
+		}
+		if err := json.Unmarshal(respBody, out); err != nil {
 			return resp, err
 		}
 	}
 	return resp, nil
+}
+
+func truncateForLog(data []byte) string {
+	if len(data) == 0 {
+		return "<empty>"
+	}
+	const limit = 2048
+	if len(data) <= limit {
+		return string(data)
+	}
+	return fmt.Sprintf("%s...(truncated %d bytes)", string(data[:limit]), len(data)-limit)
 }

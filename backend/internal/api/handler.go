@@ -97,6 +97,8 @@ func (h *Handler) CategoryRoutes(w http.ResponseWriter, r *http.Request) {
 		h.moveCategory(w, r, meta, id)
 	case "purge":
 		h.purgeCategory(w, r, meta, id)
+	case "reposition":
+		h.repositionCategory(w, r, meta, id)
 	default:
 		respondError(w, http.StatusNotFound, errors.New("not found"))
 	}
@@ -247,6 +249,24 @@ func (h *Handler) purgeCategory(w http.ResponseWriter, r *http.Request, meta ser
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) repositionCategory(w http.ResponseWriter, r *http.Request, meta service.RequestMeta, id int64) {
+	if r.Method != http.MethodPatch {
+		respondError(w, http.StatusMethodNotAllowed, errors.New("method not allowed"))
+		return
+	}
+	var payload service.CategoryRepositionRequest
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		respondError(w, http.StatusBadRequest, err)
+		return
+	}
+	result, err := h.service.RepositionCategory(r.Context(), meta, id, payload)
+	if err != nil {
+		respondError(w, http.StatusBadGateway, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
 }
 
 func (h *Handler) metaFromRequest(r *http.Request) service.RequestMeta {

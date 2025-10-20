@@ -1,7 +1,9 @@
 package service
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -39,13 +41,83 @@ type CategoryUpdateRequest struct {
 
 // MoveCategoryRequest describes drag-and-drop operations.
 type MoveCategoryRequest struct {
-	NewParentID *int64 `json:"new_parent_id"`
+	NewParentID     *int64 `json:"-"`
+	ParentSpecified bool   `json:"-"`
+}
+
+func (r *MoveCategoryRequest) UnmarshalJSON(data []byte) error {
+	type raw struct {
+		NewParentID json.RawMessage `json:"new_parent_id"`
+	}
+	var aux raw
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	if aux.NewParentID != nil {
+		r.ParentSpecified = true
+		trimmed := bytes.TrimSpace(aux.NewParentID)
+		if bytes.Equal(trimmed, []byte("null")) {
+			r.NewParentID = nil
+		} else {
+			var id int64
+			if err := json.Unmarshal(trimmed, &id); err != nil {
+				return err
+			}
+			r.NewParentID = &id
+		}
+	} else {
+		r.ParentSpecified = false
+		r.NewParentID = nil
+	}
+	return nil
 }
 
 // CategoryReorderRequest describes a batch reorder request.
 type CategoryReorderRequest struct {
 	ParentID   *int64  `json:"parent_id"`
 	OrderedIDs []int64 `json:"ordered_ids"`
+}
+
+// CategoryRepositionRequest describes moving + reordering in a single call.
+type CategoryRepositionRequest struct {
+	NewParentID     *int64 `json:"-"`
+	OrderedIDs      []int64
+	ParentSpecified bool `json:"-"`
+}
+
+func (r *CategoryRepositionRequest) UnmarshalJSON(data []byte) error {
+	type raw struct {
+		NewParentID json.RawMessage `json:"new_parent_id"`
+		OrderedIDs  []int64         `json:"ordered_ids"`
+	}
+	var aux raw
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	r.OrderedIDs = aux.OrderedIDs
+	if aux.NewParentID != nil {
+		r.ParentSpecified = true
+		rawValue := bytes.TrimSpace(aux.NewParentID)
+		if bytes.Equal(rawValue, []byte("null")) {
+			r.NewParentID = nil
+		} else {
+			var v int64
+			if err := json.Unmarshal(rawValue, &v); err != nil {
+				return err
+			}
+			r.NewParentID = &v
+		}
+	} else {
+		r.ParentSpecified = false
+		r.NewParentID = nil
+	}
+	return nil
+}
+
+// CategoryRepositionResult bundles reposition outcome.
+type CategoryRepositionResult struct {
+	Category Category   `json:"category"`
+	Siblings []Category `json:"siblings"`
 }
 
 // ListCategoriesParams describes filtering options.
@@ -159,19 +231,26 @@ func (s *Service) RestoreCategory(ctx context.Context, meta RequestMeta, id int6
 
 // MoveCategory changes the parent of a node (drag-and-drop).
 func (s *Service) MoveCategory(ctx context.Context, meta RequestMeta, id int64, req MoveCategoryRequest) (Category, error) {
-	log.Printf("[category] move id=%d new_parent=%v", id, req.NewParentID)
-	var parentPath *string
-	if req.NewParentID != nil {
-		parent, err := s.ndr.GetNode(ctx, toNDRMeta(meta), *req.NewParentID, ndrclient.GetNodeOptions{})
-		if err != nil {
-			log.Printf("[category] move fetch parent failed id=%d err=%v", *req.NewParentID, err)
-			return Category{}, fmt.Errorf("fetch new parent: %w", err)
+	log.Printf("[category] move id=%d new_parent=%v specified=%v", id, req.NewParentID, req.ParentSpecified)
+
+	var parentPathOpt *ndrclient.OptionalString
+
+	if req.ParentSpecified {
+		if req.NewParentID != nil {
+			parent, err := s.ndr.GetNode(ctx, toNDRMeta(meta), *req.NewParentID, ndrclient.GetNodeOptions{})
+			if err != nil {
+				log.Printf("[category] move fetch parent failed id=%d err=%v", *req.NewParentID, err)
+				return Category{}, fmt.Errorf("fetch new parent: %w", err)
+			}
+			parentPath := parent.Path
+			parentPathOpt = ndrclient.NewOptionalString(&parentPath)
+		} else {
+			parentPathOpt = ndrclient.NewOptionalString(nil)
 		}
-		parentPath = &parent.Path
 	}
 
 	node, err := s.ndr.UpdateNode(ctx, toNDRMeta(meta), id, ndrclient.NodeUpdate{
-		ParentPath: parentPath,
+		ParentPath: parentPathOpt,
 	})
 	if err != nil {
 		log.Printf("[category] move node failed id=%d err=%v", id, err)
@@ -186,23 +265,38 @@ func (s *Service) MoveCategory(ctx context.Context, meta RequestMeta, id int64, 
 // GetCategoryTree aggregates nodes into a hierarchy.
 func (s *Service) GetCategoryTree(ctx context.Context, meta RequestMeta, includeDeleted bool) ([]*Category, error) {
 	log.Printf("[category] tree include_deleted=%v", includeDeleted)
-	params := ndrclient.ListNodesParams{Page: 1, Size: 1000}
+	params := ndrclient.ListNodesParams{Page: 1, Size: 100}
 	if includeDeleted {
 		params.IncludeDeleted = ptr(true)
 	}
-	if params.Size > 100 {
-		params.Size = 100
+
+	nodes := make([]ndrclient.Node, 0)
+	total := 0
+
+	for {
+		page, err := s.ndr.ListNodes(ctx, toNDRMeta(meta), params)
+		if err != nil {
+			log.Printf("[category] list nodes failed page=%d err=%v", params.Page, err)
+			return nil, fmt.Errorf("list nodes: %w", err)
+		}
+		if total == 0 {
+			total = page.Total
+		}
+		nodes = append(nodes, page.Items...)
+
+		pageSize := page.Size
+		if pageSize == 0 {
+			pageSize = params.Size
+		}
+
+		if (total != 0 && len(nodes) >= total) || len(page.Items) == 0 || len(page.Items) < pageSize {
+			break
+		}
+		params.Page++
 	}
 
-	page, err := s.ndr.ListNodes(ctx, toNDRMeta(meta), params)
-	if err != nil {
-		log.Printf("[category] list nodes failed err=%v", err)
-		return nil, fmt.Errorf("list nodes: %w", err)
-	}
-	log.Printf("[category] raw nodes total=%d items=%v", page.Total, page.Items)
-
-	tree := buildTree(page.Items)
-	log.Printf("[category] tree result total=%d roots=%d", page.Total, len(tree))
+	tree := buildTree(nodes)
+	log.Printf("[category] tree aggregated total=%d fetched=%d roots=%d", total, len(nodes), len(tree))
 	return tree, nil
 }
 
@@ -210,21 +304,38 @@ func (s *Service) GetCategoryTree(ctx context.Context, meta RequestMeta, include
 func (s *Service) GetDeletedCategories(ctx context.Context, meta RequestMeta) ([]Category, error) {
 	log.Printf("[category] trash list")
 	params := ndrclient.ListNodesParams{Page: 1, Size: 100, IncludeDeleted: ptr(true)}
-	page, err := s.ndr.ListNodes(ctx, toNDRMeta(meta), params)
-	if err != nil {
-		log.Printf("[category] trash list nodes failed err=%v", err)
-		return nil, fmt.Errorf("list nodes: %w", err)
-	}
 	deleted := make([]Category, 0)
-	for i := range page.Items {
-		node := page.Items[i]
-		if node.DeletedAt == nil {
-			continue
+	total := 0
+
+	for {
+		page, err := s.ndr.ListNodes(ctx, toNDRMeta(meta), params)
+		if err != nil {
+			log.Printf("[category] trash list nodes failed page=%d err=%v", params.Page, err)
+			return nil, fmt.Errorf("list nodes: %w", err)
 		}
-		cat := mapNode(node, node.ParentID)
-		deleted = append(deleted, *cat)
+		if total == 0 {
+			total = page.Total
+		}
+		for i := range page.Items {
+			node := page.Items[i]
+			if node.DeletedAt == nil {
+				continue
+			}
+			cat := mapNode(node, node.ParentID)
+			deleted = append(deleted, *cat)
+		}
+
+		pageSize := page.Size
+		if pageSize == 0 {
+			pageSize = params.Size
+		}
+		if (total != 0 && params.Page*pageSize >= total) || len(page.Items) == 0 || len(page.Items) < pageSize {
+			break
+		}
+		params.Page++
 	}
-	log.Printf("[category] trash result count=%d", len(deleted))
+
+	log.Printf("[category] trash result total=%d deleted_count=%d", total, len(deleted))
 	return deleted, nil
 }
 
@@ -262,6 +373,61 @@ func (s *Service) ReorderCategories(ctx context.Context, meta RequestMeta, req C
 	}
 	log.Printf("[category] reorder success parent=%v count=%d", req.ParentID, len(categories))
 	return categories, nil
+}
+
+// RepositionCategory moves a node to a new parent and reorders siblings in one request.
+func (s *Service) RepositionCategory(ctx context.Context, meta RequestMeta, id int64, req CategoryRepositionRequest) (CategoryRepositionResult, error) {
+	if len(req.OrderedIDs) == 0 {
+		return CategoryRepositionResult{}, errors.New("ordered_ids is required")
+	}
+	log.Printf("[category] reposition id=%d parent_specified=%v new_parent=%v ordered_ids=%v", id, req.ParentSpecified, req.NewParentID, req.OrderedIDs)
+	found := false
+	for _, oid := range req.OrderedIDs {
+		if oid == id {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return CategoryRepositionResult{}, errors.New("ordered_ids must contain the target category id")
+	}
+
+	current, err := s.GetCategory(ctx, meta, id, true)
+	if err != nil {
+		return CategoryRepositionResult{}, err
+	}
+
+	if req.ParentSpecified {
+		sameParent := (current.ParentID == nil && req.NewParentID == nil) ||
+			(current.ParentID != nil && req.NewParentID != nil && *current.ParentID == *req.NewParentID)
+		if !sameParent {
+			current, err = s.MoveCategory(ctx, meta, id, MoveCategoryRequest{NewParentID: req.NewParentID, ParentSpecified: true})
+			if err != nil {
+				return CategoryRepositionResult{}, err
+			}
+		}
+	}
+
+	parentID := current.ParentID
+	siblings, err := s.ReorderCategories(ctx, meta, CategoryReorderRequest{
+		ParentID:   parentID,
+		OrderedIDs: req.OrderedIDs,
+	})
+	if err != nil {
+		return CategoryRepositionResult{}, err
+	}
+
+	for _, cat := range siblings {
+		if cat.ID == id {
+			current = cat
+			break
+		}
+	}
+
+	return CategoryRepositionResult{
+		Category: current,
+		Siblings: siblings,
+	}, nil
 }
 
 func buildTree(nodes []ndrclient.Node) []*Category {

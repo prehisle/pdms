@@ -30,9 +30,8 @@ import {
   deleteCategory,
   getDeletedCategories,
   getCategoryTree,
-  moveCategory,
   purgeCategory,
-  reorderCategories,
+  repositionCategory,
   restoreCategory,
   updateCategory,
 } from "./api/categories";
@@ -248,13 +247,14 @@ const App = () => {
 
       setIsMutating(true);
       try {
-        if (sourceParentId !== targetParentId) {
-          await moveCategory(dragId, { new_parent_id: targetParentId });
-        }
-        await reorderCategories({
-          parent_id: targetParentId,
-          ordered_ids: orderedIds,
-        });
+        const repositionPayload =
+          sourceParentId === targetParentId
+            ? { ordered_ids: orderedIds }
+            : {
+                new_parent_id: targetParentId,
+                ordered_ids: orderedIds,
+              };
+        await repositionCategory(dragId, repositionPayload);
         messageApi.success("目录顺序已更新");
         await refetch();
       } catch (err) {

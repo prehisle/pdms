@@ -21,6 +21,7 @@ type fakeNDR struct {
 	restoredNodes []int64
 	purgedNodes   []int64
 	listResponse  ndrclient.NodesPage
+	listResponses map[int]ndrclient.NodesPage
 	getNodes      map[int64]ndrclient.Node
 	createResp    ndrclient.Node
 	updateResp    ndrclient.Node
@@ -40,7 +41,8 @@ type fakeNDR struct {
 
 func newFakeNDR() *fakeNDR {
 	return &fakeNDR{
-		getNodes: make(map[int64]ndrclient.Node),
+		getNodes:      make(map[int64]ndrclient.Node),
+		listResponses: make(map[int]ndrclient.NodesPage),
 	}
 }
 
@@ -82,7 +84,21 @@ func (f *fakeNDR) RestoreNode(_ context.Context, _ ndrclient.RequestMeta, id int
 	return f.restoreResp, f.restoreErr
 }
 
-func (f *fakeNDR) ListNodes(_ context.Context, _ ndrclient.RequestMeta, _ ndrclient.ListNodesParams) (ndrclient.NodesPage, error) {
+func (f *fakeNDR) ListNodes(_ context.Context, _ ndrclient.RequestMeta, params ndrclient.ListNodesParams) (ndrclient.NodesPage, error) {
+	if f.listErr != nil {
+		return ndrclient.NodesPage{}, f.listErr
+	}
+	if len(f.listResponses) > 0 {
+		if page, ok := f.listResponses[params.Page]; ok {
+			return page, nil
+		}
+		return ndrclient.NodesPage{
+			Page:  params.Page,
+			Size:  params.Size,
+			Total: 0,
+			Items: []ndrclient.Node{},
+		}, nil
+	}
 	return f.listResponse, f.listErr
 }
 
@@ -198,7 +214,7 @@ func TestMoveCategory(t *testing.T) {
 	fake.updateResp = child
 	svc := NewService(cache.NewNoop(), fake)
 
-	cat, err := svc.MoveCategory(context.Background(), RequestMeta{}, 11, MoveCategoryRequest{NewParentID: ptr[int64](10)})
+	cat, err := svc.MoveCategory(context.Background(), RequestMeta{}, 11, MoveCategoryRequest{NewParentID: ptr[int64](10), ParentSpecified: true})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -241,6 +257,52 @@ func TestGetCategoryTree(t *testing.T) {
 	}
 }
 
+func TestGetCategoryTreePaginates(t *testing.T) {
+	fake := newFakeNDR()
+	now := time.Now().UTC()
+	fake.listResponses = map[int]ndrclient.NodesPage{
+		1: {
+			Page:  1,
+			Size:  2,
+			Total: 3,
+			Items: []ndrclient.Node{
+				sampleNode(1, "Root", "/root", nil, 1, now, now),
+				sampleNode(3, "Other", "/other", nil, 2, now, now),
+			},
+		},
+		2: {
+			Page:  2,
+			Size:  2,
+			Total: 3,
+			Items: []ndrclient.Node{
+				sampleNode(2, "Child", "/root/child", ptr[int64](1), 1, now, now),
+			},
+		},
+	}
+	svc := NewService(cache.NewNoop(), fake)
+
+	tree, err := svc.GetCategoryTree(context.Background(), RequestMeta{}, false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(tree) != 2 {
+		t.Fatalf("expected 2 root nodes, got %d", len(tree))
+	}
+	var rootNode *Category
+	for _, node := range tree {
+		if node.Name == "Root" {
+			rootNode = node
+			break
+		}
+	}
+	if rootNode == nil {
+		t.Fatalf("expected Root node present")
+	}
+	if len(rootNode.Children) != 1 || rootNode.Children[0].Name != "Child" {
+		t.Fatalf("expected paginated child to be attached")
+	}
+}
+
 func TestReorderCategories(t *testing.T) {
 	fake := newFakeNDR()
 	now := time.Now().UTC()
@@ -263,6 +325,113 @@ func TestReorderCategories(t *testing.T) {
 	}
 	if len(res) != 2 || res[0].Position != 2 || res[1].Position != 1 {
 		t.Fatalf("unexpected reorder result: %+v", res)
+	}
+}
+
+func TestRepositionCategoryMoveAndReorder(t *testing.T) {
+	fake := newFakeNDR()
+	now := time.Now().UTC()
+	newParent := sampleNode(10, "Target", "/target", nil, 1, now, now)
+	fake.getNodes[10] = newParent
+	originalNode := sampleNode(2, "Node", "/node", nil, 1, now, now)
+	fake.getNodes[2] = originalNode
+	movedNode := sampleNode(2, "Node", "/target/node", ptr[int64](10), 1, now, now)
+	fake.updateResp = movedNode
+	fake.reorderResp = []ndrclient.Node{
+		movedNode,
+		sampleNode(11, "Sibling", "/target/sibling", ptr[int64](10), 2, now, now),
+	}
+	svc := NewService(cache.NewNoop(), fake)
+
+	result, err := svc.RepositionCategory(context.Background(), RequestMeta{}, 2, CategoryRepositionRequest{
+		NewParentID:     ptr[int64](10),
+		OrderedIDs:      []int64{2, 11},
+		ParentSpecified: true,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if fake.reorderInput == nil || fake.reorderInput.ParentID == nil || *fake.reorderInput.ParentID != 10 {
+		t.Fatalf("expected reorder to target parent 10, got %+v", fake.reorderInput)
+	}
+	if result.Category.ParentID == nil || *result.Category.ParentID != 10 {
+		t.Fatalf("expected category parent to be 10, got %+v", result.Category.ParentID)
+	}
+	if len(result.Siblings) != 2 {
+		t.Fatalf("expected 2 siblings, got %d", len(result.Siblings))
+	}
+}
+
+func TestRepositionCategoryReorderOnly(t *testing.T) {
+	fake := newFakeNDR()
+	now := time.Now().UTC()
+	current := sampleNode(20, "Node", "/root/node", ptr[int64](5), 1, now, now)
+	fake.getNodes[20] = current
+	fake.reorderResp = []ndrclient.Node{
+		current,
+		sampleNode(21, "B", "/root/b", ptr[int64](5), 2, now, now),
+	}
+	svc := NewService(cache.NewNoop(), fake)
+
+	result, err := svc.RepositionCategory(context.Background(), RequestMeta{}, 20, CategoryRepositionRequest{
+		OrderedIDs: []int64{20, 21},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if fake.reorderInput == nil || fake.reorderInput.ParentID == nil || *fake.reorderInput.ParentID != 5 {
+		t.Fatalf("expected reorder parent 5, got %+v", fake.reorderInput)
+	}
+	if len(fake.updatedNodes) != 0 {
+		t.Fatalf("did not expect move when parent unchanged")
+	}
+	if result.Category.ParentID == nil || *result.Category.ParentID != 5 {
+		t.Fatalf("expected parent id 5, got %+v", result.Category.ParentID)
+	}
+}
+
+func TestRepositionCategoryRequiresOrderedIDs(t *testing.T) {
+	fake := newFakeNDR()
+	svc := NewService(cache.NewNoop(), fake)
+
+	if _, err := svc.RepositionCategory(context.Background(), RequestMeta{}, 1, CategoryRepositionRequest{
+		OrderedIDs: []int64{},
+	}); err == nil {
+		t.Fatalf("expected error for empty ordered ids")
+	}
+	if _, err := svc.RepositionCategory(context.Background(), RequestMeta{}, 1, CategoryRepositionRequest{
+		OrderedIDs: []int64{99},
+	}); err == nil {
+		t.Fatalf("expected error when ordered ids missing target")
+	}
+}
+
+func TestRepositionCategoryMoveToRoot(t *testing.T) {
+	fake := newFakeNDR()
+	now := time.Now().UTC()
+	parent := sampleNode(30, "Parent", "/parent", nil, 1, now, now)
+	child := sampleNode(31, "Child", "/parent/child", ptr[int64](30), 1, now, now)
+	fake.getNodes[30] = parent
+	fake.getNodes[31] = child
+	fake.updateResp = sampleNode(31, "Child", "/child", nil, 1, now, now)
+	fake.reorderResp = []ndrclient.Node{
+		fake.updateResp,
+	}
+	svc := NewService(cache.NewNoop(), fake)
+
+	result, err := svc.RepositionCategory(context.Background(), RequestMeta{}, 31, CategoryRepositionRequest{
+		NewParentID:     nil,
+		OrderedIDs:      []int64{31},
+		ParentSpecified: true,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if fake.reorderInput == nil || fake.reorderInput.ParentID != nil {
+		t.Fatalf("expected reorder root parent, got %+v", fake.reorderInput)
+	}
+	if result.Category.ParentID != nil {
+		t.Fatalf("expected parent to be nil, got %+v", result.Category.ParentID)
 	}
 }
 
@@ -290,6 +459,54 @@ func TestGetDeletedCategories(t *testing.T) {
 	}
 }
 
+func TestGetDeletedCategoriesPaginates(t *testing.T) {
+	fake := newFakeNDR()
+	now := time.Now().UTC()
+
+	del1 := sampleNode(10, "Trash A", "/trash-a", nil, 1, now, now)
+	del2 := sampleNode(11, "Trash B", "/trash-b", nil, 2, now, now)
+	active := sampleNode(12, "Active", "/active", nil, 3, now, now)
+	ts := now.Add(-2 * time.Hour)
+	del1.DeletedAt = &ts
+	ts2 := now.Add(-time.Hour)
+	del2.DeletedAt = &ts2
+
+	fake.listResponses = map[int]ndrclient.NodesPage{
+		1: {
+			Page:  1,
+			Size:  1,
+			Total: 3,
+			Items: []ndrclient.Node{del1},
+		},
+		2: {
+			Page:  2,
+			Size:  1,
+			Total: 3,
+			Items: []ndrclient.Node{active},
+		},
+		3: {
+			Page:  3,
+			Size:  1,
+			Total: 3,
+			Items: []ndrclient.Node{del2},
+		},
+	}
+
+	svc := NewService(cache.NewNoop(), fake)
+
+	items, err := svc.GetDeletedCategories(context.Background(), RequestMeta{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(items) != 2 {
+		t.Fatalf("expected 2 deleted items, got %d", len(items))
+	}
+	ids := []int64{items[0].ID, items[1].ID}
+	if !(containsID(ids, 10) && containsID(ids, 11)) {
+		t.Fatalf("expected ids 10 and 11, got %v", ids)
+	}
+}
+
 func TestPurgeCategory(t *testing.T) {
 	fake := newFakeNDR()
 	svc := NewService(cache.NewNoop(), fake)
@@ -300,6 +517,15 @@ func TestPurgeCategory(t *testing.T) {
 	if len(fake.purgedNodes) != 1 || fake.purgedNodes[0] != 42 {
 		t.Fatalf("expected purge call for id 42")
 	}
+}
+
+func containsID(ids []int64, target int64) bool {
+	for _, id := range ids {
+		if id == target {
+			return true
+		}
+	}
+	return false
 }
 
 func sampleNode(id int64, name string, path string, parentID *int64, position int, created, updated time.Time) ndrclient.Node {

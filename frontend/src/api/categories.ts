@@ -31,6 +31,16 @@ export interface CategoryReorderPayload {
   ordered_ids: number[];
 }
 
+export interface CategoryRepositionPayload {
+  new_parent_id?: number | null;
+  ordered_ids: number[];
+}
+
+export interface CategoryRepositionResult {
+  category: Category;
+  siblings: Category[];
+}
+
 export async function getCategoryTree(
   includeDeleted = false,
 ): Promise<Category[]> {
@@ -76,6 +86,19 @@ export async function reorderCategories(payload: CategoryReorderPayload) {
     method: "POST",
     body: JSON.stringify(payload),
   });
+}
+
+export async function repositionCategory(
+  id: number,
+  payload: CategoryRepositionPayload,
+): Promise<CategoryRepositionResult> {
+  return http<CategoryRepositionResult>(
+    `/api/v1/categories/${id}/reposition`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    },
+  );
 }
 
 export async function restoreCategory(id: number) {

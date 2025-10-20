@@ -11,12 +11,18 @@ type Config struct {
 	HTTPPort int
 	NDR      NDRConfig
 	Auth     AuthConfig
+	Debug    DebugConfig
 }
 
 // NDRConfig stores settings for the upstream NDR service.
 type NDRConfig struct {
 	BaseURL string
 	APIKey  string
+}
+
+// DebugConfig stores flags that affect logging and diagnostics.
+type DebugConfig struct {
+	Traffic bool
 }
 
 // AuthConfig contains defaults for user/request metadata.
@@ -34,8 +40,11 @@ func Load() Config {
 			APIKey:  firstNonEmpty(os.Getenv("YDMS_NDR_API_KEY"), "not_set"),
 		},
 		Auth: AuthConfig{
-			DefaultUserID: firstNonEmpty(os.Getenv("YDMS_DEFAULT_USER_ID"), "system"),
+			DefaultUserID: firstNonEmpty(os.Getenv("YDMS_DEFAULT_USER_ID"), "dms"),
 			AdminKey:      firstNonEmpty(os.Getenv("YDMS_ADMIN_KEY"), "not_set"),
+		},
+		Debug: DebugConfig{
+			Traffic: parseEnvBool("YDMS_DEBUG_TRAFFIC", false),
 		},
 	}
 }
@@ -56,6 +65,21 @@ func parseEnvInt(key string, defaultValue int) int {
 		return defaultValue
 	}
 	return value
+}
+
+func parseEnvBool(key string, defaultValue bool) bool {
+	raw := strings.TrimSpace(strings.ToLower(os.Getenv(key)))
+	if raw == "" {
+		return defaultValue
+	}
+	switch raw {
+	case "1", "true", "yes", "on":
+		return true
+	case "0", "false", "no", "off":
+		return false
+	default:
+		return defaultValue
+	}
 }
 
 func firstNonEmpty(values ...string) string {

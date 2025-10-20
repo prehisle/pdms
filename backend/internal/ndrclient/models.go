@@ -1,6 +1,9 @@
 package ndrclient
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 // Node represents the NDR node resource.
 type Node struct {
@@ -26,9 +29,9 @@ type NodeCreate struct {
 
 // NodeUpdate mirrors NDR update payload.
 type NodeUpdate struct {
-	Name       *string `json:"name,omitempty"`
-	Slug       *string `json:"slug,omitempty"`
-	ParentPath *string `json:"parent_path,omitempty"`
+	Name       *string        `json:"name,omitempty"`
+	Slug       *string        `json:"slug,omitempty"`
+	ParentPath *OptionalString `json:"parent_path,omitempty"`
 }
 
 // NodeReorderPayload represents the body for batch reordering nodes.
@@ -60,4 +63,34 @@ type ListChildrenParams struct {
 // GetNodeOptions describes optional query params for fetching node detail.
 type GetNodeOptions struct {
 	IncludeDeleted *bool
+}
+
+// OptionalString allows distinguishing between "not set" and "explicit null".
+type OptionalString struct {
+	value *string
+}
+
+// NewOptionalString returns an OptionalString that will marshal to the provided value.
+// Passing nil produces an explicit `null`.
+func NewOptionalString(value *string) *OptionalString {
+	return &OptionalString{value: value}
+}
+
+// Value reports the underlying pointer and whether the field was set.
+func (o *OptionalString) Value() (*string, bool) {
+	if o == nil {
+		return nil, false
+	}
+	return o.value, true
+}
+
+// MarshalJSON ensures the field is present even when value is nil.
+func (o *OptionalString) MarshalJSON() ([]byte, error) {
+	if o == nil {
+		return []byte("null"), nil
+	}
+	if o.value == nil {
+		return []byte("null"), nil
+	}
+	return json.Marshal(*o.value)
 }
