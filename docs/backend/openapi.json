@@ -137,6 +137,22 @@
             }
           },
           {
+            "name": "query",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Query"
+            }
+          },
+          {
             "name": "x-api-key",
             "in": "header",
             "required": false,
@@ -1978,6 +1994,32 @@
               "type": "boolean",
               "default": false,
               "title": "Include Deleted Documents"
+            }
+          },
+          {
+            "name": "include_descendants",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": true,
+              "title": "Include Descendants"
+            }
+          },
+          {
+            "name": "query",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Query"
             }
           },
           {

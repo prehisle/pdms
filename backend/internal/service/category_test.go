@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"net/url"
 	"testing"
 	"time"
 
@@ -123,6 +124,22 @@ func (f *fakeNDR) ReorderNodes(_ context.Context, _ ndrclient.RequestMeta, paylo
 func (f *fakeNDR) PurgeNode(_ context.Context, _ ndrclient.RequestMeta, id int64) error {
 	f.purgedNodes = append(f.purgedNodes, id)
 	return f.purgeErr
+}
+
+func (f *fakeNDR) ListDocuments(context.Context, ndrclient.RequestMeta, url.Values) (ndrclient.DocumentsPage, error) {
+	return ndrclient.DocumentsPage{}, nil
+}
+
+func (f *fakeNDR) ListNodeDocuments(context.Context, ndrclient.RequestMeta, int64, url.Values) ([]ndrclient.Document, error) {
+	return nil, nil
+}
+
+func (f *fakeNDR) CreateDocument(context.Context, ndrclient.RequestMeta, ndrclient.DocumentCreate) (ndrclient.Document, error) {
+	return ndrclient.Document{}, nil
+}
+
+func (f *fakeNDR) BindDocument(context.Context, ndrclient.RequestMeta, int64, int64) error {
+	return nil
 }
 
 func TestCreateCategory(t *testing.T) {

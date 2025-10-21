@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -341,18 +343,24 @@ func createCategory(t *testing.T, router http.Handler, payload string) service.C
 
 type inMemoryNDR struct {
 	nextID     int64
+	nextDocID  int64
 	nodes      map[int64]ndrclient.Node
 	pathIndex  map[string]int64
 	childOrder map[int64][]int64
 	clock      int64
+	documents  map[int64]ndrclient.Document
+	bindings   map[int64]map[int64]struct{}
 }
 
 func newInMemoryNDR() *inMemoryNDR {
 	return &inMemoryNDR{
 		nextID:     1,
+		nextDocID:  1,
 		nodes:      make(map[int64]ndrclient.Node),
 		pathIndex:  make(map[string]int64),
 		childOrder: make(map[int64][]int64),
+		documents:  make(map[int64]ndrclient.Document),
+		bindings:   make(map[int64]map[int64]struct{}),
 	}
 }
 
@@ -526,6 +534,100 @@ func (f *inMemoryNDR) PurgeNode(ctx context.Context, meta ndrclient.RequestMeta,
 	f.removeChild(key, id)
 	delete(f.pathIndex, node.Path)
 	delete(f.nodes, id)
+	return nil
+}
+
+func (f *inMemoryNDR) ListDocuments(ctx context.Context, meta ndrclient.RequestMeta, query url.Values) (ndrclient.DocumentsPage, error) {
+	items := make([]ndrclient.Document, 0, len(f.documents))
+	for _, doc := range f.documents {
+		items = append(items, doc)
+	}
+	sort.Slice(items, func(i, j int) bool { return items[i].ID < items[j].ID })
+	return ndrclient.DocumentsPage{
+		Page:  1,
+		Size:  len(items),
+		Total: len(items),
+		Items: items,
+	}, nil
+}
+
+func (f *inMemoryNDR) ListNodeDocuments(ctx context.Context, meta ndrclient.RequestMeta, nodeID int64, query url.Values) ([]ndrclient.Document, error) {
+	includeDescendants := true
+	if query != nil {
+		if val := strings.ToLower(strings.TrimSpace(query.Get("include_descendants"))); val != "" {
+			includeDescendants = !(val == "false" || val == "0")
+		}
+	}
+
+	targetIDs := []int64{nodeID}
+	if includeDescendants {
+		for idx := 0; idx < len(targetIDs); idx++ {
+			current := targetIDs[idx]
+			children := f.childOrder[current]
+			targetIDs = append(targetIDs, children...)
+		}
+	}
+
+	seen := make(map[int64]struct{})
+	docs := []ndrclient.Document{}
+	for _, nid := range targetIDs {
+		binding := f.bindings[nid]
+		if binding == nil {
+			continue
+		}
+		for docID := range binding {
+			if _, ok := seen[docID]; ok {
+				continue
+			}
+			if doc, ok := f.documents[docID]; ok {
+				docs = append(docs, doc)
+				seen[docID] = struct{}{}
+			}
+		}
+	}
+	sort.Slice(docs, func(i, j int) bool { return docs[i].ID < docs[j].ID })
+	return docs, nil
+}
+
+func (f *inMemoryNDR) CreateDocument(ctx context.Context, meta ndrclient.RequestMeta, body ndrclient.DocumentCreate) (ndrclient.Document, error) {
+	id := f.nextDocID
+	f.nextDocID++
+	createdAt := f.tick()
+	updatedAt := f.tick()
+	metadata := map[string]any{}
+	if body.Metadata != nil {
+		for k, v := range body.Metadata {
+			metadata[k] = v
+		}
+	}
+	content := map[string]any{}
+	if body.Content != nil {
+		for k, v := range body.Content {
+			content[k] = v
+		}
+	}
+	doc := ndrclient.Document{
+		ID:        id,
+		Title:     body.Title,
+		Metadata:  metadata,
+		Content:   content,
+		CreatedAt: createdAt,
+		UpdatedAt: updatedAt,
+		CreatedBy: "tester",
+		UpdatedBy: "tester",
+	}
+	f.documents[id] = doc
+	return doc, nil
+}
+
+func (f *inMemoryNDR) BindDocument(ctx context.Context, meta ndrclient.RequestMeta, nodeID, docID int64) error {
+	if _, ok := f.documents[docID]; !ok {
+		return fmt.Errorf("document %d not found", docID)
+	}
+	if f.bindings[nodeID] == nil {
+		f.bindings[nodeID] = make(map[int64]struct{})
+	}
+	f.bindings[nodeID][docID] = struct{}{}
 	return nil
 }
 

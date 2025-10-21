@@ -26,6 +26,10 @@ type Client interface {
 	ListChildren(ctx context.Context, meta RequestMeta, id int64, params ListChildrenParams) ([]Node, error)
 	ReorderNodes(ctx context.Context, meta RequestMeta, payload NodeReorderPayload) ([]Node, error)
 	PurgeNode(ctx context.Context, meta RequestMeta, id int64) error
+	ListDocuments(ctx context.Context, meta RequestMeta, query url.Values) (DocumentsPage, error)
+	ListNodeDocuments(ctx context.Context, meta RequestMeta, id int64, query url.Values) ([]Document, error)
+	CreateDocument(ctx context.Context, meta RequestMeta, body DocumentCreate) (Document, error)
+	BindDocument(ctx context.Context, meta RequestMeta, nodeID, docID int64) error
 }
 
 // NDRConfig describes the minimal configuration required by the client.
@@ -186,6 +190,47 @@ func (c *httpClient) ReorderNodes(ctx context.Context, meta RequestMeta, payload
 func (c *httpClient) PurgeNode(ctx context.Context, meta RequestMeta, id int64) error {
 	endpoint := fmt.Sprintf("/api/v1/nodes/%d/purge", id)
 	req, err := c.newRequest(ctx, http.MethodDelete, endpoint, meta, nil)
+	if err != nil {
+		return err
+	}
+	_, err = c.do(req, nil)
+	return err
+}
+
+func (c *httpClient) ListDocuments(ctx context.Context, meta RequestMeta, query url.Values) (DocumentsPage, error) {
+	req, err := c.newRequestWithQuery(ctx, http.MethodGet, "/api/v1/documents", meta, nil, query)
+	if err != nil {
+		return DocumentsPage{}, err
+	}
+	var resp DocumentsPage
+	_, err = c.do(req, &resp)
+	return resp, err
+}
+
+func (c *httpClient) ListNodeDocuments(ctx context.Context, meta RequestMeta, id int64, query url.Values) ([]Document, error) {
+	endpoint := fmt.Sprintf("/api/v1/nodes/%d/subtree-documents", id)
+	req, err := c.newRequestWithQuery(ctx, http.MethodGet, endpoint, meta, nil, query)
+	if err != nil {
+		return nil, err
+	}
+	var resp []Document
+	_, err = c.do(req, &resp)
+	return resp, err
+}
+
+func (c *httpClient) CreateDocument(ctx context.Context, meta RequestMeta, body DocumentCreate) (Document, error) {
+	req, err := c.newRequest(ctx, http.MethodPost, "/api/v1/documents", meta, body)
+	if err != nil {
+		return Document{}, err
+	}
+	var resp Document
+	_, err = c.do(req, &resp)
+	return resp, err
+}
+
+func (c *httpClient) BindDocument(ctx context.Context, meta RequestMeta, nodeID, docID int64) error {
+	endpoint := fmt.Sprintf("/api/v1/nodes/%d/bind/%d", nodeID, docID)
+	req, err := c.newRequest(ctx, http.MethodPost, endpoint, meta, nil)
 	if err != nil {
 		return err
 	}

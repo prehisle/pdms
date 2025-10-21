@@ -3,14 +3,17 @@ import {
   Button,
   Card,
   Collapse,
+  Dropdown,
   Empty,
   Form,
   Input,
   Layout,
   Modal,
   Popconfirm,
+  Select,
   Space,
   Spin,
+  Switch,
   Table,
   Tag,
   Tooltip,
@@ -29,7 +32,11 @@ import {
   DeleteFilled,
   DeleteOutlined,
   EditOutlined,
+  FileAddOutlined,
+  FileTextOutlined,
   FolderAddOutlined,
+  SearchOutlined,
+  PlusOutlined,
   PlusSquareOutlined,
   ReloadOutlined,
   RollbackOutlined,
@@ -49,6 +56,14 @@ import {
   bulkRestoreCategories,
   bulkPurgeCategories,
 } from "./api/categories";
+import {
+  Document,
+  DocumentCreatePayload,
+  DocumentListParams,
+  bindDocument,
+  createDocument,
+  getNodeDocuments,
+} from "./api/documents";
 const dragDebugEnabled =
   (import.meta.env.VITE_DEBUG_DRAG ?? "").toString().toLowerCase() === "1";
 
@@ -60,6 +75,24 @@ type TreeDataNode = DataNode & {
 };
 
 type ParentKey = number | null;
+
+type DocumentFilterFormValues = {
+  docId?: string;
+  query?: string;
+  type?: string;
+};
+
+type DocumentFormValues = {
+  title: string;
+  type: string;
+  content?: string;
+};
+
+const DOCUMENT_TYPES = [
+  { value: "markdown", label: "Markdown" },
+  { value: "rich-text", label: "富文本" },
+  { value: "link", label: "外部链接" },
+];
 
 const App = () => {
   const { data, isLoading, isFetching, error, refetch } = useQuery({
@@ -78,12 +111,19 @@ const App = () => {
     parentId: number | null;
   }>({ open: false, parentId: null });
   const [showRenameModal, setShowRenameModal] = useState(false);
-  const [form] = Form.useForm<{ name: string }>();
+  const [categoryForm] = Form.useForm<{ name: string }>();
   const [searchValue, setSearchValue] = useState("");
   const [expandedKeys, setExpandedKeys] = useState<string[]>([]);
   const [autoExpandParent, setAutoExpandParent] = useState(true);
   const [selectedTrashRowKeys, setSelectedTrashRowKeys] = useState<Key[]>([]);
   const [detailCollapseKeys, setDetailCollapseKeys] = useState<string[]>(["detail"]);
+  const [documentModal, setDocumentModal] = useState<{ open: boolean; nodeId: number | null }>(
+    { open: false, nodeId: null },
+  );
+  const [documentFilters, setDocumentFilters] = useState<DocumentFilterFormValues>({});
+  const [includeDescendants, setIncludeDescendants] = useState(true);
+  const [documentFilterForm] = Form.useForm<DocumentFilterFormValues>();
+  const [documentForm] = Form.useForm<DocumentFormValues>();
 
   useEffect(() => {
     document.title = "题库目录管理";
@@ -94,6 +134,36 @@ const App = () => {
     queryFn: () => getDeletedCategories(),
     enabled: false,
   });
+
+  const selectedNodeId = selectedIds.length === 1 ? selectedIds[0] : null;
+
+  const documentsQuery = useQuery({
+    queryKey: ["node-documents", selectedNodeId, documentFilters, includeDescendants],
+    queryFn: async () => {
+      if (selectedNodeId == null) {
+        return [] as Document[];
+      }
+      const params: DocumentListParams = {};
+      if (documentFilters.query?.trim()) {
+        params.query = documentFilters.query.trim();
+      }
+      if (documentFilters.docId) {
+        const numericId = Number(documentFilters.docId);
+        if (!Number.isNaN(numericId)) {
+          params.id = numericId;
+        }
+      }
+      if (documentFilters.type) {
+        params.metadata = { type: documentFilters.type };
+      }
+      params.size = 100;
+      params.include_descendants = includeDescendants;
+      return getNodeDocuments(selectedNodeId, params);
+    },
+    enabled: selectedNodeId != null,
+  });
+
+  const documents = selectedNodeId == null ? [] : documentsQuery.data ?? [];
   const trashData = trashQuery.data ?? [];
   const isTrashInitialLoading =
     trashQuery.isLoading || (trashQuery.isFetching && !trashQuery.data);
@@ -245,10 +315,24 @@ const App = () => {
     if (showRenameModal && selectedIds.length === 1) {
       const current = lookups.byId.get(selectedIds[0]);
       if (current) {
-        form.setFieldsValue({ name: current.name });
+        categoryForm.setFieldsValue({ name: current.name });
       }
     }
-  }, [showRenameModal, selectedIds, lookups, form]);
+  }, [showRenameModal, selectedIds, lookups, categoryForm]);
+
+  useEffect(() => {
+    documentFilterForm.resetFields();
+    setDocumentFilters({});
+  }, [selectedNodeId, documentFilterForm]);
+
+  useEffect(() => {
+    if (documentModal.open && DOCUMENT_TYPES.length > 0) {
+      const currentType = documentForm.getFieldValue("type");
+      if (!currentType) {
+        documentForm.setFieldsValue({ type: DOCUMENT_TYPES[0].value });
+      }
+    }
+  }, [documentForm, documentModal.open]);
 
   useEffect(() => {
     if (selectedIds.length > 0) {
@@ -496,6 +580,152 @@ const App = () => {
     }
   };
 
+  const handleDocumentSearch = useCallback(
+    (values: DocumentFilterFormValues) => {
+      const trimmed: DocumentFilterFormValues = {
+        ...values,
+        docId: values.docId?.trim() || undefined,
+        query: values.query?.trim() || undefined,
+      };
+      setDocumentFilters(trimmed);
+    },
+    [],
+  );
+
+  const handleDocumentReset = useCallback(() => {
+    documentFilterForm.resetFields();
+    setDocumentFilters({});
+  }, [documentFilterForm]);
+
+  const handleEditDocument = useCallback(
+    (_doc: Document) => {
+      messageApi.info("文档编辑功能即将上线");
+    },
+    [messageApi],
+  );
+
+  const documentColumns = useMemo<ColumnsType<Document>>(
+    () => [
+      {
+        title: "ID",
+        dataIndex: "id",
+        key: "id",
+        width: 80,
+      },
+      {
+        title: "名称",
+        dataIndex: "title",
+        key: "title",
+        render: (value: string, record: Document) => (
+          <Space>
+            <Typography.Text>{value}</Typography.Text>
+            {record.deleted_at ? <Tag color="red">已删除</Tag> : null}
+          </Space>
+        ),
+      },
+      {
+        title: "类型",
+        key: "type",
+        render: (_: unknown, record: Document) => {
+          const type = record.metadata?.type;
+          return <Typography.Text>{type ? String(type) : "-"}</Typography.Text>;
+        },
+      },
+      {
+        title: "更新时间",
+        dataIndex: "updated_at",
+        key: "updated_at",
+        render: (value: string) => new Date(value).toLocaleString(),
+      },
+      {
+        title: "操作",
+        key: "actions",
+        width: 80,
+        render: (_: unknown, record: Document) => (
+          <Tooltip title="编辑文档">
+            <Button
+              icon={<EditOutlined />}
+              type="text"
+              shape="circle"
+              onClick={() => handleEditDocument(record)}
+              aria-label="编辑文档"
+            />
+          </Tooltip>
+        ),
+      },
+    ],
+    [handleEditDocument],
+  );
+
+  const documentCreateMutation = useMutation({
+    mutationFn: async ({ nodeId, values }: { nodeId: number; values: DocumentFormValues }) => {
+      const payload: DocumentCreatePayload = {
+        title: values.title.trim(),
+        metadata: { type: values.type },
+      };
+      const contentText = values.content?.trim();
+      if (contentText) {
+        payload.content = { preview: contentText };
+      }
+      const doc = await createDocument(payload);
+      await bindDocument(nodeId, doc.id);
+      return doc;
+    },
+    onSuccess: async (_doc, { nodeId }) => {
+      messageApi.success("文档创建成功");
+      setDocumentModal({ open: false, nodeId: null });
+      documentForm.resetFields();
+      await queryClient.invalidateQueries({ queryKey: ["node-documents", nodeId] });
+    },
+    onError: (err: unknown) => {
+      const msg = err instanceof Error ? err.message : "文档创建失败";
+      messageApi.error(msg);
+    },
+  });
+
+  const handleDocumentModalCancel = useCallback(() => {
+    setDocumentModal({ open: false, nodeId: null });
+    documentForm.resetFields();
+  }, [documentForm]);
+
+  const handleDocumentModalOk = useCallback(() => {
+    documentForm
+      .validateFields()
+      .then((values) => {
+        if (!documentModal.nodeId) {
+          messageApi.error("请选择要绑定的目录节点");
+          return;
+        }
+        documentCreateMutation.mutate({ nodeId: documentModal.nodeId, values });
+      })
+      .catch(() => undefined);
+  }, [documentForm, documentModal.nodeId, documentCreateMutation, messageApi]);
+
+  const handleOpenAddDocument = useCallback(
+    (nodeId: number) => {
+      const current = lookups.byId.get(nodeId);
+      if (current) {
+        setSelectionParentId(current.parent_id ?? null);
+      } else {
+        setSelectionParentId(undefined);
+      }
+      setSelectedIds([nodeId]);
+      setLastSelectedId(nodeId);
+      setDetailCollapseKeys(["detail"]);
+      documentForm.resetFields();
+      setDocumentModal({ open: true, nodeId });
+    },
+    [documentForm, lookups, setDetailCollapseKeys, setLastSelectedId, setSelectionParentId, setSelectedIds],
+  );
+
+  const handleToolbarAddDocument = useCallback(() => {
+    if (selectedNodeId == null) {
+      messageApi.warning("请选择一个目录节点后再添加文档");
+      return;
+    }
+    handleOpenAddDocument(selectedNodeId);
+  }, [handleOpenAddDocument, messageApi, selectedNodeId]);
+
   return (
     <Layout style={{ minHeight: "100vh" }}>
       {contextHolder}
@@ -542,7 +772,7 @@ const App = () => {
                   type="primary"
                   shape="circle"
                   onClick={() => {
-                    form.resetFields();
+                    categoryForm.resetFields();
                     setShowCreateModal({ open: true, parentId: null });
                   }}
                   loading={createMutation.isPending}
@@ -560,7 +790,7 @@ const App = () => {
                   onClick={() => {
                     const current =
                       selectedIds.length === 1 ? lookups.byId.get(selectedIds[0]) : null;
-                    form.resetFields();
+                    categoryForm.resetFields();
                     setShowCreateModal({ open: true, parentId: current?.id ?? null });
                   }}
                   loading={createMutation.isPending}
@@ -579,7 +809,7 @@ const App = () => {
                     const current =
                       selectedIds.length === 1 ? lookups.byId.get(selectedIds[0]) : null;
                     if (!current) return;
-                    form.setFieldsValue({ name: current.name });
+                    categoryForm.setFieldsValue({ name: current.name });
                     setShowRenameModal(true);
                   }}
                   loading={updateMutation.isPending}
@@ -634,6 +864,26 @@ const App = () => {
                 />
               </span>
             </Tooltip>
+            <Tooltip
+              title={
+                includeDescendants
+                  ? "显示当前节点及子节点的文档"
+                  : "仅显示当前节点文档"
+              }
+            >
+              <span style={{ display: "inline-flex", alignItems: "center" }}>
+                <Switch
+                  size="small"
+                  checked={includeDescendants}
+                  onChange={(checked) => setIncludeDescendants(checked)}
+                  checkedChildren="含子"
+                  unCheckedChildren="当前"
+                  aria-label="切换文档范围"
+                  disabled={selectedNodeId == null}
+                  style={{ marginLeft: 4 }}
+                />
+              </span>
+            </Tooltip>
           </div>
           {isLoading ? (
             <div style={{ display: "flex", justifyContent: "center", marginTop: 32 }}>
@@ -650,6 +900,26 @@ const App = () => {
               showLine={{ showLeafIcon: false }}
               multiple
               treeData={treeData}
+              titleRender={(node) => {
+                const id = Number(node.key);
+                return (
+                  <Dropdown
+                    trigger={["contextMenu"]}
+                    menu={{
+                      items: [
+                        {
+                          key: "add-document",
+                          icon: <FileAddOutlined />,
+                          label: "添加文档",
+                          onClick: () => handleOpenAddDocument(id),
+                        },
+                      ],
+                    }}
+                  >
+                    <span>{node.title as string}</span>
+                  </Dropdown>
+                );
+              }}
               onDrop={handleDrop}
               selectedKeys={selectedIds.map(String)}
               onSelect={handleSelect}
@@ -693,10 +963,84 @@ const App = () => {
           />
         </Sider>
         <Content style={{ padding: "24px" }}>
-          <Typography.Title level={4}>操作提示</Typography.Title>
-          <Typography.Paragraph type="secondary">
-            目录详情已移动至左侧树下方，可通过折叠按钮收起或展开。
-          </Typography.Paragraph>
+          <Space direction="vertical" size="large" style={{ width: "100%" }}>
+            <Card>
+              <Form
+                layout="inline"
+                form={documentFilterForm}
+                onFinish={handleDocumentSearch}
+                style={{ gap: 16, flexWrap: "wrap" }}
+              >
+                <Form.Item name="docId" label="文档 ID">
+                  <Input placeholder="例如 123" allowClear style={{ width: 160 }} />
+                </Form.Item>
+                <Form.Item name="query" label="关键字">
+                  <Input placeholder="标题 / 内容" allowClear style={{ width: 200 }} />
+                </Form.Item>
+                <Form.Item name="type" label="文档类型">
+                  <Select
+                    allowClear
+                    style={{ width: 160 }}
+                    placeholder="选择类型"
+                    options={DOCUMENT_TYPES}
+                  />
+                </Form.Item>
+                <Form.Item>
+                  <Space>
+                    <Button type="primary" htmlType="submit" icon={<SearchOutlined />}>
+                      筛选
+                    </Button>
+                    <Button onClick={handleDocumentReset}>重置</Button>
+                  </Space>
+                </Form.Item>
+              </Form>
+            </Card>
+            <Card
+              title={
+                <Space>
+                  <FileTextOutlined />
+                  <span>文档列表</span>
+                </Space>
+              }
+              extra={
+                <Tooltip title="新增文档">
+                  <Button
+                    type="primary"
+                    icon={<PlusOutlined />}
+                    onClick={handleToolbarAddDocument}
+                    disabled={selectedNodeId == null}
+                    aria-label="新增文档"
+                  />
+                </Tooltip>
+              }
+            >
+              {selectedNodeId == null ? (
+                <Typography.Paragraph type="secondary">
+                  请选择单个目录节点以查看文档。
+                </Typography.Paragraph>
+              ) : documentsQuery.isLoading ? (
+                <div style={{ display: "flex", justifyContent: "center", padding: "48px 0" }}>
+                  <Spin />
+                </div>
+              ) : documentsQuery.error ? (
+                <Alert
+                  type="error"
+                  message="文档加载失败"
+                  description={(documentsQuery.error as Error).message}
+                />
+              ) : documents.length === 0 ? (
+                <Empty description="暂无文档" />
+              ) : (
+                <Table
+                  rowKey="id"
+                  dataSource={documents}
+                  columns={documentColumns}
+                  pagination={false}
+                  loading={documentsQuery.isFetching}
+                />
+              )}
+            </Card>
+          </Space>
         </Content>
       </Layout>
       <Modal
@@ -807,12 +1151,59 @@ const App = () => {
         )}
       </Modal>
       <Modal
+        title="添加文档"
+        open={documentModal.open}
+        confirmLoading={documentCreateMutation.isPending}
+        onCancel={handleDocumentModalCancel}
+        onOk={handleDocumentModalOk}
+        destroyOnClose
+      >
+        {documentModal.nodeId ? (
+          <Typography.Paragraph type="secondary">
+            绑定目录 ID：{documentModal.nodeId}
+          </Typography.Paragraph>
+        ) : null}
+        <Form form={documentForm} layout="vertical" preserve={false}>
+          <Form.Item
+            name="title"
+            label="文档名称"
+            rules={[
+              {
+                required: true,
+                message: "请输入文档名称",
+              },
+              {
+                max: 100,
+                message: "名称不超过 100 个字符",
+              },
+            ]}
+          >
+            <Input placeholder="请输入" autoFocus />
+          </Form.Item>
+          <Form.Item
+            name="type"
+            label="文档类型"
+            rules={[
+              {
+                required: true,
+                message: "请选择文档类型",
+              },
+            ]}
+          >
+            <Select options={DOCUMENT_TYPES} placeholder="请选择" />
+          </Form.Item>
+          <Form.Item name="content" label="备注 / 内容预览">
+            <Input.TextArea rows={4} placeholder="可选，填写内容概要" />
+          </Form.Item>
+        </Form>
+      </Modal>
+      <Modal
         title={showCreateModal.parentId ? "新建子目录" : "新建根目录"}
         open={showCreateModal.open}
         confirmLoading={createMutation.isPending}
         onCancel={() => setShowCreateModal({ open: false, parentId: null })}
         onOk={() => {
-          form
+          categoryForm
             .validateFields()
             .then((values) => {
               createMutation.mutate({
@@ -824,7 +1215,7 @@ const App = () => {
         }}
         destroyOnClose
       >
-        <Form form={form} layout="vertical" preserve={false}>
+        <Form form={categoryForm} layout="vertical" preserve={false}>
           <Form.Item
             name="name"
             label="目录名称"
@@ -853,7 +1244,7 @@ const App = () => {
         confirmLoading={updateMutation.isPending}
         onCancel={() => setShowRenameModal(false)}
         onOk={() => {
-          form
+          categoryForm
             .validateFields()
             .then((values) => {
               if (selectedIds.length !== 1) return;
@@ -866,7 +1257,7 @@ const App = () => {
         }}
         destroyOnClose
       >
-        <Form form={form} layout="vertical" preserve={false}>
+        <Form form={categoryForm} layout="vertical" preserve={false}>
           <Form.Item
             name="name"
             label="目录名称"

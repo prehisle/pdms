@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -113,6 +114,101 @@ func (h *Handler) CategoryRoutes(w http.ResponseWriter, r *http.Request) {
 		h.purgeCategory(w, r, meta, id)
 	case "reposition":
 		h.repositionCategory(w, r, meta, id)
+	default:
+		respondError(w, http.StatusNotFound, errors.New("not found"))
+	}
+}
+
+// Documents handles collection-level document operations.
+func (h *Handler) Documents(w http.ResponseWriter, r *http.Request) {
+	meta := h.metaFromRequest(r)
+	switch r.Method {
+	case http.MethodGet:
+		page, err := h.service.ListDocuments(r.Context(), meta, cloneQuery(r.URL.Query()))
+		if err != nil {
+			respondError(w, http.StatusBadGateway, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, page)
+	case http.MethodPost:
+		var payload service.DocumentCreateRequest
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			respondError(w, http.StatusBadRequest, err)
+			return
+		}
+		if strings.TrimSpace(payload.Title) == "" {
+			respondError(w, http.StatusBadRequest, errors.New("title is required"))
+			return
+		}
+		doc, err := h.service.CreateDocument(r.Context(), meta, payload)
+		if err != nil {
+			respondError(w, http.StatusBadGateway, err)
+			return
+		}
+		writeJSON(w, http.StatusCreated, doc)
+	default:
+		respondError(w, http.StatusMethodNotAllowed, errors.New("method not allowed"))
+	}
+}
+
+// DocumentRoutes currently returns 404 for unsupported operations.
+func (h *Handler) DocumentRoutes(w http.ResponseWriter, r *http.Request) {
+	respondError(w, http.StatusNotFound, errors.New("not found"))
+}
+
+// NodeRoutes handles node-related sub-resources.
+func (h *Handler) NodeRoutes(w http.ResponseWriter, r *http.Request) {
+	relPath := strings.TrimPrefix(r.URL.Path, "/api/v1/nodes/")
+	if relPath == "" {
+		respondError(w, http.StatusNotFound, errors.New("not found"))
+		return
+	}
+
+	parts := strings.Split(relPath, "/")
+	id, err := strconv.ParseInt(parts[0], 10, 64)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, errors.New("invalid node id"))
+		return
+	}
+
+	meta := h.metaFromRequest(r)
+
+	if len(parts) == 1 {
+		respondError(w, http.StatusNotFound, errors.New("not found"))
+		return
+	}
+
+	switch parts[1] {
+	case "subtree-documents":
+		if r.Method != http.MethodGet {
+			respondError(w, http.StatusMethodNotAllowed, errors.New("method not allowed"))
+			return
+		}
+		docs, err := h.service.ListNodeDocuments(r.Context(), meta, id, cloneQuery(r.URL.Query()))
+		if err != nil {
+			respondError(w, http.StatusBadGateway, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, docs)
+	case "bind":
+		if len(parts) < 3 {
+			respondError(w, http.StatusNotFound, errors.New("not found"))
+			return
+		}
+		docID, err := strconv.ParseInt(parts[2], 10, 64)
+		if err != nil {
+			respondError(w, http.StatusBadRequest, errors.New("invalid document id"))
+			return
+		}
+		if r.Method != http.MethodPost {
+			respondError(w, http.StatusMethodNotAllowed, errors.New("method not allowed"))
+			return
+		}
+		if err := h.service.BindDocument(r.Context(), meta, id, docID); err != nil {
+			respondError(w, http.StatusBadGateway, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
 	default:
 		respondError(w, http.StatusNotFound, errors.New("not found"))
 	}
@@ -317,6 +413,17 @@ func (h *Handler) bulkPurgeCategories(w http.ResponseWriter, r *http.Request, me
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"purged_ids": ids})
+}
+
+func cloneQuery(values url.Values) url.Values {
+	if values == nil {
+		return nil
+	}
+	cloned := url.Values{}
+	for k, v := range values {
+		cloned[k] = append([]string(nil), v...)
+	}
+	return cloned
 }
 
 func (h *Handler) metaFromRequest(r *http.Request) service.RequestMeta {

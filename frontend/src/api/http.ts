@@ -34,6 +34,13 @@ export function buildQuery(params: Record<string, unknown>): string {
   const usp = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
     if (value === undefined || value === null) return;
+    if (Array.isArray(value)) {
+      value.forEach((item) => {
+        if (item === undefined || item === null) return;
+        usp.append(key, String(item));
+      });
+      return;
+    }
     usp.set(key, String(value));
   });
   const query = usp.toString();

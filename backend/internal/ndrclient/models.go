@@ -29,8 +29,8 @@ type NodeCreate struct {
 
 // NodeUpdate mirrors NDR update payload.
 type NodeUpdate struct {
-	Name       *string        `json:"name,omitempty"`
-	Slug       *string        `json:"slug,omitempty"`
+	Name       *string         `json:"name,omitempty"`
+	Slug       *string         `json:"slug,omitempty"`
 	ParentPath *OptionalString `json:"parent_path,omitempty"`
 }
 
@@ -63,6 +63,34 @@ type ListChildrenParams struct {
 // GetNodeOptions describes optional query params for fetching node detail.
 type GetNodeOptions struct {
 	IncludeDeleted *bool
+}
+
+// Document represents the NDR document resource.
+type Document struct {
+	ID        int64          `json:"id"`
+	Title     string         `json:"title"`
+	Content   map[string]any `json:"content"`
+	CreatedBy string         `json:"created_by"`
+	UpdatedBy string         `json:"updated_by"`
+	CreatedAt time.Time      `json:"created_at"`
+	UpdatedAt time.Time      `json:"updated_at"`
+	DeletedAt *time.Time     `json:"deleted_at"`
+	Metadata  map[string]any `json:"metadata"`
+}
+
+// DocumentCreate mirrors the upstream create payload.
+type DocumentCreate struct {
+	Title    string         `json:"title"`
+	Metadata map[string]any `json:"metadata,omitempty"`
+	Content  map[string]any `json:"content,omitempty"`
+}
+
+// DocumentsPage wraps paginated document results.
+type DocumentsPage struct {
+	Page  int        `json:"page"`
+	Size  int        `json:"size"`
+	Total int        `json:"total"`
+	Items []Document `json:"items"`
 }
 
 // OptionalString allows distinguishing between "not set" and "explicit null".
