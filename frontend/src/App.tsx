@@ -11,8 +11,8 @@ import {
   Space,
   Spin,
   Table,
-  Tabs,
   Tag,
+  Tooltip,
   Tree,
   Typography,
   message,
@@ -23,6 +23,16 @@ import type { ColumnsType } from "antd/es/table";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Key } from "react";
+import {
+  CloseCircleOutlined,
+  DeleteFilled,
+  DeleteOutlined,
+  EditOutlined,
+  FolderAddOutlined,
+  PlusSquareOutlined,
+  ReloadOutlined,
+  RollbackOutlined,
+} from "@ant-design/icons";
 import {
   Category,
   CategoryCreatePayload,
@@ -38,11 +48,10 @@ import {
   bulkRestoreCategories,
   bulkPurgeCategories,
 } from "./api/categories";
-
 const dragDebugEnabled =
   (import.meta.env.VITE_DEBUG_DRAG ?? "").toString().toLowerCase() === "1";
 
-const { Header, Sider, Content } = Layout;
+const { Sider, Content } = Layout;
 
 type TreeDataNode = DataNode & {
   parentId: number | null;
@@ -62,7 +71,7 @@ const App = () => {
   const [lastSelectedId, setLastSelectedId] = useState<number | null>(null);
   const [isMutating, setIsMutating] = useState(false);
   const [messageApi, contextHolder] = message.useMessage();
-  const [activeTab, setActiveTab] = useState<"tree" | "trash">("tree");
+  const [trashModalOpen, setTrashModalOpen] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState<{
     open: boolean;
     parentId: number | null;
@@ -74,19 +83,18 @@ const App = () => {
   const [autoExpandParent, setAutoExpandParent] = useState(true);
   const [selectedTrashRowKeys, setSelectedTrashRowKeys] = useState<Key[]>([]);
 
+  useEffect(() => {
+    document.title = "题库目录管理";
+  }, []);
+
   const trashQuery = useQuery({
     queryKey: ["categories-trash"],
     queryFn: () => getDeletedCategories(),
-    enabled: activeTab === "trash",
+    enabled: false,
   });
-
-  useEffect(() => {
-    if (activeTab === "trash") {
-      setSelectedIds([]);
-      setSelectionParentId(undefined);
-      setLastSelectedId(null);
-    }
-  }, [activeTab]);
+  const trashData = trashQuery.data ?? [];
+  const isTrashInitialLoading =
+    trashQuery.isLoading || (trashQuery.isFetching && !trashQuery.data);
 
   const createMutation = useMutation({
     mutationFn: (payload: CategoryCreatePayload) => createCategory(payload),
@@ -483,11 +491,6 @@ const App = () => {
   return (
     <Layout style={{ minHeight: "100vh" }}>
       {contextHolder}
-      <Header style={{ display: "flex", alignItems: "center" }}>
-        <Typography.Title level={3} style={{ color: "#fff", margin: 0 }}>
-          题库目录管理
-        </Typography.Title>
-      </Header>
       <Layout>
         <Sider
           width={360}
@@ -497,194 +500,161 @@ const App = () => {
             borderRight: "1px solid #f0f0f0",
           }}
         >
-          <Tabs
-            activeKey={activeTab}
-            onChange={(key) => setActiveTab(key as "tree" | "trash")}
-            items={[
-              {
-                key: "tree",
-                label: "目录树",
-                children: (
-                  <>
-                    <Space style={{ marginBottom: 16 }} wrap>
-                      <Input.Search
-                        placeholder="搜索目录"
-                        allowClear
-                        value={searchValue}
-                        onChange={(e) => setSearchValue(e.target.value)}
-                        onSearch={(val) => setSearchValue(val)}
-                        style={{ width: 200 }}
-                      />
-                      <Button onClick={() => refetch()} loading={isFetching || isMutating}>
-                        刷新目录
-                      </Button>
-                      <Button
-                        type="primary"
-                        onClick={() => {
-                          form.resetFields();
-                          setShowCreateModal({ open: true, parentId: null });
-                        }}
-                        loading={createMutation.isPending}
-                      >
-                        新建根目录
-                      </Button>
-                      <Button
-                        onClick={() => {
-                          const current =
-                            selectedIds.length === 1 ? lookups.byId.get(selectedIds[0]) : null;
-                          form.resetFields();
-                          setShowCreateModal({ open: true, parentId: current?.id ?? null });
-                        }}
-                        disabled={selectedIds.length !== 1}
-                        loading={createMutation.isPending}
-                      >
-                        新建子目录
-                      </Button>
-                      <Button
-                        onClick={() => {
-                          const current =
-                            selectedIds.length === 1 ? lookups.byId.get(selectedIds[0]) : null;
-                          if (!current) return;
-                          form.setFieldsValue({ name: current.name });
-                          setShowRenameModal(true);
-                        }}
-                        disabled={selectedIds.length !== 1}
-                        loading={updateMutation.isPending}
-                      >
-                        重命名
-                      </Button>
-                      <Popconfirm
-                        title="确认删除该目录？"
-                        okText="删除"
-                        cancelText="取消"
-                        okButtonProps={{ danger: true }}
-                        onConfirm={() => {
-                          if (selectedIds.length !== 1) return;
-                          const childList = lookups.parentToChildren.get(selectedIds[0]) ?? [];
-                          if (childList.length > 0) {
-                            messageApi.error("无法删除含子节点的目录");
-                            return;
-                          }
-                          deleteMutation.mutate(selectedIds[0]);
-                        }}
-                        disabled={selectedIds.length !== 1}
-                      >
-                        <Button danger disabled={selectedIds.length !== 1} loading={deleteMutation.isPending}>
-                          删除
-                        </Button>
-                      </Popconfirm>
-                    </Space>
-                    {isLoading ? (
-                      <div style={{ display: "flex", justifyContent: "center", marginTop: 32 }}>
-                        <Spin />
-                      </div>
-                    ) : error ? (
-                      <Alert
-                        type="error"
-                        message="目录树加载失败"
-                        description={(error as Error).message}
-                      />
-                    ) : treeData.length === 0 ? (
-                      <Empty description="暂无目录" />
-                    ) : (
-                      <Tree
-                        blockNode
-                        draggable={{ icon: false }}
-                        showLine={{ showLeafIcon: false }}
-                        multiple
-                        treeData={treeData}
-                        onDrop={handleDrop}
-                        selectedKeys={selectedIds.map(String)}
-                        onSelect={handleSelect}
-                        expandedKeys={expandedKeys}
-                        autoExpandParent={autoExpandParent}
-                        onExpand={(keys) => {
-                          setExpandedKeys(keys.map(String));
-                          setAutoExpandParent(false);
-                        }}
-                        height={600}
-                        style={{ userSelect: "none" }}
-                      />
-                    )}
-                  </>
-                ),
-              },
-              {
-                key: "trash",
-                label: "回收站",
-                children: (
-                  <>
-                    {trashQuery.isLoading ? (
-                      <div style={{ display: "flex", justifyContent: "center", marginTop: 32 }}>
-                        <Spin />
-                      </div>
-                    ) : trashQuery.error ? (
-                      <Alert
-                        type="error"
-                        message="回收站加载失败"
-                        description={(trashQuery.error as Error).message}
-                      />
-                    ) : (
-                      <>
-                        <Space style={{ marginBottom: 16 }} wrap>
-                          <Button
-                            type="primary"
-                            onClick={() => trashQuery.refetch()}
-                            loading={trashQuery.isFetching || isMutating}
-                          >
-                            刷新回收站
-                          </Button>
-                          <Button
-                            onClick={handleBulkRestore}
-                            disabled={selectedTrashRowKeys.length === 0}
-                            loading={isMutating}
-                          >
-                            批量恢复
-                          </Button>
-                          <Popconfirm
-                            title={`确认彻底删除选中的 ${selectedTrashRowKeys.length} 个目录？`}
-                            okText="删除"
-                            cancelText="取消"
-                            okButtonProps={{ danger: true, disabled: selectedTrashRowKeys.length === 0 }}
-                            onConfirm={handleBulkPurge}
-                            disabled={selectedTrashRowKeys.length === 0}
-                          >
-                            <Button
-                              danger
-                              disabled={selectedTrashRowKeys.length === 0}
-                              loading={isMutating}
-                            >
-                              批量彻底删除
-                            </Button>
-                          </Popconfirm>
-                          <Button
-                            onClick={() => setSelectedTrashRowKeys([])}
-                            disabled={selectedTrashRowKeys.length === 0}
-                          >
-                            清空选择
-                          </Button>
-                        </Space>
-                        {(trashQuery.data ?? []).length === 0 ? (
-                          <Empty description="暂无已删除目录" />
-                        ) : (
-                          <Table
-                            rowKey="id"
-                            pagination={false}
-                            dataSource={trashQuery.data ?? []}
-                            columns={trashTableColumns}
-                            rowSelection={{
-                              selectedRowKeys: selectedTrashRowKeys,
-                              onChange: (keys) => setSelectedTrashRowKeys(keys),
-                            }}
-                          />
-                        )}
-                      </>
-                    )}
-                  </>
-                ),
-              },
-            ]}
-          />
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              alignItems: "center",
+              gap: 8,
+              marginBottom: 16,
+            }}
+          >
+            <Input.Search
+              placeholder="搜索目录"
+              allowClear
+              value={searchValue}
+              onChange={(e) => setSearchValue(e.target.value)}
+              onSearch={(val) => setSearchValue(val)}
+              style={{ width: 200 }}
+            />
+            <Tooltip title="刷新目录">
+              <Button
+                icon={<ReloadOutlined />}
+                type="text"
+                shape="circle"
+                onClick={() => refetch()}
+                loading={isFetching || isMutating}
+                aria-label="刷新目录"
+              />
+            </Tooltip>
+            <Tooltip title="新建根目录">
+              <span style={{ display: "inline-flex" }}>
+                <Button
+                  icon={<FolderAddOutlined />}
+                  type="primary"
+                  shape="circle"
+                  onClick={() => {
+                    form.resetFields();
+                    setShowCreateModal({ open: true, parentId: null });
+                  }}
+                  loading={createMutation.isPending}
+                  disabled={createMutation.isPending}
+                  aria-label="新建根目录"
+                />
+              </span>
+            </Tooltip>
+            <Tooltip title="新建子目录">
+              <span style={{ display: "inline-flex" }}>
+                <Button
+                  icon={<PlusSquareOutlined />}
+                  type="primary"
+                  shape="circle"
+                  onClick={() => {
+                    const current =
+                      selectedIds.length === 1 ? lookups.byId.get(selectedIds[0]) : null;
+                    form.resetFields();
+                    setShowCreateModal({ open: true, parentId: current?.id ?? null });
+                  }}
+                  loading={createMutation.isPending}
+                  disabled={selectedIds.length !== 1 || createMutation.isPending}
+                  aria-label="新建子目录"
+                />
+              </span>
+            </Tooltip>
+            <Tooltip title="重命名目录">
+              <span style={{ display: "inline-flex" }}>
+                <Button
+                  icon={<EditOutlined />}
+                  type="text"
+                  shape="circle"
+                  onClick={() => {
+                    const current =
+                      selectedIds.length === 1 ? lookups.byId.get(selectedIds[0]) : null;
+                    if (!current) return;
+                    form.setFieldsValue({ name: current.name });
+                    setShowRenameModal(true);
+                  }}
+                  loading={updateMutation.isPending}
+                  disabled={selectedIds.length !== 1 || updateMutation.isPending}
+                  aria-label="重命名目录"
+                />
+              </span>
+            </Tooltip>
+            <Popconfirm
+              title="确认删除该目录？"
+              okText="删除"
+              cancelText="取消"
+              okButtonProps={{ danger: true }}
+              onConfirm={() => {
+                if (selectedIds.length !== 1) return;
+                const childList = lookups.parentToChildren.get(selectedIds[0]) ?? [];
+                if (childList.length > 0) {
+                  messageApi.error("无法删除含子节点的目录");
+                  return;
+                }
+                deleteMutation.mutate(selectedIds[0]);
+              }}
+              disabled={selectedIds.length !== 1}
+            >
+              <Tooltip title="删除目录">
+                <span style={{ display: "inline-flex" }}>
+                  <Button
+                    icon={<DeleteOutlined />}
+                    danger
+                    type="text"
+                    shape="circle"
+                    disabled={selectedIds.length !== 1 || deleteMutation.isPending}
+                    loading={deleteMutation.isPending}
+                    aria-label="删除目录"
+                  />
+                </span>
+              </Tooltip>
+            </Popconfirm>
+            <Tooltip title="打开回收站">
+              <span style={{ display: "inline-flex" }}>
+                <Button
+                  icon={<DeleteFilled />}
+                  type="text"
+                  shape="circle"
+                  onClick={() => {
+                    setSelectedTrashRowKeys([]);
+                    setTrashModalOpen(true);
+                    void trashQuery.refetch();
+                  }}
+                  loading={trashQuery.isFetching}
+                  aria-label="打开回收站"
+                />
+              </span>
+            </Tooltip>
+          </div>
+          {isLoading ? (
+            <div style={{ display: "flex", justifyContent: "center", marginTop: 32 }}>
+              <Spin />
+            </div>
+          ) : error ? (
+            <Alert type="error" message="目录树加载失败" description={(error as Error).message} />
+          ) : treeData.length === 0 ? (
+            <Empty description="暂无目录" />
+          ) : (
+            <Tree
+              blockNode
+              draggable={{ icon: false }}
+              showLine={{ showLeafIcon: false }}
+              multiple
+              treeData={treeData}
+              onDrop={handleDrop}
+              selectedKeys={selectedIds.map(String)}
+              onSelect={handleSelect}
+              expandedKeys={expandedKeys}
+              autoExpandParent={autoExpandParent}
+              onExpand={(keys) => {
+                setExpandedKeys(keys.map(String));
+                setAutoExpandParent(false);
+              }}
+              height={600}
+              style={{ userSelect: "none" }}
+            />
+          )}
         </Sider>
         <Content style={{ padding: "24px" }}>
           <Typography.Title level={4}>目录详情</Typography.Title>
@@ -701,6 +671,113 @@ const App = () => {
           )}
         </Content>
       </Layout>
+      <Modal
+        title="回收站"
+        open={trashModalOpen}
+        footer={null}
+        width={720}
+        onCancel={() => {
+          setTrashModalOpen(false);
+          setSelectedTrashRowKeys([]);
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            gap: 8,
+            flexWrap: "wrap",
+            alignItems: "center",
+            marginBottom: 16,
+          }}
+        >
+          <Tooltip title="刷新回收站">
+            <Button
+              icon={<ReloadOutlined />}
+              type="text"
+              shape="circle"
+              onClick={() => {
+                void trashQuery.refetch();
+              }}
+              loading={trashQuery.isFetching || isMutating}
+              aria-label="刷新回收站"
+            />
+          </Tooltip>
+          <Tooltip title="批量恢复">
+            <span style={{ display: "inline-flex" }}>
+              <Button
+                icon={<RollbackOutlined />}
+                type="primary"
+                shape="circle"
+                onClick={handleBulkRestore}
+                disabled={selectedTrashRowKeys.length === 0 || isMutating}
+                loading={isMutating}
+                aria-label="批量恢复"
+              />
+            </span>
+          </Tooltip>
+          <Popconfirm
+            title={`确认彻底删除选中的 ${selectedTrashRowKeys.length} 个目录？`}
+            okText="删除"
+            cancelText="取消"
+            okButtonProps={{
+              danger: true,
+              disabled: selectedTrashRowKeys.length === 0,
+            }}
+            onConfirm={handleBulkPurge}
+            disabled={selectedTrashRowKeys.length === 0 || isMutating}
+          >
+            <Tooltip title="批量彻底删除">
+              <span style={{ display: "inline-flex" }}>
+                <Button
+                  icon={<DeleteOutlined />}
+                  danger
+                  type="text"
+                  shape="circle"
+                  disabled={selectedTrashRowKeys.length === 0 || isMutating}
+                  loading={isMutating}
+                  aria-label="批量彻底删除"
+                />
+              </span>
+            </Tooltip>
+          </Popconfirm>
+          <Tooltip title="清空选择">
+            <span style={{ display: "inline-flex" }}>
+              <Button
+                icon={<CloseCircleOutlined />}
+                type="text"
+                shape="circle"
+                onClick={() => setSelectedTrashRowKeys([])}
+                disabled={selectedTrashRowKeys.length === 0}
+                aria-label="清空选择"
+              />
+            </span>
+          </Tooltip>
+        </div>
+        {isTrashInitialLoading ? (
+          <div style={{ display: "flex", justifyContent: "center", marginTop: 32 }}>
+            <Spin />
+          </div>
+        ) : trashQuery.error ? (
+          <Alert
+            type="error"
+            message="回收站加载失败"
+            description={(trashQuery.error as Error).message}
+          />
+        ) : trashData.length === 0 ? (
+          <Empty description="暂无已删除目录" />
+        ) : (
+          <Table
+            rowKey="id"
+            pagination={false}
+            dataSource={trashData}
+            columns={trashTableColumns}
+            rowSelection={{
+              selectedRowKeys: selectedTrashRowKeys,
+              onChange: (keys) => setSelectedTrashRowKeys(keys),
+            }}
+          />
+        )}
+      </Modal>
       <Modal
         title={showCreateModal.parentId ? "新建子目录" : "新建根目录"}
         open={showCreateModal.open}
@@ -916,14 +993,19 @@ function buildTrashColumns(
       key: "actions",
       render: (_, record) => (
         <Space>
-          <Button
-            type="link"
-            onClick={() => onRestore(record.id)}
-            disabled={restoreLoading}
-            loading={restoreLoading}
-          >
-            恢复
-          </Button>
+          <Tooltip title="恢复">
+            <span style={{ display: "inline-flex" }}>
+              <Button
+                icon={<RollbackOutlined />}
+                type="text"
+                shape="circle"
+                onClick={() => onRestore(record.id)}
+                disabled={restoreLoading}
+                loading={restoreLoading}
+                aria-label="恢复目录"
+              />
+            </span>
+          </Tooltip>
           <Popconfirm
             title="彻底删除后无法恢复，确认操作？"
             okText="删除"
@@ -931,9 +1013,19 @@ function buildTrashColumns(
             onConfirm={() => onPurge(record.id)}
             disabled={purgeLoading}
           >
-            <Button type="link" danger disabled={purgeLoading} loading={purgeLoading}>
-              彻底删除
-            </Button>
+            <Tooltip title="彻底删除">
+              <span style={{ display: "inline-flex" }}>
+                <Button
+                  icon={<DeleteOutlined />}
+                  danger
+                  type="text"
+                  shape="circle"
+                  disabled={purgeLoading}
+                  loading={purgeLoading}
+                  aria-label="彻底删除"
+                />
+              </span>
+            </Tooltip>
           </Popconfirm>
         </Space>
       ),
