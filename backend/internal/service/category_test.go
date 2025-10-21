@@ -406,6 +406,37 @@ func TestRepositionCategoryRequiresOrderedIDs(t *testing.T) {
 	}
 }
 
+func TestBulkRestoreCategories(t *testing.T) {
+	fake := newFakeNDR()
+	now := time.Now().UTC()
+	restored := sampleNode(30, "X", "/x", nil, 1, now, now)
+	fake.restoreResp = restored
+	svc := NewService(cache.NewNoop(), fake)
+
+	items, err := svc.BulkRestoreCategories(context.Background(), RequestMeta{}, []int64{30})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(items) != 1 || items[0].ID != 30 {
+		t.Fatalf("unexpected items %v", items)
+	}
+}
+
+func TestBulkPurgeCategories(t *testing.T) {
+	fake := newFakeNDR()
+	svc := NewService(cache.NewNoop(), fake)
+	ids, err := svc.BulkPurgeCategories(context.Background(), RequestMeta{}, []int64{40, 41})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(fake.purgedNodes) != 2 {
+		t.Fatalf("expected purge calls, got %v", fake.purgedNodes)
+	}
+	if len(ids) != 2 {
+		t.Fatalf("unexpected ids %v", ids)
+	}
+}
+
 func TestRepositionCategoryMoveToRoot(t *testing.T) {
 	fake := newFakeNDR()
 	now := time.Now().UTC()

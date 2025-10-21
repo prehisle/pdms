@@ -78,6 +78,10 @@ type CategoryReorderRequest struct {
 	OrderedIDs []int64 `json:"ordered_ids"`
 }
 
+type CategoryBulkIDsRequest struct {
+	IDs []int64 `json:"ids"`
+}
+
 // CategoryRepositionRequest describes moving + reordering in a single call.
 type CategoryRepositionRequest struct {
 	NewParentID     *int64 `json:"-"`
@@ -428,6 +432,33 @@ func (s *Service) RepositionCategory(ctx context.Context, meta RequestMeta, id i
 		Category: current,
 		Siblings: siblings,
 	}, nil
+}
+
+func (s *Service) BulkRestoreCategories(ctx context.Context, meta RequestMeta, ids []int64) ([]Category, error) {
+	if len(ids) == 0 {
+		return nil, errors.New("ids is required")
+	}
+	results := make([]Category, 0, len(ids))
+	for _, id := range ids {
+		cat, err := s.RestoreCategory(ctx, meta, id)
+		if err != nil {
+			return nil, err
+		}
+		results = append(results, cat)
+	}
+	return results, nil
+}
+
+func (s *Service) BulkPurgeCategories(ctx context.Context, meta RequestMeta, ids []int64) ([]int64, error) {
+	if len(ids) == 0 {
+		return nil, errors.New("ids is required")
+	}
+	for _, id := range ids {
+		if err := s.PurgeCategory(ctx, meta, id); err != nil {
+			return nil, err
+		}
+	}
+	return ids, nil
 }
 
 func buildTree(nodes []ndrclient.Node) []*Category {

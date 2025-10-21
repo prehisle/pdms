@@ -244,6 +244,85 @@ func TestCategoryRepositionEndpoint(t *testing.T) {
 	}
 }
 
+func TestCategoryBulkEndpoints(t *testing.T) {
+	ndr := newInMemoryNDR()
+	svc := service.NewService(cache.NewNoop(), ndr)
+	handler := NewHandler(svc, HeaderDefaults{})
+	router := NewRouter(handler)
+
+	root := createCategory(t, router, `{"name":"BulkRoot"}`)
+	childA := createCategory(t, router, fmt.Sprintf(`{"name":"A","parent_id":%d}`, root.ID))
+	childB := createCategory(t, router, fmt.Sprintf(`{"name":"B","parent_id":%d}`, root.ID))
+
+	deleteReqA := httptest.NewRequest(http.MethodDelete, fmt.Sprintf("/api/v1/categories/%d", childA.ID), nil)
+	deleteRecA := httptest.NewRecorder()
+	router.ServeHTTP(deleteRecA, deleteReqA)
+	if deleteRecA.Code != http.StatusNoContent {
+		t.Fatalf("expected 204 for delete A, got %d", deleteRecA.Code)
+	}
+	deleteReqB := httptest.NewRequest(http.MethodDelete, fmt.Sprintf("/api/v1/categories/%d", childB.ID), nil)
+	deleteRecB := httptest.NewRecorder()
+	router.ServeHTTP(deleteRecB, deleteReqB)
+	if deleteRecB.Code != http.StatusNoContent {
+		t.Fatalf("expected 204 for delete B, got %d", deleteRecB.Code)
+	}
+
+	trashReq := httptest.NewRequest(http.MethodGet, "/api/v1/categories/trash", nil)
+	trashRec := httptest.NewRecorder()
+	router.ServeHTTP(trashRec, trashReq)
+	if trashRec.Code != http.StatusOK {
+		t.Fatalf("expected status 200 for trash, got %d", trashRec.Code)
+	}
+	var trashItems []service.Category
+	if err := json.NewDecoder(trashRec.Body).Decode(&trashItems); err != nil {
+		t.Fatalf("decode trash error: %v", err)
+	}
+	if len(trashItems) != 2 {
+		t.Fatalf("expected 2 items in trash, got %d", len(trashItems))
+	}
+
+	restorePayload := fmt.Sprintf(`{"ids":[%d,%d]}`, childA.ID, childB.ID)
+	restoreReq := httptest.NewRequest(http.MethodPost, "/api/v1/categories/bulk/restore", strings.NewReader(restorePayload))
+	restoreReq.Header.Set("Content-Type", "application/json")
+	restoreRec := httptest.NewRecorder()
+	router.ServeHTTP(restoreRec, restoreReq)
+	if restoreRec.Code != http.StatusOK {
+		t.Fatalf("expected status 200 for bulk restore, got %d", restoreRec.Code)
+	}
+	var restoreItems []service.Category
+	if err := json.NewDecoder(restoreRec.Body).Decode(&restoreItems); err != nil {
+		t.Fatalf("decode restore response error: %v", err)
+	}
+	if len(restoreItems) != 2 {
+		t.Fatalf("expected 2 restored items, got %v", restoreItems)
+	}
+
+	deleteReqA = httptest.NewRequest(http.MethodDelete, fmt.Sprintf("/api/v1/categories/%d", childA.ID), nil)
+	deleteRecA = httptest.NewRecorder()
+	router.ServeHTTP(deleteRecA, deleteReqA)
+	deleteReqB = httptest.NewRequest(http.MethodDelete, fmt.Sprintf("/api/v1/categories/%d", childB.ID), nil)
+	deleteRecB = httptest.NewRecorder()
+	router.ServeHTTP(deleteRecB, deleteReqB)
+
+	purgePayload := fmt.Sprintf(`{"ids":[%d,%d]}`, childA.ID, childB.ID)
+	purgeReq := httptest.NewRequest(http.MethodPost, "/api/v1/categories/bulk/purge", strings.NewReader(purgePayload))
+	purgeReq.Header.Set("Content-Type", "application/json")
+	purgeRec := httptest.NewRecorder()
+	router.ServeHTTP(purgeRec, purgeReq)
+	if purgeRec.Code != http.StatusOK {
+		t.Fatalf("expected status 200 for bulk purge, got %d", purgeRec.Code)
+	}
+	var purgeResp struct {
+		PurgedIDs []int64 `json:"purged_ids"`
+	}
+	if err := json.NewDecoder(purgeRec.Body).Decode(&purgeResp); err != nil {
+		t.Fatalf("decode purge response error: %v", err)
+	}
+	if len(purgeResp.PurgedIDs) != 2 {
+		t.Fatalf("expected 2 purged ids, got %v", purgeResp.PurgedIDs)
+	}
+}
+
 func createCategory(t *testing.T, router http.Handler, payload string) service.Category {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/categories", strings.NewReader(payload))

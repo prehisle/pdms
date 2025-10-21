@@ -22,6 +22,7 @@ import type { DataNode, EventDataNode } from "antd/es/tree";
 import type { ColumnsType } from "antd/es/table";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import type { Key } from "react";
 import {
   Category,
   CategoryCreatePayload,
@@ -34,6 +35,8 @@ import {
   repositionCategory,
   restoreCategory,
   updateCategory,
+  bulkRestoreCategories,
+  bulkPurgeCategories,
 } from "./api/categories";
 
 const dragDebugEnabled =
@@ -67,6 +70,7 @@ const App = () => {
   const [searchValue, setSearchValue] = useState("");
   const [expandedKeys, setExpandedKeys] = useState<string[]>([]);
   const [autoExpandParent, setAutoExpandParent] = useState(true);
+  const [selectedTrashRowKeys, setSelectedTrashRowKeys] = useState<Key[]>([]);
 
   const trashQuery = useQuery({
     queryKey: ["categories-trash"],
@@ -313,6 +317,47 @@ const App = () => {
     [lookups, messageApi, refetch],
   );
 
+  const handleBulkRestore = useCallback(async () => {
+    if (selectedTrashRowKeys.length === 0) {
+      return;
+    }
+    const ids = selectedTrashRowKeys.map((key) => Number(key));
+    setIsMutating(true);
+    try {
+      await bulkRestoreCategories({ ids });
+      messageApi.success(`已恢复 ${ids.length} 个目录`);
+      setSelectedTrashRowKeys([]);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["categories-tree"] }),
+        trashQuery.refetch(),
+      ]);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "批量恢复失败，请重试";
+      messageApi.error(msg);
+    } finally {
+      setIsMutating(false);
+    }
+  }, [messageApi, queryClient, selectedTrashRowKeys, trashQuery]);
+
+  const handleBulkPurge = useCallback(async () => {
+    if (selectedTrashRowKeys.length === 0) {
+      return;
+    }
+    const ids = selectedTrashRowKeys.map((key) => Number(key));
+    setIsMutating(true);
+    try {
+      await bulkPurgeCategories({ ids });
+      messageApi.success(`已彻底删除 ${ids.length} 个目录`);
+      setSelectedTrashRowKeys([]);
+      await trashQuery.refetch();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "批量彻底删除失败，请重试";
+      messageApi.error(msg);
+    } finally {
+      setIsMutating(false);
+    }
+  }, [messageApi, selectedTrashRowKeys, trashQuery]);
+
   return (
     <Layout style={{ minHeight: "100vh" }}>
       {contextHolder}
@@ -448,15 +493,61 @@ const App = () => {
                         message="回收站加载失败"
                         description={(trashQuery.error as Error).message}
                       />
-                    ) : (trashQuery.data ?? []).length === 0 ? (
-                      <Empty description="暂无已删除目录" />
                     ) : (
-                      <Table
-                        rowKey="id"
-                        pagination={false}
-                        dataSource={trashQuery.data ?? []}
-                        columns={trashTableColumns}
-                      />
+                      <>
+                        <Space style={{ marginBottom: 16 }} wrap>
+                          <Button
+                            type="primary"
+                            onClick={() => trashQuery.refetch()}
+                            loading={trashQuery.isFetching || isMutating}
+                          >
+                            刷新回收站
+                          </Button>
+                          <Button
+                            onClick={handleBulkRestore}
+                            disabled={selectedTrashRowKeys.length === 0}
+                            loading={isMutating}
+                          >
+                            批量恢复
+                          </Button>
+                          <Popconfirm
+                            title={`确认彻底删除选中的 ${selectedTrashRowKeys.length} 个目录？`}
+                            okText="删除"
+                            cancelText="取消"
+                            okButtonProps={{ danger: true, disabled: selectedTrashRowKeys.length === 0 }}
+                            onConfirm={handleBulkPurge}
+                            disabled={selectedTrashRowKeys.length === 0}
+                          >
+                            <Button
+                              danger
+                              disabled={selectedTrashRowKeys.length === 0}
+                              loading={isMutating}
+                            >
+                              批量彻底删除
+                            </Button>
+                          </Popconfirm>
+                          <Button
+                            onClick={() => setSelectedTrashRowKeys([])}
+                            disabled={selectedTrashRowKeys.length === 0}
+                          >
+                            清空选择
+                          </Button>
+                        </Space>
+                        {(trashQuery.data ?? []).length === 0 ? (
+                          <Empty description="暂无已删除目录" />
+                        ) : (
+                          <Table
+                            rowKey="id"
+                            pagination={false}
+                            dataSource={trashQuery.data ?? []}
+                            columns={trashTableColumns}
+                            rowSelection={{
+                              selectedRowKeys: selectedTrashRowKeys,
+                              onChange: (keys) => setSelectedTrashRowKeys(keys),
+                            }}
+                          />
+                        )}
+                      </>
                     )}
                   </>
                 ),

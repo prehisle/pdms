@@ -29,5 +29,9 @@ VITE_DEBUG_DRAG=1 npm run dev
 
 This emits `[drag-debug]` logs in the browser控制台, showing父节点、目标顺序等信息,便于定位拖拽行为。
 
+### Bulk Operations
+
+- 回收站支持多选批量恢复与彻底删除，操作按钮位于列表上方。
+
 The project structure mirrors the planned architecture so additional pages,
 components and API hooks can be layered on during subsequent iterations.

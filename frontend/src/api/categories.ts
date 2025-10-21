@@ -41,6 +41,10 @@ export interface CategoryRepositionResult {
   siblings: Category[];
 }
 
+export interface CategoryBulkIDsPayload {
+  ids: number[];
+}
+
 export async function getCategoryTree(
   includeDeleted = false,
 ): Promise<Category[]> {
@@ -114,5 +118,19 @@ export async function getDeletedCategories(): Promise<Category[]> {
 export async function purgeCategory(id: number) {
   return http<void>(`/api/v1/categories/${id}/purge`, {
     method: "DELETE",
+  });
+}
+
+export async function bulkRestoreCategories(payload: CategoryBulkIDsPayload) {
+  return http<Category[]>("/api/v1/categories/bulk/restore", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function bulkPurgeCategories(payload: CategoryBulkIDsPayload) {
+  return http<{ purged_ids: number[] }>("/api/v1/categories/bulk/purge", {
+    method: "POST",
+    body: JSON.stringify(payload),
   });
 }

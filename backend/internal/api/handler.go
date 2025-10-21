@@ -71,6 +71,20 @@ func (h *Handler) CategoryRoutes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if strings.HasPrefix(relPath, "bulk/") {
+		meta := h.metaFromRequest(r)
+		if relPath == "bulk/restore" {
+			h.bulkRestoreCategories(w, r, meta)
+			return
+		}
+		if relPath == "bulk/purge" {
+			h.bulkPurgeCategories(w, r, meta)
+			return
+		}
+		respondError(w, http.StatusNotFound, errors.New("not found"))
+		return
+	}
+
 	meta := h.metaFromRequest(r)
 
 	if relPath == "tree" {
@@ -267,6 +281,42 @@ func (h *Handler) repositionCategory(w http.ResponseWriter, r *http.Request, met
 		return
 	}
 	writeJSON(w, http.StatusOK, result)
+}
+
+func (h *Handler) bulkRestoreCategories(w http.ResponseWriter, r *http.Request, meta service.RequestMeta) {
+	if r.Method != http.MethodPost {
+		respondError(w, http.StatusMethodNotAllowed, errors.New("method not allowed"))
+		return
+	}
+	var payload service.CategoryBulkIDsRequest
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		respondError(w, http.StatusBadRequest, err)
+		return
+	}
+	items, err := h.service.BulkRestoreCategories(r.Context(), meta, payload.IDs)
+	if err != nil {
+		respondError(w, http.StatusBadGateway, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, items)
+}
+
+func (h *Handler) bulkPurgeCategories(w http.ResponseWriter, r *http.Request, meta service.RequestMeta) {
+	if r.Method != http.MethodPost {
+		respondError(w, http.StatusMethodNotAllowed, errors.New("method not allowed"))
+		return
+	}
+	var payload service.CategoryBulkIDsRequest
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		respondError(w, http.StatusBadRequest, err)
+		return
+	}
+	ids, err := h.service.BulkPurgeCategories(r.Context(), meta, payload.IDs)
+	if err != nil {
+		respondError(w, http.StatusBadGateway, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"purged_ids": ids})
 }
 
 func (h *Handler) metaFromRequest(r *http.Request) service.RequestMeta {
