@@ -82,6 +82,12 @@ type CategoryBulkIDsRequest struct {
 	IDs []int64 `json:"ids"`
 }
 
+// CategoryBulkCopyRequest describes bulk copy operations orchestrated by DMS.
+type CategoryBulkCopyRequest struct {
+	SourceIDs       []int64 `json:"source_ids"`
+	TargetParentID *int64  `json:"target_parent_id"`
+}
+
 // CategoryRepositionRequest describes moving + reordering in a single call.
 type CategoryRepositionRequest struct {
 	NewParentID     *int64 `json:"-"`
@@ -467,6 +473,138 @@ func (s *Service) BulkPurgeCategories(ctx context.Context, meta RequestMeta, ids
 		}
 	}
 	return ids, nil
+}
+
+func (s *Service) BulkCopyCategories(ctx context.Context, meta RequestMeta, req CategoryBulkCopyRequest) ([]Category, error) {
+	if len(req.SourceIDs) == 0 {
+		return nil, errors.New("source_ids is required")
+	}
+
+	cache := make(map[int64]map[string]struct{})
+	result := make([]Category, 0, len(req.SourceIDs))
+
+	for _, id := range req.SourceIDs {
+		copied, err := s.copyCategoryRecursive(ctx, meta, id, req.TargetParentID, cache)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, *copied)
+	}
+
+	return result, nil
+}
+
+func (s *Service) copyCategoryRecursive(ctx context.Context, meta RequestMeta, sourceID int64, targetParentID *int64, cache map[int64]map[string]struct{}) (*Category, error) {
+	srcNode, err := s.ndr.GetNode(ctx, toNDRMeta(meta), sourceID, ndrclient.GetNodeOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("fetch source node %d: %w", sourceID, err)
+	}
+
+	if srcNode.DeletedAt != nil {
+		return nil, fmt.Errorf("source node %d is deleted", sourceID)
+	}
+
+	name, err := s.ensureUniqueCategoryName(ctx, meta, targetParentID, srcNode.Name, cache)
+	if err != nil {
+		return nil, err
+	}
+
+	createdValue, err := s.CreateCategory(ctx, meta, CategoryCreateRequest{Name: name, ParentID: targetParentID})
+	if err != nil {
+		return nil, err
+	}
+
+	created := createdValue
+	created.Children = nil
+
+	children, err := s.ndr.ListChildren(ctx, toNDRMeta(meta), sourceID, ndrclient.ListChildrenParams{})
+	if err != nil {
+		return nil, fmt.Errorf("list children for %d: %w", sourceID, err)
+	}
+	sort.Slice(children, func(i, j int) bool {
+		return children[i].Position < children[j].Position
+	})
+
+	for _, child := range children {
+		copiedChild, err := s.copyCategoryRecursive(ctx, meta, child.ID, ptr(created.ID), cache)
+		if err != nil {
+			return nil, err
+		}
+		created.Children = append(created.Children, copiedChild)
+	}
+
+	return &created, nil
+}
+
+func (s *Service) ensureUniqueCategoryName(ctx context.Context, meta RequestMeta, parentID *int64, base string, cache map[int64]map[string]struct{}) (string, error) {
+	parentKey := int64(-1)
+	if parentID != nil {
+		parentKey = *parentID
+	}
+	names, ok := cache[parentKey]
+	if !ok {
+		fetched, err := s.fetchSiblingNames(ctx, meta, parentID)
+		if err != nil {
+			return "", err
+		}
+		names = fetched
+		cache[parentKey] = names
+	}
+
+	candidates := generateCopyNameCandidates(base)
+	for _, candidate := range candidates {
+		if _, exists := names[candidate]; !exists {
+			names[candidate] = struct{}{}
+			return candidate, nil
+		}
+	}
+	return "", fmt.Errorf("unable to generate unique name for %q", base)
+}
+
+func (s *Service) fetchSiblingNames(ctx context.Context, meta RequestMeta, parentID *int64) (map[string]struct{}, error) {
+	result := make(map[string]struct{})
+	if parentID == nil {
+		params := ndrclient.ListNodesParams{Page: 1, Size: 200}
+		for {
+			page, err := s.ndr.ListNodes(ctx, toNDRMeta(meta), params)
+			if err != nil {
+				return nil, err
+			}
+			for _, node := range page.Items {
+				if node.ParentID == nil && node.DeletedAt == nil {
+					result[node.Name] = struct{}{}
+				}
+			}
+			if len(page.Items) < params.Size || (page.Total > 0 && params.Page*params.Size >= page.Total) {
+				break
+			}
+			params.Page++
+		}
+		return result, nil
+	}
+	children, err := s.ndr.ListChildren(ctx, toNDRMeta(meta), *parentID, ndrclient.ListChildrenParams{})
+	if err != nil {
+		return nil, err
+	}
+	for _, node := range children {
+		if node.DeletedAt == nil {
+			result[node.Name] = struct{}{}
+		}
+	}
+	return result, nil
+}
+
+func generateCopyNameCandidates(base string) []string {
+	candidates := []string{base}
+
+	for i := 1; i <= 50; i++ {
+		if i == 1 {
+			candidates = append(candidates, fmt.Sprintf("%s (复制)", base))
+		} else {
+			candidates = append(candidates, fmt.Sprintf("%s (复制 %d)", base, i))
+		}
+	}
+	return candidates
 }
 
 func buildTree(nodes []ndrclient.Node) []*Category {
