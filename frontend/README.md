@@ -19,5 +19,15 @@ npm run dev
 
 4. Visit http://localhost:5173 to see the Ant Design hello world page.
 
+### Drag & Drop Debugging
+
+When troubleshooting category拖拽排序, you can enable verbose前端日志:
+
+```bash
+VITE_DEBUG_DRAG=1 npm run dev
+```
+
+This emits `[drag-debug]` logs in the browser控制台, showing父节点、目标顺序等信息,便于定位拖拽行为。
+
 The project structure mirrors the planned architecture so additional pages,
 components and API hooks can be layered on during subsequent iterations.

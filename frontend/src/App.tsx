@@ -36,6 +36,9 @@ import {
   updateCategory,
 } from "./api/categories";
 
+const dragDebugEnabled =
+  (import.meta.env.VITE_DEBUG_DRAG ?? "").toString().toLowerCase() === "1";
+
 const { Header, Sider, Content } = Layout;
 
 type TreeDataNode = DataNode & {
@@ -191,12 +194,21 @@ const App = () => {
     async (info) => {
       const dragId = Number(info.dragNode.key);
       const dropId = Number(info.node.key);
-      const dropRelative =
-        Number(info.dropPosition) -
-        Number(String(info.node.pos ?? "0").split("-").pop() ?? 0);
+      const nodePosition = Number(
+        (info.node.pos ?? "0").split("-").pop() ?? 0,
+      );
+      const dropRelative = info.dropPosition - nodePosition;
 
-      const targetParentId =
-        (info.dropToGap ? getParentId(info.node) : dropId) ?? null;
+      const baseParentId = getParentId(info.node);
+      let targetParentId: number | null;
+      if (info.dropToGap) {
+        targetParentId = baseParentId;
+      } else if (dropRelative < 0) {
+        // Drop above current node; keep same parent
+        targetParentId = baseParentId;
+      } else {
+        targetParentId = dropId;
+      }
 
       const dragCategory = lookups.byId.get(dragId);
       if (!dragCategory) {
@@ -215,6 +227,14 @@ const App = () => {
       );
 
       let insertIndex = orderedWithoutDrag.length;
+      const dropOnSameParentTop =
+        !info.dropToGap &&
+        dropRelative === 0 &&
+        sourceParentId !== null &&
+        Number(info.node.key) === sourceParentId;
+      if (dropOnSameParentTop) {
+        insertIndex = 0;
+      }
 
       if (info.dropToGap) {
         const targetIndex = orderedWithoutDrag.findIndex(
@@ -241,7 +261,25 @@ const App = () => {
         sourceParentId === targetParentId &&
         orderedIds.length === originalIds.length &&
         orderedIds.every((id, idx) => id === originalIds[idx]);
+      if (dragDebugEnabled) {
+        // eslint-disable-next-line no-console
+        console.log("[drag-debug] drop event", {
+          dragId,
+          dropId,
+          dropPosition: info.dropPosition,
+          dropRelative,
+          sourceParentId,
+          targetParentId,
+          orderedIds,
+          originalIds,
+        });
+      }
+
       if (isSameOrder) {
+        if (dragDebugEnabled) {
+          // eslint-disable-next-line no-console
+          console.log("[drag-debug] skip reorder: order unchanged");
+        }
         return;
       }
 
@@ -254,6 +292,13 @@ const App = () => {
                 new_parent_id: targetParentId,
                 ordered_ids: orderedIds,
               };
+        if (dragDebugEnabled) {
+          // eslint-disable-next-line no-console
+          console.log("[drag-debug] reposition payload", {
+            dragId,
+            payload: repositionPayload,
+          });
+        }
         await repositionCategory(dragId, repositionPayload);
         messageApi.success("目录顺序已更新");
         await refetch();
