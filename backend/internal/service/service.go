@@ -2,8 +2,11 @@ package service
 
 import (
 	"context"
+	"fmt"
+	"hash/crc32"
 	"regexp"
 	"strings"
+	"unicode"
 
 	"github.com/yjxt/ydms/backend/internal/cache"
 	"github.com/yjxt/ydms/backend/internal/ndrclient"
@@ -52,7 +55,35 @@ var slugRegex = regexp.MustCompile(`[^a-z0-9]+`)
 
 // slugify converts a name into a URL-safe slug.
 func slugify(name string) string {
-	trimmed := strings.TrimSpace(strings.ToLower(name))
-	replaced := slugRegex.ReplaceAllString(trimmed, "-")
-	return strings.Trim(replaced, "-")
+	trimmedOriginal := strings.TrimSpace(name)
+	if trimmedOriginal == "" {
+		return ""
+	}
+
+	lower := strings.ToLower(trimmedOriginal)
+	replaced := slugRegex.ReplaceAllString(lower, "-")
+	cleaned := strings.Trim(replaced, "-")
+	if cleaned == "" {
+		return ""
+	}
+
+	if requiresSlugSalt(trimmedOriginal) {
+		checksum := crc32.ChecksumIEEE([]byte(trimmedOriginal))
+		cleaned = strings.Trim(cleaned, "-")
+		cleaned = fmt.Sprintf("%s-%04x", cleaned, checksum&0xffff)
+	}
+
+	return cleaned
+}
+
+func requiresSlugSalt(name string) bool {
+	for _, r := range name {
+		if r > unicode.MaxASCII {
+			return true
+		}
+		if !(unicode.IsLetter(r) || unicode.IsDigit(r) || r == ' ' || r == '-') {
+			return true
+		}
+	}
+	return false
 }

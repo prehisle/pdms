@@ -86,6 +86,8 @@ type CategoryBulkIDsRequest struct {
 type CategoryBulkCopyRequest struct {
 	SourceIDs      []int64 `json:"source_ids"`
 	TargetParentID *int64  `json:"target_parent_id"`
+	InsertBeforeID *int64  `json:"insert_before_id,omitempty"`
+	InsertAfterID  *int64  `json:"insert_after_id,omitempty"`
 }
 
 // CategoryBulkMoveRequest describes moving multiple nodes to a new parent with optional anchor.
@@ -487,19 +489,75 @@ func (s *Service) BulkCopyCategories(ctx context.Context, meta RequestMeta, req 
 	if len(req.SourceIDs) == 0 {
 		return nil, errors.New("source_ids is required")
 	}
+	if req.InsertBeforeID != nil && req.InsertAfterID != nil {
+		return nil, errors.New("insert_before_id and insert_after_id cannot both be set")
+	}
 
 	cache := make(map[int64]map[string]struct{})
-	result := make([]Category, 0, len(req.SourceIDs))
+	created := make([]Category, 0, len(req.SourceIDs))
+	createdIDs := make([]int64, 0, len(req.SourceIDs))
 
 	for _, id := range req.SourceIDs {
 		copied, err := s.copyCategoryRecursive(ctx, meta, id, req.TargetParentID, cache)
 		if err != nil {
 			return nil, err
 		}
-		result = append(result, *copied)
+		created = append(created, *copied)
+		createdIDs = append(createdIDs, copied.ID)
 	}
 
-	return result, nil
+	if req.InsertBeforeID != nil || req.InsertAfterID != nil {
+		if req.InsertBeforeID != nil && containsInt(req.SourceIDs, *req.InsertBeforeID) {
+			return nil, errors.New("anchor cannot be part of source_ids")
+		}
+		if req.InsertAfterID != nil && containsInt(req.SourceIDs, *req.InsertAfterID) {
+			return nil, errors.New("anchor cannot be part of source_ids")
+		}
+
+		siblings, err := s.fetchSiblingIDs(ctx, meta, req.TargetParentID)
+		if err != nil {
+			return nil, err
+		}
+		siblings = removeIDs(siblings, createdIDs)
+
+		var ordered []int64
+		if req.InsertBeforeID != nil {
+			idx := indexOf(siblings, *req.InsertBeforeID)
+			if idx == -1 {
+				return nil, fmt.Errorf("anchor id %d not found", *req.InsertBeforeID)
+			}
+			ordered = append(siblings[:idx], append(createdIDs, siblings[idx:]...)...)
+		} else if req.InsertAfterID != nil {
+			idx := indexOf(siblings, *req.InsertAfterID)
+			if idx == -1 {
+				return nil, fmt.Errorf("anchor id %d not found", *req.InsertAfterID)
+			}
+			anchorIdx := idx + 1
+			ordered = append(siblings[:anchorIdx], append(createdIDs, siblings[anchorIdx:]...)...)
+		}
+
+		siblingsCats, err := s.ReorderCategories(ctx, meta, CategoryReorderRequest{ParentID: req.TargetParentID, OrderedIDs: ordered})
+		if err != nil {
+			return nil, err
+		}
+		updated := make(map[int64]Category)
+		for _, cat := range siblingsCats {
+			updated[cat.ID] = cat
+		}
+		for i := range created {
+			if v, ok := updated[created[i].ID]; ok {
+				created[i].ParentID = v.ParentID
+				created[i].Position = v.Position
+				created[i].Path = v.Path
+				created[i].Slug = v.Slug
+				created[i].CreatedAt = v.CreatedAt
+				created[i].UpdatedAt = v.UpdatedAt
+				created[i].DeletedAt = v.DeletedAt
+			}
+		}
+	}
+
+	return created, nil
 }
 
 func (s *Service) copyCategoryRecursive(ctx context.Context, meta RequestMeta, sourceID int64, targetParentID *int64, cache map[int64]map[string]struct{}) (*Category, error) {
@@ -613,6 +671,27 @@ func generateCopyNameCandidates(base string) []string {
 		}
 	}
 	return candidates
+}
+
+func containsInt(list []int64, target int64) bool {
+	return indexOf(list, target) != -1
+}
+
+func removeIDs(list []int64, removeIDs []int64) []int64 {
+	if len(removeIDs) == 0 {
+		return list
+	}
+	set := make(map[int64]struct{}, len(removeIDs))
+	for _, id := range removeIDs {
+		set[id] = struct{}{}
+	}
+	filtered := make([]int64, 0, len(list))
+	for _, id := range list {
+		if _, exists := set[id]; !exists {
+			filtered = append(filtered, id)
+		}
+	}
+	return filtered
 }
 
 func (s *Service) BulkMoveCategories(ctx context.Context, meta RequestMeta, req CategoryBulkMoveRequest) ([]Category, error) {

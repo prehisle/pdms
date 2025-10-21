@@ -3,11 +3,11 @@ import {
   Button,
   Card,
   Collapse,
-  Dropdown,
   Empty,
   Form,
   Input,
   Layout,
+  Menu,
   Modal,
   Popconfirm,
   Select,
@@ -21,14 +21,16 @@ import {
   Typography,
   message,
 } from "antd";
+import type { MenuProps } from "antd";
 import type { TreeProps } from "antd";
 import type { DataNode, EventDataNode } from "antd/es/tree";
 import type { ColumnsType } from "antd/es/table";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import type { Key } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { Key, MouseEvent as ReactMouseEvent } from "react";
 import {
   CloseCircleOutlined,
+  CopyOutlined,
   DeleteFilled,
   DeleteOutlined,
   EditOutlined,
@@ -36,10 +38,13 @@ import {
   FileTextOutlined,
   FolderAddOutlined,
   SearchOutlined,
+  ScissorOutlined,
   PlusOutlined,
   PlusSquareOutlined,
   ReloadOutlined,
   RollbackOutlined,
+  SnippetsOutlined,
+  ClearOutlined,
 } from "@ant-design/icons";
 import {
   Category,
@@ -55,6 +60,12 @@ import {
   updateCategory,
   bulkRestoreCategories,
   bulkPurgeCategories,
+  bulkCopyCategories,
+  bulkMoveCategories,
+  bulkCheckCategories,
+  type CategoryBulkCopyPayload,
+  type CategoryBulkMovePayload,
+  type CategoryBulkCheckResponse,
 } from "./api/categories";
 import {
   Document,
@@ -66,6 +77,8 @@ import {
 } from "./api/documents";
 const dragDebugEnabled =
   (import.meta.env.VITE_DEBUG_DRAG ?? "").toString().toLowerCase() === "1";
+const menuDebugEnabled =
+  (import.meta.env.VITE_DEBUG_MENU ?? "").toString().toLowerCase() === "1";
 
 const { Sider, Content } = Layout;
 
@@ -86,6 +99,22 @@ type DocumentFormValues = {
   title: string;
   type: string;
   content?: string;
+};
+
+type ClipboardMode = "copy" | "cut";
+
+interface ClipboardState {
+  mode: ClipboardMode;
+  sourceIds: number[];
+  parentId: number | null;
+}
+
+type ContextMenuState = {
+  open: boolean;
+  nodeId: number | null;
+  parentId: number | null;
+  x: number;
+  y: number;
 };
 
 const DOCUMENT_TYPES = [
@@ -124,6 +153,23 @@ const App = () => {
   const [includeDescendants, setIncludeDescendants] = useState(true);
   const [documentFilterForm] = Form.useForm<DocumentFilterFormValues>();
   const [documentForm] = Form.useForm<DocumentFormValues>();
+  const [clipboard, setClipboard] = useState<ClipboardState | null>(null);
+  const clipboardSourceSet = useMemo(() => new Set(clipboard?.sourceIds ?? []), [clipboard]);
+  const [deletePreview, setDeletePreview] = useState<{
+    visible: boolean;
+    mode: "soft" | "purge";
+    ids: number[];
+    loading: boolean;
+    result: CategoryBulkCheckResponse | null;
+  }>({ visible: false, mode: "soft", ids: [], loading: false, result: null });
+  const [contextMenu, setContextMenu] = useState<ContextMenuState>({
+    open: false,
+    nodeId: null,
+    parentId: null,
+    x: 0,
+    y: 0,
+  });
+  const menuContainerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     document.title = "题库目录管理";
@@ -340,10 +386,642 @@ const App = () => {
     }
   }, [selectedIds]);
 
+  const closeContextMenu = useCallback(
+    (reason?: string) => {
+      setContextMenu((prev) => {
+        if (!prev.open) {
+          if (menuDebugEnabled) {
+            // eslint-disable-next-line no-console
+            console.log("[menu-debug] skip close (already closed)", {
+              reason,
+              previous: prev,
+            });
+          }
+          return prev;
+        }
+        const next = { ...prev, open: false };
+        if (menuDebugEnabled) {
+          // eslint-disable-next-line no-console
+          console.log("[menu-debug] closing context menu", {
+            reason,
+            previous: prev,
+            next,
+          });
+        }
+        return next;
+      });
+    },
+    [menuDebugEnabled],
+  );
+
+  useEffect(() => {
+    if (!contextMenu.open) {
+      return;
+    }
+    if (menuDebugEnabled) {
+      // eslint-disable-next-line no-console
+      console.log("[menu-debug] validating context menu target", {
+        nodeId: contextMenu.nodeId,
+        known: lookups.byId.has(contextMenu.nodeId ?? -1),
+      });
+    }
+    if (contextMenu.nodeId == null) {
+      closeContextMenu("missing-node-id");
+      return;
+    }
+    if (!lookups.byId.has(contextMenu.nodeId)) {
+      closeContextMenu("stale-node-reference");
+    }
+  }, [closeContextMenu, contextMenu, lookups.byId, menuDebugEnabled]);
+
+  useEffect(() => {
+    if (!contextMenu.open) {
+      return;
+    }
+    const handlePointerDown = (event: MouseEvent | PointerEvent) => {
+      if ("button" in event && event.button === 2) {
+        if (menuDebugEnabled) {
+          // eslint-disable-next-line no-console
+          console.log("[menu-debug] pointerdown ignored (right button)", {
+            type: event.type,
+            button: event.button,
+          });
+        }
+        return;
+      }
+      const container = menuContainerRef.current;
+      if (container && event.target instanceof Node && container.contains(event.target)) {
+        if (menuDebugEnabled) {
+          // eslint-disable-next-line no-console
+          console.log("[menu-debug] pointerdown inside menu, skip close", {
+            type: event.type,
+          });
+        }
+        return;
+      }
+      if (menuDebugEnabled) {
+        // eslint-disable-next-line no-console
+        console.log("[menu-debug] pointerdown closing context menu", {
+          type: event.type,
+          button: "button" in event ? event.button : null,
+        });
+      }
+      closeContextMenu(`pointerdown:${event.type}`);
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        if (menuDebugEnabled) {
+          // eslint-disable-next-line no-console
+          console.log("[menu-debug] escape pressed, closing menu");
+        }
+        closeContextMenu("escape-key");
+      }
+    };
+    document.addEventListener("pointerdown", handlePointerDown, true);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown, true);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [closeContextMenu, contextMenu.open, menuDebugEnabled]);
+
+  const isDescendantOrSelf = useCallback(
+    (nodeId: number | null, sourceSet: Set<number>) => {
+      if (nodeId == null) {
+        return false;
+      }
+      const visited = new Set<number>();
+      let current = lookups.byId.get(nodeId);
+      while (current) {
+        if (sourceSet.has(current.id)) {
+          return true;
+        }
+        const parentId = current.parent_id;
+        if (parentId == null || visited.has(parentId)) {
+          break;
+        }
+        visited.add(parentId);
+        current = lookups.byId.get(parentId);
+      }
+      return false;
+    },
+    [lookups],
+  );
+
+  const handleCopySelection = useCallback(
+    (snapshot?: { ids: number[]; parentId: ParentKey }) => {
+      const effectiveIds = snapshot?.ids ?? selectedIds;
+      const effectiveParentRaw = snapshot?.parentId ?? selectionParentId;
+      if (effectiveParentRaw === undefined || effectiveIds.length === 0) {
+        messageApi.warning("请先选择要复制的目录");
+        return;
+      }
+      const effectiveParent = effectiveParentRaw ?? null;
+      setClipboard({ mode: "copy", sourceIds: [...effectiveIds], parentId: effectiveParent });
+      messageApi.success(`已复制 ${effectiveIds.length} 个目录`);
+    },
+    [messageApi, selectedIds, selectionParentId],
+  );
+
+  const handleCutSelection = useCallback(
+    (snapshot?: { ids: number[]; parentId: ParentKey }) => {
+      const effectiveIds = snapshot?.ids ?? selectedIds;
+      const effectiveParentRaw = snapshot?.parentId ?? selectionParentId;
+      if (effectiveParentRaw === undefined || effectiveIds.length === 0) {
+        messageApi.warning("请先选择要剪切的目录");
+        return;
+      }
+      const effectiveParent = effectiveParentRaw ?? null;
+      setClipboard({ mode: "cut", sourceIds: [...effectiveIds], parentId: effectiveParent });
+      messageApi.info(`已剪切 ${effectiveIds.length} 个目录`);
+    },
+    [messageApi, selectedIds, selectionParentId],
+  );
+
+  const clearClipboard = useCallback(() => {
+    setClipboard(null);
+    messageApi.success("剪贴板已清空");
+  }, [messageApi]);
+
+  const openDeletePreview = useCallback(
+    (mode: "soft" | "purge", ids: number[]) => {
+      if (ids.length === 0) {
+        return;
+      }
+      setDeletePreview({ visible: true, mode, ids, loading: true, result: null });
+      bulkCheckCategories({ ids, include_descendants: true })
+        .then((resp) => {
+          setDeletePreview((prev) => ({ ...prev, loading: false, result: resp }));
+        })
+        .catch((err) => {
+          const msg = err instanceof Error ? err.message : "删除校验失败，请重试";
+          messageApi.error(msg);
+          setDeletePreview({ visible: false, mode: "soft", ids: [], loading: false, result: null });
+        });
+    },
+    [messageApi],
+  );
+
+  const handleConfirmDelete = useCallback(() => {
+    if (!deletePreview.visible || deletePreview.ids.length === 0) {
+      return;
+    }
+    const targetId = deletePreview.ids[0];
+    setDeletePreview((prev) => ({ ...prev, loading: true }));
+    if (deletePreview.mode === "soft") {
+      deleteMutation.mutate(targetId, {
+        onSuccess: () => {
+          setDeletePreview({ visible: false, mode: "soft", ids: [], loading: false, result: null });
+        },
+        onError: (err) => {
+          const msg = err instanceof Error ? err.message : "删除失败，请重试";
+          messageApi.error(msg);
+          setDeletePreview((prev) => ({ ...prev, loading: false }));
+        },
+      });
+    } else {
+      purgeMutation.mutate(targetId, {
+        onSuccess: () => {
+          setDeletePreview({ visible: false, mode: "soft", ids: [], loading: false, result: null });
+        },
+        onError: (err) => {
+          const msg = err instanceof Error ? err.message : "彻底删除失败，请重试";
+          messageApi.error(msg);
+          setDeletePreview((prev) => ({ ...prev, loading: false }));
+        },
+      });
+    }
+  }, [deleteMutation, deletePreview, messageApi, purgeMutation, setDeletePreview]);
+
+  const handlePaste = useCallback(
+    async ({
+      targetParentId,
+      insertBeforeId,
+      insertAfterId,
+      targetNodeId,
+    }: {
+      targetParentId: number | null;
+      insertBeforeId?: number | null;
+      insertAfterId?: number | null;
+      targetNodeId?: number | null;
+    }) => {
+      if (!clipboard) {
+        messageApi.warning("剪贴板为空");
+        return;
+      }
+      if (isMutating) {
+        return;
+      }
+      if (targetNodeId != null && isDescendantOrSelf(targetNodeId, clipboardSourceSet)) {
+        messageApi.error("无法粘贴到剪贴板节点自身或其子节点");
+        return;
+      }
+      if (isDescendantOrSelf(targetParentId, clipboardSourceSet)) {
+        messageApi.error("无法粘贴到剪贴板节点自身或其子节点");
+        return;
+      }
+      if (insertBeforeId != null && clipboardSourceSet.has(insertBeforeId)) {
+        messageApi.error("无法以剪贴板节点作为参考位置");
+        return;
+      }
+      if (insertAfterId != null && clipboardSourceSet.has(insertAfterId)) {
+        messageApi.error("无法以剪贴板节点作为参考位置");
+        return;
+      }
+
+      setIsMutating(true);
+      try {
+        if (clipboard.mode === "copy") {
+          const payload: CategoryBulkCopyPayload = {
+            source_ids: clipboard.sourceIds,
+            target_parent_id: targetParentId ?? null,
+          };
+          if (insertBeforeId != null) {
+            payload.insert_before_id = insertBeforeId;
+          }
+          if (insertAfterId != null) {
+            payload.insert_after_id = insertAfterId;
+          }
+          await bulkCopyCategories(payload);
+          messageApi.success(`已粘贴 ${clipboard.sourceIds.length} 个目录`);
+        } else {
+          const payload: CategoryBulkMovePayload = {
+            source_ids: clipboard.sourceIds,
+            target_parent_id: targetParentId ?? null,
+          };
+          if (insertBeforeId != null) {
+            payload.insert_before_id = insertBeforeId;
+          }
+          if (insertAfterId != null) {
+            payload.insert_after_id = insertAfterId;
+          }
+          await bulkMoveCategories(payload);
+          messageApi.success(`已移动 ${clipboard.sourceIds.length} 个目录`);
+          setClipboard(null);
+          setSelectedIds([]);
+          setSelectionParentId(undefined);
+          setLastSelectedId(null);
+        }
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ["categories-tree"] }),
+          queryClient.invalidateQueries({ queryKey: ["categories-trash"] }),
+        ]);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "粘贴失败，请重试";
+        messageApi.error(msg);
+      } finally {
+        setIsMutating(false);
+      }
+    },
+    [
+      clipboard,
+      clipboardSourceSet,
+      isMutating,
+      isDescendantOrSelf,
+      messageApi,
+      queryClient,
+      setClipboard,
+      setLastSelectedId,
+      setSelectedIds,
+      setSelectionParentId,
+    ],
+  );
+
+  const handlePasteAsChild = useCallback(
+    (nodeId: number) => {
+      void handlePaste({ targetParentId: nodeId, targetNodeId: nodeId });
+    },
+    [handlePaste],
+  );
+
+  const handlePasteBefore = useCallback(
+    (nodeId: number) => {
+      const parentId = lookups.byId.get(nodeId)?.parent_id ?? null;
+      void handlePaste({ targetParentId: parentId, insertBeforeId: nodeId });
+    },
+    [handlePaste, lookups],
+  );
+
+  const handlePasteAfter = useCallback(
+    (nodeId: number) => {
+      const parentId = lookups.byId.get(nodeId)?.parent_id ?? null;
+      void handlePaste({ targetParentId: parentId, insertAfterId: nodeId });
+    },
+    [handlePaste, lookups],
+  );
+
+  const handleOpenAddDocument = useCallback(
+    (nodeId: number) => {
+      const current = lookups.byId.get(nodeId);
+      if (current) {
+        setSelectionParentId(current.parent_id ?? null);
+      } else {
+        setSelectionParentId(undefined);
+      }
+      setSelectedIds([nodeId]);
+      setLastSelectedId(nodeId);
+      setDetailCollapseKeys(["detail"]);
+      documentForm.resetFields();
+      setDocumentModal({ open: true, nodeId });
+    },
+    [documentForm, lookups, setDetailCollapseKeys, setLastSelectedId, setSelectionParentId, setSelectedIds],
+  );
+
+
+  const renderTreeTitle = useCallback(
+    (node: DataNode) => {
+      const treeNode = node as TreeDataNode;
+      const nodeId = Number(treeNode.key);
+      const isCutNode = clipboard?.mode === "cut" && clipboardSourceSet.has(nodeId);
+
+      return <span style={isCutNode ? { opacity: 0.5 } : undefined}>{node.title as string}</span>;
+    },
+    [clipboard, clipboardSourceSet],
+  );
+
+  const suppressNativeTreeContextMenu = useCallback(
+    (event: ReactMouseEvent<Element>) => {
+      if (menuDebugEnabled) {
+        const target = event.target as HTMLElement | null;
+        const targetInfo =
+          target instanceof HTMLElement
+            ? {
+                tag: target.tagName,
+                className: target.className,
+                dataset: { ...target.dataset },
+              }
+            : null;
+        // eslint-disable-next-line no-console
+        console.log("[menu-debug] suppress native contextmenu", {
+          type: event.type,
+          target: targetInfo,
+        });
+      }
+      event.preventDefault();
+      if (typeof event.nativeEvent?.preventDefault === "function") {
+        event.nativeEvent.preventDefault();
+      }
+    },
+    [menuDebugEnabled],
+  );
+
+  const handleTreeRightClick = useCallback(
+    (info: { event: ReactMouseEvent; node: EventDataNode<DataNode> }) => {
+      const { event, node } = info;
+      event.preventDefault();
+      event.stopPropagation();
+      if (typeof event.nativeEvent?.preventDefault === "function") {
+        event.nativeEvent.preventDefault();
+      }
+      const nodeId = Number(node.key);
+      const parentId = getParentId(node);
+      const normalizedParent = parentId ?? null;
+
+      if (menuDebugEnabled) {
+        // eslint-disable-next-line no-console
+        console.log("[menu-debug] onRightClick", {
+          nodeId,
+          parentId: normalizedParent,
+          client: { x: event.clientX, y: event.clientY },
+          selectedIds,
+          selectionParentId,
+          nativeType: event.nativeEvent?.type,
+          nativeButton: event.nativeEvent?.button,
+        });
+      }
+
+      if (!selectedIds.includes(nodeId)) {
+        if (menuDebugEnabled) {
+          // eslint-disable-next-line no-console
+          console.log("[menu-debug] updating selection for context menu", {
+            nextSelectedIds: [nodeId],
+          });
+        }
+        setSelectionParentId(normalizedParent);
+        setSelectedIds([nodeId]);
+        setLastSelectedId(nodeId);
+      } else if (selectionParentId !== normalizedParent) {
+        if (menuDebugEnabled) {
+          // eslint-disable-next-line no-console
+          console.log("[menu-debug] syncing selection parent", {
+            previousParent: selectionParentId,
+            nextParent: normalizedParent,
+          });
+        }
+        setSelectionParentId(normalizedParent);
+      }
+
+      const nextState: ContextMenuState = {
+        open: true,
+        nodeId,
+        parentId: normalizedParent,
+        x: event.clientX,
+        y: event.clientY,
+      };
+      if (menuDebugEnabled) {
+        // eslint-disable-next-line no-console
+        console.log("[menu-debug] opening context menu", {
+          state: nextState,
+        });
+      }
+      setContextMenu(nextState);
+    },
+    [menuDebugEnabled, selectedIds, selectionParentId, setSelectionParentId, setSelectedIds, setLastSelectedId],
+  );
+
+  const contextMenuItems = useMemo<MenuProps["items"]>(() => {
+    if (!contextMenu.open || contextMenu.nodeId == null) {
+      if (!clipboard) {
+        return [];
+      }
+      return [
+        {
+          key: "clear-clipboard",
+          icon: <ClearOutlined />,
+          label: "清空剪贴板",
+          onClick: () => {
+            closeContextMenu("action:clear-clipboard-fallback");
+            clearClipboard();
+          },
+        },
+      ];
+    }
+
+    const nodeId = contextMenu.nodeId;
+    const nodeParentId = contextMenu.parentId;
+    const selectionIncludesNode = selectedIds.includes(nodeId);
+    const resolvedSelectionParent =
+      selectionIncludesNode && selectionParentId !== undefined
+        ? selectionParentId
+        : contextMenu.parentId;
+    const resolvedSelectionIds = selectionIncludesNode ? selectedIds : [nodeId];
+    const resolvedSelectionAvailable =
+      resolvedSelectionParent !== undefined && resolvedSelectionIds.length > 0;
+    const contextCanCopy = !isMutating && resolvedSelectionAvailable;
+
+    const items: MenuProps["items"] = [
+      {
+        key: "add-document",
+        icon: <FileAddOutlined />,
+        label: "添加文档",
+        onClick: () => {
+          closeContextMenu("action:add-document");
+          handleOpenAddDocument(nodeId);
+        },
+      },
+    ];
+
+    if (resolvedSelectionAvailable) {
+      items.push(
+        {
+          key: "copy-selection",
+          icon: <CopyOutlined />,
+          label: "复制所选",
+          disabled: !contextCanCopy,
+          onClick: () => {
+            closeContextMenu("action:copy-selection");
+            handleCopySelection({
+              ids: resolvedSelectionIds,
+              parentId: resolvedSelectionParent ?? null,
+            });
+          },
+        },
+        {
+          key: "cut-selection",
+          icon: <ScissorOutlined />,
+          label: "剪切所选",
+          disabled: !contextCanCopy,
+          onClick: () => {
+            closeContextMenu("action:cut-selection");
+            handleCutSelection({
+              ids: resolvedSelectionIds,
+              parentId: resolvedSelectionParent ?? null,
+            });
+          },
+        },
+      );
+    }
+
+    if (clipboard) {
+      items.push({ type: "divider" });
+      items.push(
+        {
+          key: "paste-child",
+          icon: clipboard.mode === "cut" ? <ScissorOutlined /> : <SnippetsOutlined />,
+          label: clipboard.mode === "cut" ? "剪切到该节点" : "粘贴为子节点",
+          disabled: isMutating || isDescendantOrSelf(nodeId, clipboardSourceSet),
+          onClick: () => {
+            closeContextMenu("action:paste-child");
+            handlePasteAsChild(nodeId);
+          },
+        },
+        {
+          key: "paste-before",
+          icon: <SnippetsOutlined />,
+          label: clipboard.mode === "cut" ? "剪切到此前" : "粘贴到此前",
+          disabled:
+            isMutating ||
+            clipboardSourceSet.has(nodeId) ||
+            isDescendantOrSelf(nodeParentId, clipboardSourceSet),
+          onClick: () => {
+            closeContextMenu("action:paste-before");
+            handlePasteBefore(nodeId);
+          },
+        },
+        {
+          key: "paste-after",
+          icon: <SnippetsOutlined />,
+          label: clipboard.mode === "cut" ? "剪切到此后" : "粘贴到此后",
+          disabled:
+            isMutating ||
+            clipboardSourceSet.has(nodeId) ||
+            isDescendantOrSelf(nodeParentId, clipboardSourceSet),
+          onClick: () => {
+            closeContextMenu("action:paste-after");
+            handlePasteAfter(nodeId);
+          },
+        },
+      );
+      items.push({ type: "divider" });
+      items.push({
+        key: "clear-clipboard",
+        icon: <ClearOutlined />,
+        label: "清空剪贴板",
+        onClick: () => {
+          closeContextMenu("action:clear-clipboard");
+          clearClipboard();
+        },
+      });
+    }
+
+    if (menuDebugEnabled) {
+      // eslint-disable-next-line no-console
+      console.log("[menu-debug] context menu items", {
+        nodeId,
+        selectionIncludesNode,
+        resolvedSelectionIds,
+        resolvedSelectionParent,
+        count: items.length,
+        keys: items.map((item) => {
+          if (!item) {
+            return null;
+          }
+          if ("key" in item && item.key) {
+            return item.key;
+          }
+          return item.type ?? null;
+        }),
+      });
+    }
+
+    return items;
+  }, [
+    clearClipboard,
+    clipboard,
+    clipboardSourceSet,
+    closeContextMenu,
+    contextMenu,
+    handleCopySelection,
+    handleCutSelection,
+    handleOpenAddDocument,
+    handlePasteAfter,
+    handlePasteAsChild,
+    handlePasteBefore,
+    isDescendantOrSelf,
+    isMutating,
+    menuDebugEnabled,
+    selectedIds,
+    selectionParentId,
+  ]);
+
+  const contextMenuVisible = contextMenu.open && (contextMenuItems?.length ?? 0) > 0;
+
+  useEffect(() => {
+    if (menuDebugEnabled) {
+      // eslint-disable-next-line no-console
+      console.log("[menu-debug] visibility", {
+        open: contextMenu.open,
+        itemCount: contextMenuItems?.length ?? 0,
+        visible: contextMenuVisible,
+        coords: { x: contextMenu.x, y: contextMenu.y },
+      });
+    }
+  }, [contextMenu, contextMenuItems, contextMenuVisible, menuDebugEnabled]);
+
   const handleDrop = useCallback<NonNullable<TreeProps["onDrop"]>>(
     async (info) => {
       const dragId = Number(info.dragNode.key);
       const dropId = Number(info.node.key);
+      if (menuDebugEnabled) {
+        // eslint-disable-next-line no-console
+        console.log("[menu-debug] handleDrop", {
+          dragId,
+          dropId,
+          dropToGap: info.dropToGap,
+          dropPosition: info.dropPosition,
+        });
+      }
+      closeContextMenu("tree-drop");
       const nodePosition = Number(
         (info.node.pos ?? "0").split("-").pop() ?? 0,
       );
@@ -460,7 +1138,7 @@ const App = () => {
         setIsMutating(false);
       }
     },
-    [lookups, messageApi, refetch],
+    [closeContextMenu, lookups, menuDebugEnabled, messageApi, refetch],
   );
 
   const handleBulkRestore = useCallback(async () => {
@@ -509,8 +1187,27 @@ const App = () => {
     const parentId = getParentId(info.node);
     const normalizedParent = parentId ?? null;
     const nativeEvent = info.nativeEvent as MouseEvent | undefined;
+    const isContextMenuEvent =
+      nativeEvent?.type === "contextmenu" || (nativeEvent?.button ?? 0) === 2;
     const isShift = nativeEvent?.shiftKey ?? false;
     const isMeta = nativeEvent ? nativeEvent.metaKey || nativeEvent.ctrlKey : false;
+
+    if (menuDebugEnabled) {
+      // eslint-disable-next-line no-console
+      console.log("[menu-debug] onSelect", {
+        clickedId,
+        normalizedParent,
+        isContextMenuEvent,
+        isShift,
+        isMeta,
+        selected: info.selected,
+        currentSelection: selectedIds,
+      });
+    }
+
+    if (!isContextMenuEvent) {
+      closeContextMenu("tree-select");
+    }
 
     if (info.selected) {
       if (
@@ -701,23 +1398,6 @@ const App = () => {
       .catch(() => undefined);
   }, [documentForm, documentModal.nodeId, documentCreateMutation, messageApi]);
 
-  const handleOpenAddDocument = useCallback(
-    (nodeId: number) => {
-      const current = lookups.byId.get(nodeId);
-      if (current) {
-        setSelectionParentId(current.parent_id ?? null);
-      } else {
-        setSelectionParentId(undefined);
-      }
-      setSelectedIds([nodeId]);
-      setLastSelectedId(nodeId);
-      setDetailCollapseKeys(["detail"]);
-      documentForm.resetFields();
-      setDocumentModal({ open: true, nodeId });
-    },
-    [documentForm, lookups, setDetailCollapseKeys, setLastSelectedId, setSelectionParentId, setSelectedIds],
-  );
-
   const handleToolbarAddDocument = useCallback(() => {
     if (selectedNodeId == null) {
       messageApi.warning("请选择一个目录节点后再添加文档");
@@ -738,6 +1418,32 @@ const App = () => {
             borderRight: "1px solid #f0f0f0",
           }}
         >
+          {contextMenuVisible ? (
+            <div
+              ref={menuContainerRef}
+              style={{
+                position: "fixed",
+                top: contextMenu.y,
+                left: contextMenu.x,
+                zIndex: 1050,
+                background: "#fff",
+                border: "1px solid #d9d9d9",
+                borderRadius: 6,
+                boxShadow: "0 6px 18px rgba(0,0,0,0.15)",
+                minWidth: 160,
+                overflow: "hidden",
+              }}
+            >
+              <Menu
+                selectable={false}
+                items={contextMenuItems}
+                onClick={({ domEvent }) => {
+                  domEvent.stopPropagation();
+                  domEvent.preventDefault();
+                }}
+              />
+            </div>
+          ) : null}
           <div
             style={{
               display: "flex",
@@ -830,7 +1536,7 @@ const App = () => {
                   messageApi.error("无法删除含子节点的目录");
                   return;
                 }
-                deleteMutation.mutate(selectedIds[0]);
+                openDeletePreview("soft", [selectedIds[0]]);
               }}
               disabled={selectedIds.length !== 1}
             >
@@ -885,6 +1591,14 @@ const App = () => {
               </span>
             </Tooltip>
           </div>
+          {clipboard ? (
+            <Tag
+              color={clipboard.mode === "cut" ? "orange" : "blue"}
+              style={{ marginBottom: 16 }}
+            >
+              剪贴板：{clipboard.mode === "cut" ? "剪切" : "复制"} {clipboard.sourceIds.length} 项
+            </Tag>
+          ) : null}
           {isLoading ? (
             <div style={{ display: "flex", justifyContent: "center", marginTop: 32 }}>
               <Spin />
@@ -894,44 +1608,28 @@ const App = () => {
           ) : treeData.length === 0 ? (
             <Empty description="暂无目录" />
           ) : (
-            <Tree
-              blockNode
-              draggable={{ icon: false }}
-              showLine={{ showLeafIcon: false }}
-              multiple
-              treeData={treeData}
-              titleRender={(node) => {
-                const id = Number(node.key);
-                return (
-                  <Dropdown
-                    trigger={["contextMenu"]}
-                    menu={{
-                      items: [
-                        {
-                          key: "add-document",
-                          icon: <FileAddOutlined />,
-                          label: "添加文档",
-                          onClick: () => handleOpenAddDocument(id),
-                        },
-                      ],
-                    }}
-                  >
-                    <span>{node.title as string}</span>
-                  </Dropdown>
-                );
-              }}
-              onDrop={handleDrop}
-              selectedKeys={selectedIds.map(String)}
-              onSelect={handleSelect}
-              expandedKeys={expandedKeys}
-              autoExpandParent={autoExpandParent}
-              onExpand={(keys) => {
-                setExpandedKeys(keys.map(String));
-                setAutoExpandParent(false);
-              }}
-              height={600}
-              style={{ userSelect: "none" }}
-            />
+            <div onContextMenuCapture={suppressNativeTreeContextMenu}>
+              <Tree
+                blockNode
+                draggable={{ icon: false }}
+                showLine={{ showLeafIcon: false }}
+                multiple
+                treeData={treeData}
+                titleRender={renderTreeTitle}
+                onDrop={handleDrop}
+                selectedKeys={selectedIds.map(String)}
+                onSelect={handleSelect}
+                onRightClick={handleTreeRightClick}
+                expandedKeys={expandedKeys}
+                autoExpandParent={autoExpandParent}
+                onExpand={(keys) => {
+                  setExpandedKeys(keys.map(String));
+                  setAutoExpandParent(false);
+                }}
+                height={600}
+                style={{ userSelect: "none" }}
+              />
+            </div>
           )}
           <Collapse
             activeKey={detailCollapseKeys}
@@ -1148,6 +1846,55 @@ const App = () => {
               onChange: (keys) => setSelectedTrashRowKeys(keys),
             }}
           />
+        )}
+      </Modal>
+      <Modal
+        title={deletePreview.mode === "purge" ? "彻底删除确认" : "删除确认"}
+        open={deletePreview.visible}
+        confirmLoading={
+          deletePreview.loading || deleteMutation.isPending || purgeMutation.isPending
+        }
+        onCancel={() =>
+          setDeletePreview({ visible: false, mode: "soft", ids: [], loading: false, result: null })
+        }
+        onOk={handleConfirmDelete}
+        okText={deletePreview.mode === "purge" ? "彻底删除" : "删除"}
+        cancelButtonProps={{
+          disabled: deletePreview.loading || deleteMutation.isPending || purgeMutation.isPending,
+        }}
+        width={520}
+      >
+        {deletePreview.loading ? (
+          <div style={{ display: "flex", justifyContent: "center", padding: "24px 0" }}>
+            <Spin />
+          </div>
+        ) : deletePreview.result ? (
+          <Space direction="vertical" style={{ width: "100%" }}>
+            {deletePreview.result.items.map((item) => (
+              <Card size="small" key={item.id} bordered={false} style={{ border: "1px solid #f0f0f0" }}>
+                <Typography.Text strong>{item.name}</Typography.Text>
+                <Typography.Paragraph type="secondary" style={{ marginBottom: 8 }}>
+                  {item.path}
+                </Typography.Paragraph>
+                <Typography.Text>关联文档：{item.document_count}</Typography.Text>
+                {item.warnings && item.warnings.length > 0 ? (
+                  <ul style={{ paddingLeft: 16, margin: "8px 0 0" }}>
+                    {item.warnings.map((warn, idx) => (
+                      <li key={idx}>{warn}</li>
+                    ))}
+                  </ul>
+                ) : (
+                  <Typography.Paragraph type="secondary" style={{ margin: "8px 0 0" }}>
+                    无关联风险
+                  </Typography.Paragraph>
+                )}
+              </Card>
+            ))}
+          </Space>
+        ) : (
+          <Typography.Paragraph type="secondary">
+            正在加载删除校验信息...
+          </Typography.Paragraph>
         )}
       </Modal>
       <Modal

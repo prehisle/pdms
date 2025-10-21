@@ -194,12 +194,11 @@ func TestBulkCopyCategoriesEndpoint(t *testing.T) {
 	router := NewRouter(handler)
 
 	existing := createCategory(t, router, `{"name":"Topic"}`)
-	_ = existing
 	parent := createCategory(t, router, `{"name":"Parent"}`)
 	child := createCategory(t, router, fmt.Sprintf(`{"name":"Topic","parent_id":%d}`, parent.ID))
 	createCategory(t, router, fmt.Sprintf(`{"name":"Leaf","parent_id":%d}`, child.ID))
 
-	payload := fmt.Sprintf(`{"source_ids":[%d],"target_parent_id":null}`, child.ID)
+	payload := fmt.Sprintf(`{"source_ids":[%d],"target_parent_id":null,"insert_before_id":%d}`, child.ID, existing.ID)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/categories/bulk/copy", strings.NewReader(payload))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -228,6 +227,23 @@ func TestBulkCopyCategoriesEndpoint(t *testing.T) {
 	}
 	if len(copied.Children) != 1 || copied.Children[0].Name != "Leaf" {
 		t.Fatalf("expected child Leaf, got %+v", copied.Children)
+	}
+
+	treeReq := httptest.NewRequest(http.MethodGet, "/api/v1/categories/tree", nil)
+	treeRec := httptest.NewRecorder()
+	router.ServeHTTP(treeRec, treeReq)
+	if treeRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for tree, got %d", treeRec.Code)
+	}
+	var tree []*service.Category
+	if err := json.NewDecoder(treeRec.Body).Decode(&tree); err != nil {
+		t.Fatalf("decode tree error: %v", err)
+	}
+	if len(tree) < 2 {
+		t.Fatalf("expected at least two root nodes, got %+v", tree)
+	}
+	if tree[0].ID != copied.ID || tree[1].ID != existing.ID {
+		t.Fatalf("expected copied node before existing, got order %+v", []int64{tree[0].ID, tree[1].ID})
 	}
 }
 

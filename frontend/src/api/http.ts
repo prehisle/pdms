@@ -1,12 +1,22 @@
-const DEFAULT_API_BASE_URL = "http://localhost:9180";
+const DEFAULT_API_BASE_URL =
+  typeof window !== "undefined" ? window.location.origin : "";
 
-const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? DEFAULT_API_BASE_URL;
+const configuredBase = import.meta.env.VITE_API_BASE_URL;
+const normalizedBase =
+  typeof configuredBase === "string" ? configuredBase.trim() : undefined;
+const cleanedBase =
+  normalizedBase && normalizedBase.length > 0
+    ? normalizedBase.replace(/\/+$/, "")
+    : DEFAULT_API_BASE_URL;
+
+const apiBaseUrl = cleanedBase;
 
 export async function http<T>(
   path: string,
   options: RequestInit = {},
 ): Promise<T> {
-  const response = await fetch(`${apiBaseUrl}${path}`, {
+  const url = apiBaseUrl ? `${apiBaseUrl}${path}` : path;
+  const response = await fetch(url, {
     headers: {
       "Content-Type": "application/json",
       ...(options.headers ?? {}),

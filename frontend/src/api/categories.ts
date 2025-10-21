@@ -48,6 +48,8 @@ export interface CategoryBulkIDsPayload {
 export interface CategoryBulkCopyPayload {
   source_ids: number[];
   target_parent_id?: number | null;
+  insert_before_id?: number | null;
+  insert_after_id?: number | null;
 }
 
 export interface CategoryBulkMovePayload {
