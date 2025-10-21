@@ -188,47 +188,114 @@ func TestBulkCheckCategories(t *testing.T) {
 }
 
 func TestBulkCopyCategoriesEndpoint(t *testing.T) {
-    ndr := newInMemoryNDR()
-    svc := service.NewService(cache.NewNoop(), ndr)
-    handler := NewHandler(svc, HeaderDefaults{})
-    router := NewRouter(handler)
+	ndr := newInMemoryNDR()
+	svc := service.NewService(cache.NewNoop(), ndr)
+	handler := NewHandler(svc, HeaderDefaults{})
+	router := NewRouter(handler)
 
-    existing := createCategory(t, router, `{"name":"Topic"}`)
-    _ = existing
-    parent := createCategory(t, router, `{"name":"Parent"}`)
-    child := createCategory(t, router, fmt.Sprintf(`{"name":"Topic","parent_id":%d}`, parent.ID))
-    createCategory(t, router, fmt.Sprintf(`{"name":"Leaf","parent_id":%d}`, child.ID))
+	existing := createCategory(t, router, `{"name":"Topic"}`)
+	_ = existing
+	parent := createCategory(t, router, `{"name":"Parent"}`)
+	child := createCategory(t, router, fmt.Sprintf(`{"name":"Topic","parent_id":%d}`, parent.ID))
+	createCategory(t, router, fmt.Sprintf(`{"name":"Leaf","parent_id":%d}`, child.ID))
 
-    payload := fmt.Sprintf(`{"source_ids":[%d],"target_parent_id":null}`, child.ID)
-    req := httptest.NewRequest(http.MethodPost, "/api/v1/categories/bulk/copy", strings.NewReader(payload))
-    req.Header.Set("Content-Type", "application/json")
-    rec := httptest.NewRecorder()
+	payload := fmt.Sprintf(`{"source_ids":[%d],"target_parent_id":null}`, child.ID)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/categories/bulk/copy", strings.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
 
-    router.ServeHTTP(rec, req)
+	router.ServeHTTP(rec, req)
 
-    if rec.Code != http.StatusCreated {
-        t.Fatalf("expected 201, got %d", rec.Code)
-    }
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d", rec.Code)
+	}
 
-    var resp struct {
-        Items []service.Category `json:"items"`
-    }
-    if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
-        t.Fatalf("decode response error: %v", err)
-    }
-    if len(resp.Items) != 1 {
-        t.Fatalf("expected 1 item, got %d", len(resp.Items))
-    }
-    copied := resp.Items[0]
-    if copied.ParentID != nil {
-        t.Fatalf("expected copied parent nil, got %v", copied.ParentID)
-    }
-    if copied.Name == "Topic" {
-        t.Fatalf("expected unique name different from Topic")
-    }
-    if len(copied.Children) != 1 || copied.Children[0].Name != "Leaf" {
-        t.Fatalf("expected child Leaf, got %+v", copied.Children)
-    }
+	var resp struct {
+		Items []service.Category `json:"items"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response error: %v", err)
+	}
+	if len(resp.Items) != 1 {
+		t.Fatalf("expected 1 item, got %d", len(resp.Items))
+	}
+	copied := resp.Items[0]
+	if copied.ParentID != nil {
+		t.Fatalf("expected copied parent nil, got %v", copied.ParentID)
+	}
+	if copied.Name == "Topic" {
+		t.Fatalf("expected unique name different from Topic")
+	}
+	if len(copied.Children) != 1 || copied.Children[0].Name != "Leaf" {
+		t.Fatalf("expected child Leaf, got %+v", copied.Children)
+	}
+}
+
+func TestBulkMoveCategoriesEndpoint(t *testing.T) {
+	ndr := newInMemoryNDR()
+	svc := service.NewService(cache.NewNoop(), ndr)
+	handler := NewHandler(svc, HeaderDefaults{})
+	router := NewRouter(handler)
+
+	sourceParent := createCategory(t, router, `{"name":"Source"}`)
+	moveA := createCategory(t, router, fmt.Sprintf(`{"name":"MoveA","parent_id":%d}`, sourceParent.ID))
+	moveB := createCategory(t, router, fmt.Sprintf(`{"name":"MoveB","parent_id":%d}`, sourceParent.ID))
+
+	targetParent := createCategory(t, router, `{"name":"Target"}`)
+	anchor := createCategory(t, router, fmt.Sprintf(`{"name":"Keep","parent_id":%d}`, targetParent.ID))
+
+	payload := fmt.Sprintf(`{"source_ids":[%d,%d],"target_parent_id":%d,"insert_before_id":%d}`, moveA.ID, moveB.ID, targetParent.ID, anchor.ID)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/categories/bulk/move", strings.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+
+	var resp struct {
+		Items []service.Category `json:"items"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response error: %v", err)
+	}
+	if len(resp.Items) != 2 {
+		t.Fatalf("expected 2 moved items, got %d", len(resp.Items))
+	}
+
+	treeReq := httptest.NewRequest(http.MethodGet, "/api/v1/categories/tree", nil)
+	treeRec := httptest.NewRecorder()
+	router.ServeHTTP(treeRec, treeReq)
+	if treeRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 for tree, got %d", treeRec.Code)
+	}
+	var tree []*service.Category
+	if err := json.NewDecoder(treeRec.Body).Decode(&tree); err != nil {
+		t.Fatalf("decode tree error: %v", err)
+	}
+
+	var targetNode *service.Category
+	var sourceNode *service.Category
+	for _, node := range tree {
+		if node.ID == targetParent.ID {
+			targetNode = node
+		}
+		if node.ID == sourceParent.ID {
+			sourceNode = node
+		}
+	}
+
+	if targetNode == nil || len(targetNode.Children) != 3 {
+		t.Fatalf("expected target to have 3 children, got %+v", targetNode)
+	}
+	if targetNode.Children[0].ID != moveA.ID || targetNode.Children[1].ID != moveB.ID || targetNode.Children[2].ID != anchor.ID {
+		t.Fatalf("unexpected target children order: %+v", targetNode.Children)
+	}
+	if sourceNode == nil || len(sourceNode.Children) != 0 {
+		t.Fatalf("expected source to be empty, got %+v", sourceNode)
+	}
 }
 
 func TestCategoriesEndpoints_InvalidJSON(t *testing.T) {

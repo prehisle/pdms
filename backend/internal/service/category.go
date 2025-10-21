@@ -84,8 +84,16 @@ type CategoryBulkIDsRequest struct {
 
 // CategoryBulkCopyRequest describes bulk copy operations orchestrated by DMS.
 type CategoryBulkCopyRequest struct {
-	SourceIDs       []int64 `json:"source_ids"`
+	SourceIDs      []int64 `json:"source_ids"`
 	TargetParentID *int64  `json:"target_parent_id"`
+}
+
+// CategoryBulkMoveRequest describes moving multiple nodes to a new parent with optional anchor.
+type CategoryBulkMoveRequest struct {
+	SourceIDs      []int64 `json:"source_ids"`
+	TargetParentID *int64  `json:"target_parent_id"`
+	InsertBeforeID *int64  `json:"insert_before_id,omitempty"`
+	InsertAfterID  *int64  `json:"insert_after_id,omitempty"`
 }
 
 // CategoryRepositionRequest describes moving + reordering in a single call.
@@ -223,7 +231,7 @@ func (s *Service) DeleteCategory(ctx context.Context, meta RequestMeta, id int64
 	if err != nil {
 		log.Printf("[category] check children failed id=%d err=%v", id, err)
 		return fmt.Errorf("check children: %w", err)
-}
+	}
 	if hasChildren {
 		return errors.New("cannot delete category with children")
 	}
@@ -605,6 +613,131 @@ func generateCopyNameCandidates(base string) []string {
 		}
 	}
 	return candidates
+}
+
+func (s *Service) BulkMoveCategories(ctx context.Context, meta RequestMeta, req CategoryBulkMoveRequest) ([]Category, error) {
+	if len(req.SourceIDs) == 0 {
+		return nil, errors.New("source_ids is required")
+	}
+	if req.InsertBeforeID != nil && req.InsertAfterID != nil {
+		return nil, errors.New("insert_before_id and insert_after_id cannot both be set")
+	}
+
+	targetParentID := req.TargetParentID
+	movedSet := make(map[int64]struct{}, len(req.SourceIDs))
+	for _, id := range req.SourceIDs {
+		movedSet[id] = struct{}{}
+		_, err := s.MoveCategory(ctx, meta, id, MoveCategoryRequest{NewParentID: targetParentID, ParentSpecified: true})
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	siblings, err := s.fetchSiblingIDs(ctx, meta, targetParentID)
+	if err != nil {
+		return nil, err
+	}
+
+	ordered := make([]int64, 0, len(siblings))
+	for _, id := range siblings {
+		if _, ok := movedSet[id]; !ok {
+			ordered = append(ordered, id)
+		}
+	}
+
+	var anchorIndex int
+	insert := req.SourceIDs
+	if req.InsertBeforeID != nil {
+		if _, ok := movedSet[*req.InsertBeforeID]; ok {
+			return nil, errors.New("anchor cannot be part of source_ids")
+		}
+		idx := indexOf(ordered, *req.InsertBeforeID)
+		if idx == -1 {
+			return nil, fmt.Errorf("anchor id %d not found among siblings", *req.InsertBeforeID)
+		}
+		anchorIndex = idx
+		ordered = append(ordered[:anchorIndex], append(insert, ordered[anchorIndex:]...)...)
+	} else if req.InsertAfterID != nil {
+		if _, ok := movedSet[*req.InsertAfterID]; ok {
+			return nil, errors.New("anchor cannot be part of source_ids")
+		}
+		idx := indexOf(ordered, *req.InsertAfterID)
+		if idx == -1 {
+			return nil, fmt.Errorf("anchor id %d not found among siblings", *req.InsertAfterID)
+		}
+		anchorIndex = idx + 1
+		ordered = append(ordered[:anchorIndex], append(insert, ordered[anchorIndex:]...)...)
+	} else {
+		ordered = append(ordered, insert...)
+	}
+
+	siblingsCats, err := s.ReorderCategories(ctx, meta, CategoryReorderRequest{ParentID: targetParentID, OrderedIDs: ordered})
+	if err != nil {
+		return nil, err
+	}
+
+	moved := make([]Category, 0, len(req.SourceIDs))
+	for _, cat := range siblingsCats {
+		if _, ok := movedSet[cat.ID]; ok {
+			moved = append(moved, cat)
+		}
+	}
+	sort.SliceStable(moved, func(i, j int) bool {
+		posI := indexOf(ordered, moved[i].ID)
+		posJ := indexOf(ordered, moved[j].ID)
+		return posI < posJ
+	})
+
+	return moved, nil
+}
+
+func (s *Service) fetchSiblingIDs(ctx context.Context, meta RequestMeta, parentID *int64) ([]int64, error) {
+	if parentID == nil {
+		params := ndrclient.ListNodesParams{Page: 1, Size: 200}
+		nodes := make([]ndrclient.Node, 0)
+		for {
+			page, err := s.ndr.ListNodes(ctx, toNDRMeta(meta), params)
+			if err != nil {
+				return nil, err
+			}
+			for _, node := range page.Items {
+				if node.DeletedAt == nil && node.ParentID == nil {
+					nodes = append(nodes, node)
+				}
+			}
+			if len(page.Items) < params.Size || (page.Total > 0 && params.Page*params.Size >= page.Total) {
+				break
+			}
+			params.Page++
+		}
+		sort.Slice(nodes, func(i, j int) bool { return nodes[i].Position < nodes[j].Position })
+		ids := make([]int64, 0, len(nodes))
+		for _, node := range nodes {
+			ids = append(ids, node.ID)
+		}
+		return ids, nil
+	}
+	children, err := s.ndr.ListChildren(ctx, toNDRMeta(meta), *parentID, ndrclient.ListChildrenParams{})
+	if err != nil {
+		return nil, err
+	}
+	sort.Slice(children, func(i, j int) bool { return children[i].Position < children[j].Position })
+	ids := make([]int64, 0, len(children))
+	for _, node := range children {
+		if node.DeletedAt == nil {
+			ids = append(ids, node.ID)
+		}
+	}
+	return ids, nil
+}
+
+func indexOf(list []int64, id int64) int {
+	for i, v := range list {
+		if v == id {
+			return i
+		}
+	}
+	return -1
 }
 
 func buildTree(nodes []ndrclient.Node) []*Category {

@@ -45,6 +45,37 @@ export interface CategoryBulkIDsPayload {
   ids: number[];
 }
 
+export interface CategoryBulkCopyPayload {
+  source_ids: number[];
+  target_parent_id?: number | null;
+}
+
+export interface CategoryBulkMovePayload {
+  source_ids: number[];
+  target_parent_id?: number | null;
+  insert_before_id?: number | null;
+  insert_after_id?: number | null;
+}
+
+export interface CategoryDependencySummary {
+  id: number;
+  name: string;
+  path: string;
+  has_children: boolean;
+  document_count: number;
+  include_descendants: boolean;
+  warnings?: string[];
+}
+
+export interface CategoryBulkCheckPayload {
+  ids: number[];
+  include_descendants?: boolean;
+}
+
+export interface CategoryBulkCheckResponse {
+  items: CategoryDependencySummary[];
+}
+
 export async function getCategoryTree(
   includeDeleted = false,
 ): Promise<Category[]> {
@@ -130,6 +161,29 @@ export async function bulkRestoreCategories(payload: CategoryBulkIDsPayload) {
 
 export async function bulkPurgeCategories(payload: CategoryBulkIDsPayload) {
   return http<{ purged_ids: number[] }>("/api/v1/categories/bulk/purge", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function bulkCopyCategories(payload: CategoryBulkCopyPayload) {
+  return http<{ items: Category[] }>("/api/v1/categories/bulk/copy", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function bulkMoveCategories(payload: CategoryBulkMovePayload) {
+  return http<{ items: Category[] }>("/api/v1/categories/bulk/move", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function bulkCheckCategories(
+  payload: CategoryBulkCheckPayload,
+): Promise<CategoryBulkCheckResponse> {
+  return http<CategoryBulkCheckResponse>("/api/v1/categories/bulk/check", {
     method: "POST",
     body: JSON.stringify(payload),
   });

@@ -90,6 +90,10 @@ func (h *Handler) CategoryRoutes(w http.ResponseWriter, r *http.Request) {
 			h.bulkCopyCategories(w, r, meta)
 			return
 		}
+		if relPath == "bulk/move" {
+			h.bulkMoveCategories(w, r, meta)
+			return
+		}
 		respondError(w, http.StatusNotFound, errors.New("not found"))
 		return
 	}
@@ -471,6 +475,24 @@ func (h *Handler) bulkCopyCategories(w http.ResponseWriter, r *http.Request, met
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]any{"items": items})
+}
+
+func (h *Handler) bulkMoveCategories(w http.ResponseWriter, r *http.Request, meta service.RequestMeta) {
+	if r.Method != http.MethodPost {
+		respondError(w, http.StatusMethodNotAllowed, errors.New("method not allowed"))
+		return
+	}
+	var payload service.CategoryBulkMoveRequest
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		respondError(w, http.StatusBadRequest, err)
+		return
+	}
+	items, err := h.service.BulkMoveCategories(r.Context(), meta, payload)
+	if err != nil {
+		respondError(w, http.StatusBadGateway, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": items})
 }
 
 func cloneQuery(values url.Values) url.Values {
