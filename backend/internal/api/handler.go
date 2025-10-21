@@ -82,6 +82,10 @@ func (h *Handler) CategoryRoutes(w http.ResponseWriter, r *http.Request) {
 			h.bulkPurgeCategories(w, r, meta)
 			return
 		}
+		if relPath == "bulk/check" {
+			h.bulkCheckCategories(w, r, meta)
+			return
+		}
 		respondError(w, http.StatusNotFound, errors.New("not found"))
 		return
 	}
@@ -413,6 +417,38 @@ func (h *Handler) bulkPurgeCategories(w http.ResponseWriter, r *http.Request, me
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"purged_ids": ids})
+}
+
+func (h *Handler) bulkCheckCategories(w http.ResponseWriter, r *http.Request, meta service.RequestMeta) {
+	if r.Method != http.MethodPost {
+		respondError(w, http.StatusMethodNotAllowed, errors.New("method not allowed"))
+		return
+	}
+	var payload struct {
+		IDs                []int64 `json:"ids"`
+		IncludeDescendants *bool   `json:"include_descendants,omitempty"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		respondError(w, http.StatusBadRequest, err)
+		return
+	}
+	includeDesc := true
+	if payload.IncludeDescendants != nil {
+		includeDesc = *payload.IncludeDescendants
+	}
+	if len(payload.IDs) == 0 {
+		respondError(w, http.StatusBadRequest, errors.New("no ids provided"))
+		return
+	}
+	resp, err := h.service.CheckCategoryDependencies(r.Context(), meta, service.CategoryCheckRequest{
+		IDs:                payload.IDs,
+		IncludeDescendants: includeDesc,
+	})
+	if err != nil {
+		respondError(w, http.StatusBadGateway, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func cloneQuery(values url.Values) url.Values {

@@ -145,6 +145,48 @@ func TestCategoriesEndpoints(t *testing.T) {
 	}
 }
 
+func TestBulkCheckCategories(t *testing.T) {
+	ndr := newInMemoryNDR()
+	svc := service.NewService(cache.NewNoop(), ndr)
+	handler := NewHandler(svc, HeaderDefaults{})
+	router := NewRouter(handler)
+
+	root := createCategory(t, router, `{"name":"Root"}`)
+	childPayload := fmt.Sprintf(`{"name":"Child","parent_id":%d}`, root.ID)
+	child := createCategory(t, router, childPayload)
+
+	doc, err := ndr.CreateDocument(context.Background(), ndrclient.RequestMeta{}, ndrclient.DocumentCreate{Title: "Doc"})
+	if err != nil {
+		t.Fatalf("create document error: %v", err)
+	}
+	if err := ndr.BindDocument(context.Background(), ndrclient.RequestMeta{}, root.ID, doc.ID); err != nil {
+		t.Fatalf("bind document error: %v", err)
+	}
+
+	reqBody := fmt.Sprintf(`{"ids":[%d,%d],"include_descendants":true}`, root.ID, child.ID)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/categories/bulk/check", strings.NewReader(reqBody))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rec.Code)
+	}
+
+	var resp service.CategoryCheckResponse
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response error: %v", err)
+	}
+
+	if len(resp.Items) != 2 {
+		t.Fatalf("expected 2 items, got %d", len(resp.Items))
+	}
+	if resp.Items[0].DocumentCount == 0 {
+		t.Fatalf("expected document count for root, got %#v", resp.Items[0])
+	}
+}
+
 func TestCategoriesEndpoints_InvalidJSON(t *testing.T) {
 	ndr := newInMemoryNDR()
 	svc := service.NewService(cache.NewNoop(), ndr)
