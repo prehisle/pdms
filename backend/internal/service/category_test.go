@@ -106,6 +106,15 @@ func (f *fakeNDR) ListChildren(context.Context, ndrclient.RequestMeta, int64, nd
 	return nil, nil
 }
 
+func (f *fakeNDR) HasChildren(_ context.Context, _ ndrclient.RequestMeta, id int64) (bool, error) {
+	for _, node := range f.getNodes {
+		if node.ParentID != nil && *node.ParentID == id {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 func (f *fakeNDR) ReorderNodes(_ context.Context, _ ndrclient.RequestMeta, payload ndrclient.NodeReorderPayload) ([]ndrclient.Node, error) {
 	f.reorderInput = &payload
 	return f.reorderResp, f.reorderErr
@@ -187,6 +196,23 @@ func TestDeleteCategory(t *testing.T) {
 	}
 	if len(fake.deletedNodes) != 1 || fake.deletedNodes[0] != 9 {
 		t.Fatalf("expected delete call for id 9")
+	}
+}
+
+func TestDeleteCategoryWithChildren(t *testing.T) {
+	fake := newFakeNDR()
+	now := time.Now().UTC()
+	parent := sampleNode(100, "Parent", "/parent", nil, 1, now, now)
+	child := sampleNode(101, "Child", "/parent/child", ptr[int64](100), 1, now, now)
+	fake.getNodes[100] = parent
+	fake.getNodes[101] = child
+	svc := NewService(cache.NewNoop(), fake)
+
+	if err := svc.DeleteCategory(context.Background(), RequestMeta{}, 100); err == nil {
+		t.Fatalf("expected error when deleting parent with children")
+	}
+	if len(fake.deletedNodes) != 0 {
+		t.Fatalf("expected no delete call")
 	}
 }
 

@@ -213,6 +213,14 @@ func (s *Service) UpdateCategory(ctx context.Context, meta RequestMeta, id int64
 // DeleteCategory performs a soft delete in NDR.
 func (s *Service) DeleteCategory(ctx context.Context, meta RequestMeta, id int64) error {
 	log.Printf("[category] delete id=%d", id)
+	hasChildren, err := s.ndr.HasChildren(ctx, toNDRMeta(meta), id)
+	if err != nil {
+		log.Printf("[category] check children failed id=%d err=%v", id, err)
+		return fmt.Errorf("check children: %w", err)
+}
+	if hasChildren {
+		return errors.New("cannot delete category with children")
+	}
 	if err := s.ndr.DeleteNode(ctx, toNDRMeta(meta), id); err != nil {
 		log.Printf("[category] delete node failed id=%d err=%v", id, err)
 		return fmt.Errorf("delete node: %w", err)

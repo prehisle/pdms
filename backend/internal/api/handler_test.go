@@ -486,6 +486,14 @@ func (f *inMemoryNDR) ListChildren(ctx context.Context, meta ndrclient.RequestMe
 	return result, nil
 }
 
+func (f *inMemoryNDR) HasChildren(ctx context.Context, meta ndrclient.RequestMeta, id int64) (bool, error) {
+	kids, err := f.ListChildren(ctx, meta, id, ndrclient.ListChildrenParams{})
+	if err != nil {
+		return false, err
+	}
+	return len(kids) > 0, nil
+}
+
 func (f *inMemoryNDR) ReorderNodes(ctx context.Context, meta ndrclient.RequestMeta, payload ndrclient.NodeReorderPayload) ([]ndrclient.Node, error) {
 	key := int64(0)
 	if payload.ParentID != nil {

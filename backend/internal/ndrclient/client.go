@@ -18,6 +18,7 @@ type Client interface {
 	Ping(ctx context.Context) error
 	CreateNode(ctx context.Context, meta RequestMeta, body NodeCreate) (Node, error)
 	GetNode(ctx context.Context, meta RequestMeta, id int64, opts GetNodeOptions) (Node, error)
+	HasChildren(ctx context.Context, meta RequestMeta, id int64) (bool, error)
 	UpdateNode(ctx context.Context, meta RequestMeta, id int64, body NodeUpdate) (Node, error)
 	DeleteNode(ctx context.Context, meta RequestMeta, id int64) error
 	RestoreNode(ctx context.Context, meta RequestMeta, id int64) (Node, error)
@@ -95,6 +96,14 @@ func (c *httpClient) GetNode(ctx context.Context, meta RequestMeta, id int64, op
 	var resp Node
 	_, err = c.do(req, &resp)
 	return resp, err
+}
+
+func (c *httpClient) HasChildren(ctx context.Context, meta RequestMeta, id int64) (bool, error) {
+	children, err := c.ListChildren(ctx, meta, id, ListChildrenParams{})
+	if err != nil {
+		return false, err
+	}
+	return len(children) > 0, nil
 }
 
 func (c *httpClient) UpdateNode(ctx context.Context, meta RequestMeta, id int64, body NodeUpdate) (Node, error) {

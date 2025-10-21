@@ -57,7 +57,9 @@ const App = () => {
     queryFn: () => getCategoryTree(),
   });
   const queryClient = useQueryClient();
-  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [selectionParentId, setSelectionParentId] = useState<number | null | undefined>(undefined);
+  const [lastSelectedId, setLastSelectedId] = useState<number | null>(null);
   const [isMutating, setIsMutating] = useState(false);
   const [messageApi, contextHolder] = message.useMessage();
   const [activeTab, setActiveTab] = useState<"tree" | "trash">("tree");
@@ -80,7 +82,9 @@ const App = () => {
 
   useEffect(() => {
     if (activeTab === "trash") {
-      setSelectedId(null);
+      setSelectedIds([]);
+      setSelectionParentId(undefined);
+      setLastSelectedId(null);
     }
   }, [activeTab]);
 
@@ -122,7 +126,9 @@ const App = () => {
         queryClient.invalidateQueries({ queryKey: ["categories-tree"] }),
         queryClient.invalidateQueries({ queryKey: ["categories-trash"] }),
       ]);
-      setSelectedId(null);
+      setSelectedIds([]);
+      setSelectionParentId(undefined);
+      setLastSelectedId(null);
     },
     onError: (err: unknown) => {
       const msg = err instanceof Error ? err.message : "目录删除失败";
@@ -193,6 +199,46 @@ const App = () => {
       );
     }
   }, [data, searchValue]);
+
+  useEffect(() => {
+    if (!data) {
+      setSelectedIds([]);
+      setSelectionParentId(undefined);
+      setLastSelectedId(null);
+      return;
+    }
+    const existing = new Set<number>();
+    const flatten = (nodes?: Category[]) => {
+      if (!nodes) return;
+      nodes.forEach((node) => {
+        existing.add(node.id);
+        if (node.children && node.children.length > 0) {
+          flatten(node.children);
+        }
+      });
+    };
+    flatten(data as Category[]);
+    setSelectedIds((prev) => {
+      const next = prev.filter((id) => existing.has(id));
+      if (next.length === 0) {
+        setSelectionParentId(undefined);
+        setLastSelectedId(null);
+      } else {
+        const current = lookups.byId.get(next[0]);
+        setSelectionParentId(current?.parent_id ?? null);
+      }
+      return next;
+    });
+  }, [data, lookups]);
+
+  useEffect(() => {
+    if (showRenameModal && selectedIds.length === 1) {
+      const current = lookups.byId.get(selectedIds[0]);
+      if (current) {
+        form.setFieldsValue({ name: current.name });
+      }
+    }
+  }, [showRenameModal, selectedIds, lookups, form]);
 
   const handleDrop = useCallback<NonNullable<TreeProps["onDrop"]>>(
     async (info) => {
@@ -358,6 +404,82 @@ const App = () => {
     }
   }, [messageApi, selectedTrashRowKeys, trashQuery]);
 
+  const handleSelect: NonNullable<TreeProps["onSelect"]> = (_keys, info) => {
+    const clickedId = Number(info.node.key);
+    const parentId = getParentId(info.node);
+    const normalizedParent = parentId ?? null;
+    const nativeEvent = info.nativeEvent as MouseEvent | undefined;
+    const isShift = nativeEvent?.shiftKey ?? false;
+    const isMeta = nativeEvent ? nativeEvent.metaKey || nativeEvent.ctrlKey : false;
+
+    if (info.selected) {
+      if (
+        selectionParentId !== undefined &&
+        selectionParentId !== normalizedParent &&
+        (selectedIds.length > 1 || isMeta || isShift)
+      ) {
+        messageApi.warning("仅支持同一父节点下的多选");
+        return;
+      }
+
+      if (
+        selectionParentId !== undefined &&
+        selectionParentId !== normalizedParent &&
+        !isMeta &&
+        !isShift
+      ) {
+        // 单选场景，允许切换层级
+        setSelectionParentId(normalizedParent);
+        setSelectedIds([clickedId]);
+        setLastSelectedId(clickedId);
+        return;
+      }
+
+      let nextIds = selectedIds;
+      if (!isMeta && !isShift) {
+        nextIds = [clickedId];
+      } else if (isShift && lastSelectedId != null && selectionParentId !== undefined) {
+        const siblings = lookups.parentToChildren.get(normalizedParent) ?? [];
+        const order = siblings.map((node) => node.id);
+        const lastIndex = order.indexOf(lastSelectedId);
+        const currentIndex = order.indexOf(clickedId);
+        if (lastIndex !== -1 && currentIndex !== -1) {
+          const [start, end] = [Math.min(lastIndex, currentIndex), Math.max(lastIndex, currentIndex)];
+          const rangeSet = new Set<number>(nextIds);
+          for (let i = start; i <= end; i += 1) {
+            rangeSet.add(order[i]);
+          }
+          nextIds = order.filter((id) => rangeSet.has(id));
+        } else if (!nextIds.includes(clickedId)) {
+          nextIds = [...nextIds, clickedId];
+        }
+      } else if (!nextIds.includes(clickedId)) {
+        nextIds = [...nextIds, clickedId];
+      }
+
+      const siblingsOrder = lookups.parentToChildren.get(normalizedParent) ?? [];
+      const orderIds = siblingsOrder.map((node) => node.id);
+      const uniqueIds = Array.from(new Set(nextIds));
+      const sorted =
+        orderIds.length > 0
+          ? orderIds.filter((id) => uniqueIds.includes(id))
+          : uniqueIds;
+
+      setSelectionParentId(normalizedParent);
+      setSelectedIds(sorted);
+      setLastSelectedId(clickedId);
+    } else {
+      const nextIds = selectedIds.filter((id) => id !== clickedId);
+      setSelectedIds(nextIds);
+      if (nextIds.length === 0) {
+        setSelectionParentId(undefined);
+        setLastSelectedId(null);
+      } else if (!nextIds.includes(lastSelectedId ?? -1)) {
+        setLastSelectedId(nextIds[nextIds.length - 1]);
+      }
+    }
+  };
+
   return (
     <Layout style={{ minHeight: "100vh" }}>
       {contextHolder}
@@ -408,22 +530,25 @@ const App = () => {
                       </Button>
                       <Button
                         onClick={() => {
+                          const current =
+                            selectedIds.length === 1 ? lookups.byId.get(selectedIds[0]) : null;
                           form.resetFields();
-                          setShowCreateModal({ open: true, parentId: selectedId });
+                          setShowCreateModal({ open: true, parentId: current?.id ?? null });
                         }}
-                        disabled={selectedId === null}
+                        disabled={selectedIds.length !== 1}
                         loading={createMutation.isPending}
                       >
                         新建子目录
                       </Button>
                       <Button
                         onClick={() => {
-                          const current = selectedId ? lookups.byId.get(selectedId) : null;
+                          const current =
+                            selectedIds.length === 1 ? lookups.byId.get(selectedIds[0]) : null;
                           if (!current) return;
                           form.setFieldsValue({ name: current.name });
                           setShowRenameModal(true);
                         }}
-                        disabled={!selectedId}
+                        disabled={selectedIds.length !== 1}
                         loading={updateMutation.isPending}
                       >
                         重命名
@@ -433,10 +558,18 @@ const App = () => {
                         okText="删除"
                         cancelText="取消"
                         okButtonProps={{ danger: true }}
-                        onConfirm={() => selectedId && deleteMutation.mutate(selectedId)}
-                        disabled={!selectedId}
+                        onConfirm={() => {
+                          if (selectedIds.length !== 1) return;
+                          const childList = lookups.parentToChildren.get(selectedIds[0]) ?? [];
+                          if (childList.length > 0) {
+                            messageApi.error("无法删除含子节点的目录");
+                            return;
+                          }
+                          deleteMutation.mutate(selectedIds[0]);
+                        }}
+                        disabled={selectedIds.length !== 1}
                       >
-                        <Button danger disabled={!selectedId} loading={deleteMutation.isPending}>
+                        <Button danger disabled={selectedIds.length !== 1} loading={deleteMutation.isPending}>
                           删除
                         </Button>
                       </Popconfirm>
@@ -458,13 +591,11 @@ const App = () => {
                         blockNode
                         draggable={{ icon: false }}
                         showLine={{ showLeafIcon: false }}
+                        multiple
                         treeData={treeData}
                         onDrop={handleDrop}
-                        selectedKeys={selectedId ? [selectedId.toString()] : []}
-                        onSelect={(keys) => {
-                          const key = keys[0];
-                          setSelectedId(key ? Number(key) : null);
-                        }}
+                        selectedKeys={selectedIds.map(String)}
+                        onSelect={handleSelect}
                         expandedKeys={expandedKeys}
                         autoExpandParent={autoExpandParent}
                         onExpand={(keys) => {
@@ -557,8 +688,12 @@ const App = () => {
         </Sider>
         <Content style={{ padding: "24px" }}>
           <Typography.Title level={4}>目录详情</Typography.Title>
-          {selectedId ? (
-            <CategoryDetail category={lookups.byId.get(selectedId) ?? null} />
+          {selectedIds.length === 1 ? (
+            <CategoryDetail category={lookups.byId.get(selectedIds[0]) ?? null} />
+          ) : selectedIds.length > 1 ? (
+            <Typography.Paragraph type="secondary">
+              已选择 {selectedIds.length} 个节点。请从右键菜单执行批量操作。
+            </Typography.Paragraph>
           ) : (
             <Typography.Paragraph type="secondary">
               请选择一个目录节点查看详情或操作。
@@ -616,9 +751,9 @@ const App = () => {
           form
             .validateFields()
             .then((values) => {
-              if (!selectedId) return;
+              if (selectedIds.length !== 1) return;
               updateMutation.mutate({
-                id: selectedId,
+                id: selectedIds[0],
                 payload: { name: values.name.trim() },
               });
             })

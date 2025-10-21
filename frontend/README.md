@@ -32,6 +32,7 @@ This emits `[drag-debug]` logs in the browser控制台, showing父节点、目�
 ### Bulk Operations
 
 - 回收站支持多选批量恢复与彻底删除，操作按钮位于列表上方。
+- 目录树采用高亮多选（无勾选框），仅允许同一父节点下的选中，支持 `Shift` 范围与 `Ctrl/Cmd` 追加。
 
 The project structure mirrors the planned architecture so additional pages,
 components and API hooks can be layered on during subsequent iterations.
