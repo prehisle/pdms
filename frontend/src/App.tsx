@@ -2,6 +2,7 @@ import {
   Alert,
   Button,
   Card,
+  Collapse,
   Empty,
   Form,
   Input,
@@ -82,6 +83,7 @@ const App = () => {
   const [expandedKeys, setExpandedKeys] = useState<string[]>([]);
   const [autoExpandParent, setAutoExpandParent] = useState(true);
   const [selectedTrashRowKeys, setSelectedTrashRowKeys] = useState<Key[]>([]);
+  const [detailCollapseKeys, setDetailCollapseKeys] = useState<string[]>(["detail"]);
 
   useEffect(() => {
     document.title = "题库目录管理";
@@ -247,6 +249,12 @@ const App = () => {
       }
     }
   }, [showRenameModal, selectedIds, lookups, form]);
+
+  useEffect(() => {
+    if (selectedIds.length > 0) {
+      setDetailCollapseKeys(["detail"]);
+    }
+  }, [selectedIds]);
 
   const handleDrop = useCallback<NonNullable<TreeProps["onDrop"]>>(
     async (info) => {
@@ -655,20 +663,40 @@ const App = () => {
               style={{ userSelect: "none" }}
             />
           )}
+          <Collapse
+            activeKey={detailCollapseKeys}
+            onChange={(keys) => {
+              const nextKeys = (Array.isArray(keys) ? keys : [keys]).map((key) =>
+                key.toString(),
+              );
+              setDetailCollapseKeys(nextKeys);
+            }}
+            items={[
+              {
+                key: "detail",
+                label: "目录详情",
+                children:
+                  selectedIds.length === 1 ? (
+                    <CategoryDetail category={lookups.byId.get(selectedIds[0]) ?? null} />
+                  ) : selectedIds.length > 1 ? (
+                    <Typography.Paragraph type="secondary">
+                      已选择 {selectedIds.length} 个节点。请使用右键菜单执行批量操作。
+                    </Typography.Paragraph>
+                  ) : (
+                    <Typography.Paragraph type="secondary">
+                      请选择一个目录节点查看详情。可通过折叠按钮隐藏该面板。
+                    </Typography.Paragraph>
+                  ),
+              },
+            ]}
+            style={{ marginTop: 16 }}
+          />
         </Sider>
         <Content style={{ padding: "24px" }}>
-          <Typography.Title level={4}>目录详情</Typography.Title>
-          {selectedIds.length === 1 ? (
-            <CategoryDetail category={lookups.byId.get(selectedIds[0]) ?? null} />
-          ) : selectedIds.length > 1 ? (
-            <Typography.Paragraph type="secondary">
-              已选择 {selectedIds.length} 个节点。请从右键菜单执行批量操作。
-            </Typography.Paragraph>
-          ) : (
-            <Typography.Paragraph type="secondary">
-              请选择一个目录节点查看详情或操作。
-            </Typography.Paragraph>
-          )}
+          <Typography.Title level={4}>操作提示</Typography.Title>
+          <Typography.Paragraph type="secondary">
+            目录详情已移动至左侧树下方，可通过折叠按钮收起或展开。
+          </Typography.Paragraph>
         </Content>
       </Layout>
       <Modal
@@ -1046,7 +1074,7 @@ function CategoryDetail({ category }: CategoryDetailProps) {
     );
   }
   return (
-    <Card style={{ maxWidth: 480 }}>
+    <Card style={{ width: "100%" }}>
       <Space direction="vertical">
         <Typography.Text strong>名称</Typography.Text>
         <Space>
