@@ -31,19 +31,15 @@ curl http://localhost:9180/api/v1/ping
 
 ### Auto reload during development
 
-For automatic rebuild on file changes, install [air](https://github.com/air-verse/air):
+Use the built-in watcher to rebuild and restart the server when `.go`, `.env`, `go.mod`, or `go.sum` change:
 
 ```bash
-go install github.com/air-verse/air@latest
+go run ./cmd/server --watch
 ```
 
-Then run the watcher from this directory:
+The watcher reuses the same configuration as `go run` and produces the compiled binary at `tmp/server-dev`. Press `Ctrl+C` to stop both the watcher and the underlying server.
 
-```bash
-air
-```
-
-The provided `.air.toml` will rebuild `./cmd/server` into `./tmp/server` and restart it whenever Go source files change.
+If you prefer [air](https://github.com/air-verse/air) or another tool, the existing `.air.toml` still works.
 
 ## Testing
 
