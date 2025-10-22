@@ -465,6 +465,39 @@ func TestBulkRestoreCategories(t *testing.T) {
 	}
 }
 
+func TestBulkDeleteCategories(t *testing.T) {
+	fake := newFakeNDR()
+	svc := NewService(cache.NewNoop(), fake)
+
+	ids, err := svc.BulkDeleteCategories(context.Background(), RequestMeta{}, []int64{40, 41, 40})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(ids) != 2 {
+		t.Fatalf("expected 2 unique ids, got %v", ids)
+	}
+	if len(fake.deletedNodes) != 2 || fake.deletedNodes[0] != 40 || fake.deletedNodes[1] != 41 {
+		t.Fatalf("unexpected deleted nodes %v", fake.deletedNodes)
+	}
+}
+
+func TestBulkDeleteCategoriesWithChildren(t *testing.T) {
+	fake := newFakeNDR()
+	now := time.Now().UTC()
+	parent := sampleNode(200, "Parent", "/parent", nil, 1, now, now)
+	child := sampleNode(201, "Child", "/parent/child", ptr[int64](200), 1, now, now)
+	fake.getNodes[200] = parent
+	fake.getNodes[201] = child
+	svc := NewService(cache.NewNoop(), fake)
+
+	if _, err := svc.BulkDeleteCategories(context.Background(), RequestMeta{}, []int64{200}); err == nil {
+		t.Fatalf("expected error when deleting parent with children")
+	}
+	if len(fake.deletedNodes) != 0 {
+		t.Fatalf("expected no delete calls, got %v", fake.deletedNodes)
+	}
+}
+
 func TestBulkPurgeCategories(t *testing.T) {
 	fake := newFakeNDR()
 	svc := NewService(cache.NewNoop(), fake)

@@ -5,11 +5,13 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   createCategory,
   deleteCategory,
+  bulkDeleteCategories,
   purgeCategory,
   restoreCategory,
   updateCategory,
   type CategoryCreatePayload,
   type CategoryUpdatePayload,
+  type CategoryBulkIDsPayload,
 } from "../../../api/categories";
 
 interface MessageApiLike {
@@ -72,6 +74,20 @@ export function useTreeActions(messageApi: MessageApiLike) {
     },
   });
 
+  const bulkDeleteMutation = useMutation({
+    mutationFn: (payload: CategoryBulkIDsPayload) => bulkDeleteCategories(payload),
+    onSuccess: async () => {
+      messageApi.success("批量删除成功");
+      setIsMutating(false);
+      await Promise.all([invalidateTree(), invalidateTrash()]);
+    },
+    onError: (err: unknown) => {
+      const msg = err instanceof Error ? err.message : "批量删除失败";
+      messageApi.error(msg);
+      setIsMutating(false);
+    },
+  });
+
   const restoreMutation = useMutation({
     mutationFn: (id: number) => restoreCategory(id),
     onSuccess: async () => {
@@ -102,6 +118,7 @@ export function useTreeActions(messageApi: MessageApiLike) {
     createMutation,
     updateMutation,
     deleteMutation,
+    bulkDeleteMutation,
     restoreMutation,
     purgeMutation,
     setMutating,

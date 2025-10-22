@@ -473,6 +473,25 @@ func (s *Service) BulkRestoreCategories(ctx context.Context, meta RequestMeta, i
 	return results, nil
 }
 
+func (s *Service) BulkDeleteCategories(ctx context.Context, meta RequestMeta, ids []int64) ([]int64, error) {
+	if len(ids) == 0 {
+		return nil, errors.New("ids is required")
+	}
+	seen := make(map[int64]struct{}, len(ids))
+	deleted := make([]int64, 0, len(ids))
+	for _, id := range ids {
+		if _, exists := seen[id]; exists {
+			continue
+		}
+		seen[id] = struct{}{}
+		if err := s.DeleteCategory(ctx, meta, id); err != nil {
+			return nil, err
+		}
+		deleted = append(deleted, id)
+	}
+	return deleted, nil
+}
+
 func (s *Service) BulkPurgeCategories(ctx context.Context, meta RequestMeta, ids []int64) ([]int64, error) {
 	if len(ids) == 0 {
 		return nil, errors.New("ids is required")

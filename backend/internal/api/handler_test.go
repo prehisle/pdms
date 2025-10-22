@@ -494,6 +494,61 @@ func TestCategoryBulkEndpoints(t *testing.T) {
 	}
 }
 
+func TestBulkDeleteCategoriesEndpoint(t *testing.T) {
+	ndr := newInMemoryNDR()
+	svc := service.NewService(cache.NewNoop(), ndr)
+	handler := NewHandler(svc, HeaderDefaults{})
+	router := NewRouter(handler)
+
+	root := createCategory(t, router, `{"name":"Root"}`)
+	childA := createCategory(t, router, fmt.Sprintf(`{"name":"ChildA","parent_id":%d}`, root.ID))
+	childB := createCategory(t, router, fmt.Sprintf(`{"name":"ChildB","parent_id":%d}`, root.ID))
+
+	payload := fmt.Sprintf(`{"ids":[%d,%d]}`, childA.ID, childB.ID)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/categories/bulk/delete", strings.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200 for bulk delete, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		DeletedIDs []int64 `json:"deleted_ids"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response error: %v", err)
+	}
+	if len(resp.DeletedIDs) != 2 {
+		t.Fatalf("expected 2 deleted ids, got %v", resp.DeletedIDs)
+	}
+
+	trashReq := httptest.NewRequest(http.MethodGet, "/api/v1/categories/trash", nil)
+	trashRec := httptest.NewRecorder()
+	router.ServeHTTP(trashRec, trashReq)
+	if trashRec.Code != http.StatusOK {
+		t.Fatalf("expected status 200 for trash, got %d", trashRec.Code)
+	}
+	var trashItems []service.Category
+	if err := json.NewDecoder(trashRec.Body).Decode(&trashItems); err != nil {
+		t.Fatalf("decode trash response error: %v", err)
+	}
+	if len(trashItems) != 2 {
+		t.Fatalf("expected 2 items in trash, got %d", len(trashItems))
+	}
+
+	parent := createCategory(t, router, `{"name":"Parent"}`)
+	createCategory(t, router, fmt.Sprintf(`{"name":"Child","parent_id":%d}`, parent.ID))
+
+	badPayload := fmt.Sprintf(`{"ids":[%d]}`, parent.ID)
+	badReq := httptest.NewRequest(http.MethodPost, "/api/v1/categories/bulk/delete", strings.NewReader(badPayload))
+	badReq.Header.Set("Content-Type", "application/json")
+	badRec := httptest.NewRecorder()
+	router.ServeHTTP(badRec, badReq)
+	if badRec.Code != http.StatusBadGateway {
+		t.Fatalf("expected status 502 when deleting parent with children, got %d body=%s", badRec.Code, badRec.Body.String())
+	}
+}
+
 func createCategory(t *testing.T, router http.Handler, payload string) service.Category {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/categories", strings.NewReader(payload))

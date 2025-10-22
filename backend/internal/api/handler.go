@@ -78,6 +78,10 @@ func (h *Handler) CategoryRoutes(w http.ResponseWriter, r *http.Request) {
 			h.bulkRestoreCategories(w, r, meta)
 			return
 		}
+		if relPath == "bulk/delete" {
+			h.bulkDeleteCategories(w, r, meta)
+			return
+		}
 		if relPath == "bulk/purge" {
 			h.bulkPurgeCategories(w, r, meta)
 			return
@@ -407,6 +411,24 @@ func (h *Handler) bulkRestoreCategories(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 	writeJSON(w, http.StatusOK, items)
+}
+
+func (h *Handler) bulkDeleteCategories(w http.ResponseWriter, r *http.Request, meta service.RequestMeta) {
+	if r.Method != http.MethodPost {
+		respondError(w, http.StatusMethodNotAllowed, errors.New("method not allowed"))
+		return
+	}
+	var payload service.CategoryBulkIDsRequest
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		respondError(w, http.StatusBadRequest, err)
+		return
+	}
+	ids, err := h.service.BulkDeleteCategories(r.Context(), meta, payload.IDs)
+	if err != nil {
+		respondError(w, http.StatusBadGateway, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"deleted_ids": ids})
 }
 
 func (h *Handler) bulkPurgeCategories(w http.ResponseWriter, r *http.Request, meta service.RequestMeta) {

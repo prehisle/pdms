@@ -11,6 +11,8 @@ import {
   FileAddOutlined,
   ScissorOutlined,
   SnippetsOutlined,
+  PlusSquareOutlined,
+  EditOutlined,
 } from "@ant-design/icons";
 
 import type { Category } from "../../../api/categories";
@@ -40,8 +42,6 @@ export interface CategoryTreePanelProps {
   selectedNodeId: number | null;
   includeDescendants: boolean;
   createLoading: boolean;
-  updateLoading: boolean;
-  deleteLoading: boolean;
   trashIsFetching: boolean;
   messageApi: MessageInstance;
   dragDebugEnabled: boolean;
@@ -75,8 +75,6 @@ export function CategoryTreePanel({
   selectedNodeId,
   includeDescendants,
   createLoading,
-  updateLoading,
-  deleteLoading,
   trashIsFetching,
   messageApi,
   dragDebugEnabled,
@@ -211,36 +209,53 @@ export function CategoryTreePanel({
     onRequestCreate(null);
   }, [onRequestCreate]);
 
-  const handleCreateChildClick = useCallback(() => {
-    if (selectedIds.length !== 1) {
-      messageApi.warning("请选择一个父节点");
-      return;
-    }
-    const current = lookups.byId.get(selectedIds[0]);
-    onRequestCreate(current?.id ?? null);
-  }, [lookups.byId, messageApi, onRequestCreate, selectedIds]);
+  const focusNodeSelection = useCallback(
+    (nodeId: number) => {
+      const node = lookups.byId.get(nodeId);
+      const parentId = node?.parent_id ?? null;
+      onSelectionChange({
+        selectedIds: [nodeId],
+        selectionParentId: parentId,
+        lastSelectedId: nodeId,
+      });
+    },
+    [lookups.byId, onSelectionChange],
+  );
 
-  const handleRenameClick = useCallback(() => {
-    if (selectedIds.length !== 1) {
-      messageApi.warning("请先选择单个目录");
-      return;
-    }
-    onRequestRename();
-  }, [messageApi, onRequestRename, selectedIds]);
+  const handleCreateChild = useCallback(
+    (parentId: number) => {
+      focusNodeSelection(parentId);
+      onRequestCreate(parentId);
+    },
+    [focusNodeSelection, onRequestCreate],
+  );
 
-  const handleDeleteClick = useCallback(() => {
-    if (selectedIds.length !== 1) {
-      messageApi.warning("请先选择单个目录");
-      return;
-    }
-    const targetId = selectedIds[0];
-    const childList = lookups.parentToChildren.get(targetId) ?? [];
-    if (childList.length > 0) {
-      messageApi.error("无法删除含子节点的目录");
-      return;
-    }
-    onRequestDelete([targetId]);
-  }, [lookups.parentToChildren, messageApi, onRequestDelete, selectedIds]);
+  const handleRenameNode = useCallback(
+    (nodeId: number) => {
+      focusNodeSelection(nodeId);
+      onRequestRename();
+    },
+    [focusNodeSelection, onRequestRename],
+  );
+
+  const handleDeleteSelection = useCallback(
+    (ids: number[]) => {
+      if (ids.length === 0) {
+        messageApi.warning("请先选择需要删除的目录");
+        return;
+      }
+      const hasChildren = ids.find((id) => {
+        const childList = lookups.parentToChildren.get(id) ?? [];
+        return childList.length > 0;
+      });
+      if (hasChildren != null) {
+        messageApi.error("无法删除含子节点的目录");
+        return;
+      }
+      onRequestDelete(ids);
+    },
+    [lookups.parentToChildren, messageApi, onRequestDelete],
+  );
 
   const { handlePasteAsChild, handlePasteBefore, handlePasteAfter } = useTreePaste({
     clipboard,
@@ -344,6 +359,31 @@ export function CategoryTreePanel({
     ];
 
     if (resolvedSelectionAvailable) {
+      if (resolvedSelectionIds.length === 1) {
+        const targetId = resolvedSelectionIds[0];
+        items.push(
+          {
+            key: "create-child",
+            icon: <PlusSquareOutlined />,
+            label: "新建子目录",
+            disabled: isMutating,
+            onClick: () => {
+              closeContextMenu("action:create-child");
+              handleCreateChild(targetId);
+            },
+          },
+          {
+            key: "rename-node",
+            icon: <EditOutlined />,
+            label: "重命名目录",
+            disabled: isMutating,
+            onClick: () => {
+              closeContextMenu("action:rename-node");
+              handleRenameNode(targetId);
+            },
+          },
+        );
+      }
       items.push(
         {
           key: "copy-selection",
@@ -375,10 +415,10 @@ export function CategoryTreePanel({
           key: "delete-node",
           icon: <DeleteOutlined />,
           label: "删除目录",
-          disabled: resolvedSelectionIds.length !== 1 || isMutating,
+          disabled: resolvedSelectionIds.length === 0 || isMutating,
           onClick: () => {
             closeContextMenu("action:delete-node");
-            handleDeleteClick();
+            handleDeleteSelection(resolvedSelectionIds);
           },
         },
       );
@@ -464,10 +504,12 @@ export function CategoryTreePanel({
     closeContextMenu,
     handleCopySelection,
     handleCutSelection,
+    handleCreateChild,
+    handleRenameNode,
     handlePasteAfter,
     handlePasteAsChild,
     handlePasteBefore,
-    handleDeleteClick,
+    handleDeleteSelection,
     isDescendantOrSelf,
     isMutating,
     menuDebugEnabled,
@@ -578,10 +620,6 @@ export function CategoryTreePanel({
     ],
   );
 
-  const canCreateChild = selectedIds.length === 1;
-  const canRename = selectedIds.length === 1;
-  const canDelete = selectedIds.length === 1;
-
   return (
     <div>
       {contextMenuVisible ? (
@@ -616,19 +654,11 @@ export function CategoryTreePanel({
         onSearchSubmit={handleSearchSubmit}
         onRefresh={onRefresh}
         onCreateRoot={handleCreateRootClick}
-        onCreateChild={handleCreateChildClick}
-        onRename={handleRenameClick}
-        onDelete={handleDeleteClick}
         onOpenTrash={onOpenTrash}
         includeDescendants={includeDescendants}
         onIncludeDescendantsChange={onIncludeDescendantsChange}
-        canCreateChild={canCreateChild}
-        canRename={canRename}
-        canDelete={canDelete}
         isRefreshing={isFetching || isMutating}
         createLoading={createLoading}
-        updateLoading={updateLoading}
-        deleteLoading={deleteLoading}
         trashIsFetching={trashIsFetching}
         selectedNodeId={selectedNodeId}
       />
@@ -688,7 +718,7 @@ export function CategoryTreePanel({
                 <CategoryDetailCard category={lookups.byId.get(selectedIds[0]) ?? null} />
               ) : selectedIds.length > 1 ? (
                 <Typography.Paragraph type="secondary">
-                  已选择 {selectedIds.length} 个节点。请使用右键菜单执行批量操作。
+                  已选择 {selectedIds.length} 个节点。可通过工具栏或右键菜单执行批量操作。
                 </Typography.Paragraph>
               ) : (
                 <Typography.Paragraph type="secondary">

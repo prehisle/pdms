@@ -161,6 +161,13 @@ export async function bulkRestoreCategories(payload: CategoryBulkIDsPayload) {
   });
 }
 
+export async function bulkDeleteCategories(payload: CategoryBulkIDsPayload) {
+  return http<{ deleted_ids: number[] }>("/api/v1/categories/bulk/delete", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 export async function bulkPurgeCategories(payload: CategoryBulkIDsPayload) {
   return http<{ purged_ids: number[] }>("/api/v1/categories/bulk/purge", {
     method: "POST",

@@ -142,6 +142,7 @@ const App = () => {
     createMutation,
     updateMutation,
     deleteMutation,
+    bulkDeleteMutation,
     restoreMutation,
     purgeMutation,
     setMutating,
@@ -255,7 +256,7 @@ const App = () => {
     if (!deletePreview.visible || deletePreview.ids.length === 0) {
       return;
     }
-    const targetId = deletePreview.ids[0];
+    const targetIds = deletePreview.ids;
     setDeletePreviewLoading(true);
     const handleError = (err: unknown, fallback: string) => {
       const msg = err instanceof Error ? err.message : fallback;
@@ -263,13 +264,27 @@ const App = () => {
       setDeletePreviewLoading(false);
     };
     if (deletePreview.mode === "soft") {
-      deleteMutation.mutate(targetId, {
-        onSuccess: () => {
-          closePreview();
-        },
-        onError: (err) => handleError(err, "删除失败，请重试"),
-      });
+      if (targetIds.length === 1) {
+        const targetId = targetIds[0];
+        deleteMutation.mutate(targetId, {
+          onSuccess: () => {
+            closePreview();
+          },
+          onError: (err) => handleError(err, "删除失败，请重试"),
+        });
+      } else {
+        bulkDeleteMutation.mutate(
+          { ids: targetIds },
+          {
+            onSuccess: () => {
+              closePreview();
+            },
+            onError: (err) => handleError(err, "批量删除失败，请重试"),
+          },
+        );
+      }
     } else {
+      const targetId = targetIds[0];
       purgeMutation.mutate(targetId, {
         onSuccess: () => {
           closePreview();
@@ -277,7 +292,15 @@ const App = () => {
         onError: (err) => handleError(err, "彻底删除失败，请重试"),
       });
     }
-  }, [closePreview, deleteMutation, deletePreview, messageApi, purgeMutation, setDeletePreviewLoading]);
+  }, [
+    bulkDeleteMutation,
+    closePreview,
+    deleteMutation,
+    deletePreview,
+    messageApi,
+    purgeMutation,
+    setDeletePreviewLoading,
+  ]);
 
   const handleOpenAddDocument = useCallback(
     (nodeId: number) => {
@@ -448,8 +471,6 @@ const App = () => {
             selectedNodeId={selectedNodeId}
             includeDescendants={includeDescendants}
             createLoading={createMutation.isPending}
-            updateLoading={updateMutation.isPending}
-            deleteLoading={deleteMutation.isPending}
             trashIsFetching={trashQuery.isFetching}
             messageApi={messageApi}
             dragDebugEnabled={dragDebugEnabled}
@@ -520,7 +541,10 @@ const App = () => {
         loading={deletePreview.loading}
         result={deletePreview.result}
         confirmLoading={
-          deletePreview.loading || deleteMutation.isPending || purgeMutation.isPending
+          deletePreview.loading ||
+          deleteMutation.isPending ||
+          bulkDeleteMutation.isPending ||
+          purgeMutation.isPending
         }
         onCancel={closePreview}
         onConfirm={handleConfirmDelete}

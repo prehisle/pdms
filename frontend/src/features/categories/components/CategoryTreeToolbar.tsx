@@ -1,12 +1,9 @@
 import type { FC } from "react";
 
-import { Input, Tooltip, Button, Popconfirm, Switch } from "antd";
+import { Input, Tooltip, Button, Switch } from "antd";
 
 import {
   FolderAddOutlined,
-  PlusSquareOutlined,
-  EditOutlined,
-  DeleteOutlined,
   DeleteFilled,
   ReloadOutlined,
 } from "@ant-design/icons";
@@ -17,19 +14,11 @@ interface CategoryTreeToolbarProps {
   onSearchSubmit: (value: string) => void;
   onRefresh: () => void;
   onCreateRoot: () => void;
-  onCreateChild: () => void;
-  onRename: () => void;
-  onDelete: () => void;
   onOpenTrash: () => void;
   includeDescendants: boolean;
   onIncludeDescendantsChange: (value: boolean) => void;
-  canCreateChild: boolean;
-  canRename: boolean;
-  canDelete: boolean;
   isRefreshing: boolean;
   createLoading: boolean;
-  updateLoading: boolean;
-  deleteLoading: boolean;
   trashIsFetching: boolean;
   selectedNodeId: number | null;
 }
@@ -40,19 +29,11 @@ export const CategoryTreeToolbar: FC<CategoryTreeToolbarProps> = ({
   onSearchSubmit,
   onRefresh,
   onCreateRoot,
-  onCreateChild,
-  onRename,
-  onDelete,
   onOpenTrash,
   includeDescendants,
   onIncludeDescendantsChange,
-  canCreateChild,
-  canRename,
-  canDelete,
   isRefreshing,
   createLoading,
-  updateLoading,
-  deleteLoading,
   trashIsFetching,
   selectedNodeId,
 }) => (
@@ -96,54 +77,6 @@ export const CategoryTreeToolbar: FC<CategoryTreeToolbarProps> = ({
         />
       </span>
     </Tooltip>
-    <Tooltip title="新建子目录">
-      <span style={{ display: "inline-flex" }}>
-        <Button
-          icon={<PlusSquareOutlined />}
-          type="primary"
-          shape="circle"
-          onClick={onCreateChild}
-          loading={createLoading}
-          disabled={!canCreateChild || createLoading}
-          aria-label="新建子目录"
-        />
-      </span>
-    </Tooltip>
-    <Tooltip title="重命名目录">
-      <span style={{ display: "inline-flex" }}>
-        <Button
-          icon={<EditOutlined />}
-          type="text"
-          shape="circle"
-          onClick={onRename}
-          loading={updateLoading}
-          disabled={!canRename || updateLoading}
-          aria-label="重命名目录"
-        />
-      </span>
-    </Tooltip>
-    <Popconfirm
-      title="确认删除该目录？"
-      okText="删除"
-      cancelText="取消"
-      okButtonProps={{ danger: true }}
-      onConfirm={onDelete}
-      disabled={!canDelete}
-    >
-      <Tooltip title="删除目录">
-        <span style={{ display: "inline-flex" }}>
-          <Button
-            icon={<DeleteOutlined />}
-            danger
-            type="text"
-            shape="circle"
-            disabled={!canDelete || deleteLoading}
-            loading={deleteLoading}
-            aria-label="删除目录"
-          />
-        </span>
-      </Tooltip>
-    </Popconfirm>
     <Tooltip title="打开回收站">
       <span style={{ display: "inline-flex" }}>
         <Button
