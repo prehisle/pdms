@@ -29,6 +29,7 @@ type Client interface {
 	ListDocuments(ctx context.Context, meta RequestMeta, query url.Values) (DocumentsPage, error)
 	ListNodeDocuments(ctx context.Context, meta RequestMeta, id int64, query url.Values) ([]Document, error)
 	CreateDocument(ctx context.Context, meta RequestMeta, body DocumentCreate) (Document, error)
+	UpdateDocument(ctx context.Context, meta RequestMeta, docID int64, body DocumentUpdate) (Document, error)
 	BindDocument(ctx context.Context, meta RequestMeta, nodeID, docID int64) error
 }
 
@@ -220,6 +221,17 @@ func (c *httpClient) ListNodeDocuments(ctx context.Context, meta RequestMeta, id
 
 func (c *httpClient) CreateDocument(ctx context.Context, meta RequestMeta, body DocumentCreate) (Document, error) {
 	req, err := c.newRequest(ctx, http.MethodPost, "/api/v1/documents", meta, body)
+	if err != nil {
+		return Document{}, err
+	}
+	var resp Document
+	_, err = c.do(req, &resp)
+	return resp, err
+}
+
+func (c *httpClient) UpdateDocument(ctx context.Context, meta RequestMeta, docID int64, body DocumentUpdate) (Document, error) {
+	endpoint := fmt.Sprintf("/api/v1/documents/%d", docID)
+	req, err := c.newRequest(ctx, http.MethodPut, endpoint, meta, body)
 	if err != nil {
 		return Document{}, err
 	}

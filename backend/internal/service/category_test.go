@@ -38,6 +38,21 @@ type fakeNDR struct {
 	getErr        error
 	restoreErr    error
 	purgeErr      error
+
+	// Document-related fields
+	createdDocs []ndrclient.DocumentCreate
+	updatedDocs []struct {
+		ID   int64
+		Body ndrclient.DocumentUpdate
+	}
+	createDocResp   ndrclient.Document
+	updateDocResp   ndrclient.Document
+	createDocErr    error
+	updateDocErr    error
+	docsListResp    ndrclient.DocumentsPage
+	nodeDocsResp    []ndrclient.Document
+	docsListErr     error
+	nodeDocsErr     error
 }
 
 func newFakeNDR() *fakeNDR {
@@ -127,19 +142,28 @@ func (f *fakeNDR) PurgeNode(_ context.Context, _ ndrclient.RequestMeta, id int64
 }
 
 func (f *fakeNDR) ListDocuments(context.Context, ndrclient.RequestMeta, url.Values) (ndrclient.DocumentsPage, error) {
-	return ndrclient.DocumentsPage{}, nil
+	return f.docsListResp, f.docsListErr
 }
 
 func (f *fakeNDR) ListNodeDocuments(context.Context, ndrclient.RequestMeta, int64, url.Values) ([]ndrclient.Document, error) {
-	return nil, nil
+	return f.nodeDocsResp, f.nodeDocsErr
 }
 
-func (f *fakeNDR) CreateDocument(context.Context, ndrclient.RequestMeta, ndrclient.DocumentCreate) (ndrclient.Document, error) {
-	return ndrclient.Document{}, nil
+func (f *fakeNDR) CreateDocument(_ context.Context, _ ndrclient.RequestMeta, body ndrclient.DocumentCreate) (ndrclient.Document, error) {
+	f.createdDocs = append(f.createdDocs, body)
+	return f.createDocResp, f.createDocErr
 }
 
 func (f *fakeNDR) BindDocument(context.Context, ndrclient.RequestMeta, int64, int64) error {
 	return nil
+}
+
+func (f *fakeNDR) UpdateDocument(_ context.Context, _ ndrclient.RequestMeta, id int64, body ndrclient.DocumentUpdate) (ndrclient.Document, error) {
+	f.updatedDocs = append(f.updatedDocs, struct {
+		ID   int64
+		Body ndrclient.DocumentUpdate
+	}{ID: id, Body: body})
+	return f.updateDocResp, f.updateDocErr
 }
 
 func TestCreateCategory(t *testing.T) {
