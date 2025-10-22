@@ -19,18 +19,16 @@ async function simulateDocumentQuery(
   if (documentFilters.type) {
     params.type = documentFilters.type;
   }
-  params.size = 100;
-  params.include_descendants = includeDescendants;
-
-  let docs = await mockGetNodeDocuments(selectedNodeId, params);
-
-  // Client-side filtering by document ID if specified
   if (documentFilters.docId) {
     const numericId = Number(documentFilters.docId);
     if (!Number.isNaN(numericId)) {
-      docs = docs.filter((doc: Document) => doc.id === numericId);
+      params.id = [numericId];
     }
   }
+  params.size = 100;
+  params.include_descendants = includeDescendants;
+
+  const docs = await mockGetNodeDocuments(selectedNodeId, params);
 
   // Sort by position to maintain consistent order
   return docs.sort((a: Document, b: Document) => a.position - b.position);
@@ -74,14 +72,28 @@ describe('Document Query Logic', () => {
   ];
 
   beforeEach(() => {
-    mockGetNodeDocuments.mockResolvedValue([...mockDocuments]);
+    mockGetNodeDocuments.mockImplementation((selectedNodeId, params) => {
+      let filteredDocs = [...mockDocuments];
+
+      // Server-side filtering by ID if provided
+      if (params.id && params.id.length > 0) {
+        filteredDocs = filteredDocs.filter(doc => params.id.includes(doc.id));
+      }
+
+      // Server-side filtering by type if provided
+      if (params.type) {
+        filteredDocs = filteredDocs.filter(doc => doc.type === params.type);
+      }
+
+      return Promise.resolve(filteredDocs);
+    });
   });
 
   afterEach(() => {
     vi.clearAllMocks();
   });
 
-  it('should call API without id parameter and filter client-side', async () => {
+  it('should call API with id parameter for server-side filtering', async () => {
     const filters: DocumentFilterFormValues = {
       docId: '123',
       type: 'markdown',
@@ -89,14 +101,15 @@ describe('Document Query Logic', () => {
 
     const result = await simulateDocumentQuery(100, filters, true);
 
-    // Check that API was called without id parameter
+    // Check that API was called with id parameter
     expect(mockGetNodeDocuments).toHaveBeenCalledWith(100, {
       type: 'markdown',
+      id: [123],
       size: 100,
       include_descendants: true,
     });
 
-    // Check that client-side filtering worked
+    // Check that server-side filtering worked
     expect(result).toHaveLength(1);
     expect(result[0].id).toBe(123);
     expect(result[0].title).toBe('Special Document');
@@ -121,6 +134,12 @@ describe('Document Query Logic', () => {
 
     const result = await simulateDocumentQuery(100, filters, true);
 
+    // Check that API was called without id parameter since it's invalid
+    expect(mockGetNodeDocuments).toHaveBeenCalledWith(100, {
+      size: 100,
+      include_descendants: true,
+    });
+
     // Should return all documents since ID filter is invalid
     expect(result).toHaveLength(3);
     expect(result[0].position).toBe(1); // Sorted by position
@@ -132,6 +151,13 @@ describe('Document Query Logic', () => {
     };
 
     const result = await simulateDocumentQuery(100, filters, true);
+
+    // Check that API was called with id parameter
+    expect(mockGetNodeDocuments).toHaveBeenCalledWith(100, {
+      id: [999],
+      size: 100,
+      include_descendants: true,
+    });
 
     expect(result).toHaveLength(0);
   });
@@ -145,15 +171,16 @@ describe('Document Query Logic', () => {
 
     const result = await simulateDocumentQuery(100, filters, false);
 
-    // API should be called with query and type, but not id
+    // API should be called with query, type, and id parameters
     expect(mockGetNodeDocuments).toHaveBeenCalledWith(100, {
       query: 'search term',
       type: 'markdown',
+      id: [1],
       size: 100,
       include_descendants: false,
     });
 
-    // Client-side filtering should apply to the result
+    // Server-side filtering should apply to the result
     expect(result).toHaveLength(1);
     expect(result[0].id).toBe(1);
   });

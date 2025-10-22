@@ -124,18 +124,16 @@ const App = () => {
       if (documentFilters.type) {
         params.type = documentFilters.type;
       }
-      params.size = 100;
-      params.include_descendants = includeDescendants;
-
-      let docs = await getNodeDocuments(selectedNodeId, params);
-
-      // Client-side filtering by document ID if specified
       if (documentFilters.docId) {
         const numericId = Number(documentFilters.docId);
         if (!Number.isNaN(numericId)) {
-          docs = docs.filter(doc => doc.id === numericId);
+          params.id = [numericId];
         }
       }
+      params.size = 100;
+      params.include_descendants = includeDescendants;
+
+      const docs = await getNodeDocuments(selectedNodeId, params);
 
       // Sort by position to maintain consistent order
       return docs.sort((a, b) => a.position - b.position);

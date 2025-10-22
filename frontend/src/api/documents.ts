@@ -42,6 +42,7 @@ export interface DocumentListParams {
   size?: number;
   query?: string;
   type?: string;
+  id?: number[];
   include_deleted?: boolean;
   include_descendants?: boolean;
   metadata?: Record<string, string | number | boolean | Array<string | number | boolean>>;

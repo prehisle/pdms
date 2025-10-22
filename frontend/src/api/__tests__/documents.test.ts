@@ -224,5 +224,31 @@ describe('documents API', () => {
       expect(mockHttp).toHaveBeenCalledWith('/api/v1/nodes/100/subtree-documents?query=search%20term&include_descendants=false');
       expect(result).toEqual(mockDocuments);
     });
+
+    it('should fetch documents with id filter', async () => {
+      const mockDocuments: Document[] = [
+        {
+          id: 123,
+          title: 'Specific Document',
+          type: 'markdown',
+          position: 1,
+          created_by: 'user1',
+          updated_by: 'user1',
+          created_at: '2024-01-01T00:00:00Z',
+          updated_at: '2024-01-01T00:00:00Z',
+          metadata: {},
+        },
+      ];
+
+      mockHttp.mockResolvedValue(mockDocuments);
+
+      const result = await getNodeDocuments(100, {
+        id: [123, 456],
+        include_descendants: true,
+      });
+
+      expect(mockHttp).toHaveBeenCalledWith('/api/v1/nodes/100/subtree-documents?id=123&id=456&include_descendants=true');
+      expect(result).toEqual(mockDocuments);
+    });
   });
 });
