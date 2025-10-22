@@ -1,6 +1,6 @@
 import type { FC } from "react";
 
-import { Form, Input, Modal, Select, Typography } from "antd";
+import { Form, Input, InputNumber, Modal, Select, Typography } from "antd";
 import type { FormInstance } from "antd/es/form";
 
 import type { DocumentFormValues } from "../types";
@@ -52,6 +52,17 @@ export const DocumentCreateModal: FC<DocumentCreateModalProps> = ({
         rules={[{ required: true, message: "请选择文档类型" }]}
       >
         <Select options={documentTypes} placeholder="请选择" />
+      </Form.Item>
+      <Form.Item
+        name="position"
+        label="排序位置"
+        tooltip="数字越小排序越靠前，如果不指定则自动排到最后"
+      >
+        <InputNumber
+          placeholder="可选，指定排序位置"
+          min={1}
+          style={{ width: "100%" }}
+        />
       </Form.Item>
       <Form.Item name="content" label="备注 / 内容预览">
         <Input.TextArea rows={4} placeholder="可选，填写内容概要" />

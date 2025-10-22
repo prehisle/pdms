@@ -1,9 +1,7 @@
 import {
   Button,
   Form,
-  Input,
   Layout,
-  Modal,
   Popconfirm,
   Space,
   Tag,
@@ -24,9 +22,11 @@ import {
   Document,
   DocumentCreatePayload,
   DocumentListParams,
+  DocumentReorderPayload,
   bindDocument,
   createDocument,
   getNodeDocuments,
+  reorderDocuments,
 } from "./api/documents";
 import { CategoryTreePanel } from "./features/categories/components/CategoryTreePanel";
 import { CategoryTrashModal } from "./features/categories/components/CategoryTrashModal";
@@ -44,6 +44,7 @@ import type {
   DocumentFormValues,
 } from "./features/documents/types";
 import { DocumentCreateModal } from "./features/documents/components/DocumentCreateModal";
+import { DocumentReorderModal } from "./features/documents/components/DocumentReorderModal";
 const dragDebugEnabled =
   (import.meta.env.VITE_DEBUG_DRAG ?? "").toString().toLowerCase() === "1";
 const menuDebugEnabled =
@@ -71,6 +72,7 @@ const App = () => {
   const [documentModal, setDocumentModal] = useState<{ open: boolean; nodeId: number | null }>(
     { open: false, nodeId: null },
   );
+  const [reorderModal, setReorderModal] = useState(false);
   const [documentFilters, setDocumentFilters] = useState<DocumentFilterFormValues>({});
   const [includeDescendants, setIncludeDescendants] = useState(true);
   const [documentFilterForm] = Form.useForm<DocumentFilterFormValues>();
@@ -119,18 +121,24 @@ const App = () => {
       if (documentFilters.query?.trim()) {
         params.query = documentFilters.query.trim();
       }
-      if (documentFilters.docId) {
-        const numericId = Number(documentFilters.docId);
-        if (!Number.isNaN(numericId)) {
-          params.id = numericId;
-        }
-      }
       if (documentFilters.type) {
-        params.metadata = { type: documentFilters.type };
+        params.type = documentFilters.type;
       }
       params.size = 100;
       params.include_descendants = includeDescendants;
-      return getNodeDocuments(selectedNodeId, params);
+
+      let docs = await getNodeDocuments(selectedNodeId, params);
+
+      // Client-side filtering by document ID if specified
+      if (documentFilters.docId) {
+        const numericId = Number(documentFilters.docId);
+        if (!Number.isNaN(numericId)) {
+          docs = docs.filter(doc => doc.id === numericId);
+        }
+      }
+
+      // Sort by position to maintain consistent order
+      return docs.sort((a, b) => a.position - b.position);
     },
     enabled: selectedNodeId != null,
   });
@@ -362,11 +370,20 @@ const App = () => {
       },
       {
         title: "类型",
+        dataIndex: "type",
         key: "type",
-        render: (_: unknown, record: Document) => {
-          const type = record.metadata?.type;
-          return <Typography.Text>{type ? String(type) : "-"}</Typography.Text>;
-        },
+        render: (value: string | undefined) => (
+          <Typography.Text>{value || "-"}</Typography.Text>
+        ),
+      },
+      {
+        title: "位置",
+        dataIndex: "position",
+        key: "position",
+        width: 80,
+        render: (value: number) => (
+          <Typography.Text>{value}</Typography.Text>
+        ),
       },
       {
         title: "更新时间",
@@ -398,8 +415,11 @@ const App = () => {
     mutationFn: async ({ nodeId, values }: { nodeId: number; values: DocumentFormValues }) => {
       const payload: DocumentCreatePayload = {
         title: values.title.trim(),
-        metadata: { type: values.type },
+        type: values.type,
       };
+      if (values.position !== undefined) {
+        payload.position = values.position;
+      }
       const contentText = values.content?.trim();
       if (contentText) {
         payload.content = { preview: contentText };
@@ -445,6 +465,40 @@ const App = () => {
     }
     handleOpenAddDocument(selectedNodeId);
   }, [handleOpenAddDocument, messageApi, selectedNodeId]);
+
+  const documentReorderMutation = useMutation({
+    mutationFn: async (payload: DocumentReorderPayload) => {
+      return reorderDocuments(payload);
+    },
+    onSuccess: async () => {
+      messageApi.success("文档排序调整成功");
+      setReorderModal(false);
+      if (selectedNodeId != null) {
+        await queryClient.invalidateQueries({ queryKey: ["node-documents", selectedNodeId] });
+      }
+    },
+    onError: (err: unknown) => {
+      const msg = err instanceof Error ? err.message : "排序调整失败";
+      messageApi.error(msg);
+    },
+  });
+
+  const handleOpenReorderModal = useCallback(() => {
+    if (selectedNodeId == null || documents.length <= 1) {
+      return;
+    }
+    setReorderModal(true);
+  }, [documents.length, selectedNodeId]);
+
+  const handleReorderConfirm = useCallback((orderedIds: number[]) => {
+    if (selectedNodeId == null) {
+      return;
+    }
+    documentReorderMutation.mutate({
+      node_id: selectedNodeId,
+      ordered_ids: orderedIds,
+    });
+  }, [documentReorderMutation, selectedNodeId]);
 
   return (
     <Layout style={{ minHeight: "100vh" }}>
@@ -501,6 +555,7 @@ const App = () => {
               onSearch={handleDocumentSearch}
               onReset={handleDocumentReset}
               onAddDocument={handleToolbarAddDocument}
+              onReorderDocuments={handleOpenReorderModal}
             />
           </Space>
         </Content>
@@ -534,6 +589,13 @@ const App = () => {
         documentTypes={DOCUMENT_TYPES}
         onCancel={handleDocumentModalCancel}
         onOk={handleDocumentModalOk}
+      />
+      <DocumentReorderModal
+        open={reorderModal}
+        documents={documents}
+        loading={documentReorderMutation.isPending}
+        onCancel={() => setReorderModal(false)}
+        onConfirm={handleReorderConfirm}
       />
       <CategoryDeletePreviewModal
         open={deletePreview.visible}
@@ -625,7 +687,7 @@ function buildTrashColumns(
       title: "名称",
       dataIndex: "name",
       key: "name",
-      render: (value: string, record: Category) => (
+      render: (value: string) => (
         <Space>
           <Typography.Text>{value}</Typography.Text>
           <Tag color="red">已删除</Tag>

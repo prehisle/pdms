@@ -153,6 +153,22 @@
             }
           },
           {
+            "name": "type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Type"
+            }
+          },
+          {
             "name": "x-api-key",
             "in": "header",
             "required": false,
@@ -1121,6 +1137,22 @@
             }
           },
           {
+            "name": "type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Type"
+            }
+          },
+          {
             "name": "x-api-key",
             "in": "header",
             "required": false,
@@ -1915,6 +1947,22 @@
             }
           },
           {
+            "name": "type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Type"
+            }
+          },
+          {
             "name": "x-api-key",
             "in": "header",
             "required": false,
@@ -2020,6 +2068,22 @@
                 }
               ],
               "title": "Query"
+            }
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Type"
             }
           },
           {
@@ -2387,6 +2451,28 @@
           "content": {
             "type": "object",
             "title": "Content"
+          },
+          "type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type"
+          },
+          "position": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Position"
           }
         },
         "type": "object",
@@ -2408,6 +2494,21 @@
           "content": {
             "type": "object",
             "title": "Content"
+          },
+          "type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type"
+          },
+          "position": {
+            "type": "integer",
+            "title": "Position"
           },
           "created_by": {
             "type": "string",
@@ -2449,6 +2550,7 @@
         "required": [
           "id",
           "title",
+          "position",
           "created_by",
           "updated_by",
           "created_at",
@@ -2491,6 +2593,28 @@
               }
             ],
             "title": "Content"
+          },
+          "type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type"
+          },
+          "position": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Position"
           }
         },
         "type": "object",
@@ -2699,6 +2823,17 @@
               }
             ],
             "title": "Parent Path"
+          },
+          "type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type"
           }
         },
         "type": "object",
@@ -2721,6 +2856,17 @@
           "slug": {
             "type": "string",
             "title": "Slug"
+          },
+          "type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type"
           },
           "path": {
             "type": "string",
@@ -2844,6 +2990,17 @@
               }
             ],
             "title": "Parent Path"
+          },
+          "type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type"
           }
         },
         "type": "object",

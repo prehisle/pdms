@@ -7,5 +7,6 @@ export interface DocumentFilterFormValues {
 export interface DocumentFormValues {
   title: string;
   type: string;
+  position?: number;
   content?: string;
 }
