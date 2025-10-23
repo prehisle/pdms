@@ -214,9 +214,12 @@ func (c *httpClient) ListNodeDocuments(ctx context.Context, meta RequestMeta, id
 	if err != nil {
 		return nil, err
 	}
-	var resp []Document
+	var resp DocumentsPage
 	_, err = c.do(req, &resp)
-	return resp, err
+	if err != nil {
+		return nil, err
+	}
+	return resp.Items, nil
 }
 
 func (c *httpClient) CreateDocument(ctx context.Context, meta RequestMeta, body DocumentCreate) (Document, error) {

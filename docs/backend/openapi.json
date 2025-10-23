@@ -2044,6 +2044,29 @@
             }
           },
           {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 20,
+              "title": "Size"
+            }
+          },
+          {
             "name": "include_deleted_nodes",
             "in": "query",
             "required": false,
@@ -2147,11 +2170,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/DocumentOut"
-                  },
-                  "title": "Response Get Subtree Documents Api V1 Nodes  Id  Subtree Documents Get"
+                  "$ref": "#/components/schemas/DocumentsPage"
                 }
               }
             }

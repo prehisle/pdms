@@ -934,6 +934,117 @@ func (f *inMemoryNDR) tick() time.Time {
 	return time.Unix(0, f.clock*int64(time.Millisecond)).UTC()
 }
 
+func TestListDocumentsIDFilter(t *testing.T) {
+	ndr := newInMemoryNDR()
+	svc := service.NewService(cache.NewNoop(), ndr)
+	handler := NewHandler(svc, HeaderDefaults{})
+	router := NewRouter(handler)
+
+	docA, err := ndr.CreateDocument(context.Background(), ndrclient.RequestMeta{}, ndrclient.DocumentCreate{Title: "Doc A"})
+	if err != nil {
+		t.Fatalf("create document A error: %v", err)
+	}
+	docB, err := ndr.CreateDocument(context.Background(), ndrclient.RequestMeta{}, ndrclient.DocumentCreate{Title: "Doc B"})
+	if err != nil {
+		t.Fatalf("create document B error: %v", err)
+	}
+	docC, err := ndr.CreateDocument(context.Background(), ndrclient.RequestMeta{}, ndrclient.DocumentCreate{Title: "Doc C"})
+	if err != nil {
+		t.Fatalf("create document C error: %v", err)
+	}
+
+	url := fmt.Sprintf("/api/v1/documents?id=%d&id=%d", docA.ID, docC.ID)
+	req := httptest.NewRequest(http.MethodGet, url, nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var page ndrclient.DocumentsPage
+	if err := json.NewDecoder(rec.Body).Decode(&page); err != nil {
+		t.Fatalf("decode documents page error: %v", err)
+	}
+
+	if len(page.Items) != 2 {
+		t.Fatalf("expected 2 documents, got %d", len(page.Items))
+	}
+	if page.Total != 2 {
+		t.Fatalf("expected total 2, got %d", page.Total)
+	}
+
+	ids := []int64{page.Items[0].ID, page.Items[1].ID}
+	for _, unexpected := range []int64{docB.ID} {
+		for _, id := range ids {
+			if id == unexpected {
+				t.Fatalf("unexpected document id %d in response", unexpected)
+			}
+		}
+	}
+	if ids[0] != docA.ID || ids[1] != docC.ID {
+		t.Fatalf("expected documents [%d %d], got %v", docA.ID, docC.ID, ids)
+	}
+}
+
+func TestListNodeDocumentsIDFilter(t *testing.T) {
+	ndr := newInMemoryNDR()
+	svc := service.NewService(cache.NewNoop(), ndr)
+	handler := NewHandler(svc, HeaderDefaults{})
+	router := NewRouter(handler)
+
+	root := createCategory(t, router, `{"name":"Root"}`)
+
+	docA, err := ndr.CreateDocument(context.Background(), ndrclient.RequestMeta{}, ndrclient.DocumentCreate{Title: "Doc A"})
+	if err != nil {
+		t.Fatalf("create document A error: %v", err)
+	}
+	docB, err := ndr.CreateDocument(context.Background(), ndrclient.RequestMeta{}, ndrclient.DocumentCreate{Title: "Doc B"})
+	if err != nil {
+		t.Fatalf("create document B error: %v", err)
+	}
+	docC, err := ndr.CreateDocument(context.Background(), ndrclient.RequestMeta{}, ndrclient.DocumentCreate{Title: "Doc C"})
+	if err != nil {
+		t.Fatalf("create document C error: %v", err)
+	}
+
+	if err := ndr.BindDocument(context.Background(), ndrclient.RequestMeta{}, root.ID, docA.ID); err != nil {
+		t.Fatalf("bind document A error: %v", err)
+	}
+	if err := ndr.BindDocument(context.Background(), ndrclient.RequestMeta{}, root.ID, docB.ID); err != nil {
+		t.Fatalf("bind document B error: %v", err)
+	}
+	if err := ndr.BindDocument(context.Background(), ndrclient.RequestMeta{}, root.ID, docC.ID); err != nil {
+		t.Fatalf("bind document C error: %v", err)
+	}
+
+	url := fmt.Sprintf("/api/v1/nodes/%d/subtree-documents?id=%d&id=%d", root.ID, docA.ID, docC.ID)
+	req := httptest.NewRequest(http.MethodGet, url, nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var docs []ndrclient.Document
+	if err := json.NewDecoder(rec.Body).Decode(&docs); err != nil {
+		t.Fatalf("decode documents error: %v", err)
+	}
+
+	if len(docs) != 2 {
+		t.Fatalf("expected 2 documents, got %d", len(docs))
+	}
+	if docs[0].ID != docA.ID || docs[1].ID != docC.ID {
+		t.Fatalf("expected document ids [%d %d], got [%d %d]", docA.ID, docC.ID, docs[0].ID, docs[1].ID)
+	}
+	for _, doc := range docs {
+		if doc.ID == docB.ID {
+			t.Fatalf("unexpected document id %d in response", docB.ID)
+		}
+	}
+}
+
 func TestDocumentReorderEndpoint(t *testing.T) {
 	ndr := newInMemoryNDR()
 	svc := service.NewService(cache.NewNoop(), ndr)
@@ -943,8 +1054,8 @@ func TestDocumentReorderEndpoint(t *testing.T) {
 	// Create some documents
 	docType := "markdown"
 	doc1, err := ndr.CreateDocument(context.Background(), ndrclient.RequestMeta{}, ndrclient.DocumentCreate{
-		Title: "Document A",
-		Type:  &docType,
+		Title:   "Document A",
+		Type:    &docType,
 		Content: map[string]any{"text": "Content A"},
 	})
 	if err != nil {
@@ -952,8 +1063,8 @@ func TestDocumentReorderEndpoint(t *testing.T) {
 	}
 
 	doc2, err := ndr.CreateDocument(context.Background(), ndrclient.RequestMeta{}, ndrclient.DocumentCreate{
-		Title: "Document B",
-		Type:  &docType,
+		Title:   "Document B",
+		Type:    &docType,
 		Content: map[string]any{"text": "Content B"},
 	})
 	if err != nil {
@@ -1070,7 +1181,7 @@ func TestDocumentUpdateWithTypeAndPosition(t *testing.T) {
 
 	// Create a document first
 	doc, err := ndr.CreateDocument(context.Background(), ndrclient.RequestMeta{}, ndrclient.DocumentCreate{
-		Title: "Original Title",
+		Title:   "Original Title",
 		Content: map[string]any{"text": "Original content"},
 	})
 	if err != nil {

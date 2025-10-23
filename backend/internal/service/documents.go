@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"net/url"
+	"strconv"
+	"strings"
 
 	"github.com/yjxt/ydms/backend/internal/ndrclient"
 )
@@ -19,12 +21,36 @@ type DocumentCreateRequest struct {
 
 // ListDocuments fetches a paginated list of documents from NDR.
 func (s *Service) ListDocuments(ctx context.Context, meta RequestMeta, query url.Values) (ndrclient.DocumentsPage, error) {
-	return s.ndr.ListDocuments(ctx, toNDRMeta(meta), query)
+	page, err := s.ndr.ListDocuments(ctx, toNDRMeta(meta), query)
+	if err != nil {
+		return ndrclient.DocumentsPage{}, err
+	}
+
+	ids := extractIDFilter(query)
+	if len(ids) == 0 {
+		return page, nil
+	}
+
+	filtered := filterDocumentsByID(page.Items, ids)
+	page.Items = filtered
+	page.Total = len(filtered)
+	page.Size = len(filtered)
+	return page, nil
 }
 
 // ListNodeDocuments fetches documents attached to the node subtree.
 func (s *Service) ListNodeDocuments(ctx context.Context, meta RequestMeta, nodeID int64, query url.Values) ([]ndrclient.Document, error) {
-	return s.ndr.ListNodeDocuments(ctx, toNDRMeta(meta), nodeID, query)
+	docs, err := s.ndr.ListNodeDocuments(ctx, toNDRMeta(meta), nodeID, query)
+	if err != nil {
+		return nil, err
+	}
+
+	ids := extractIDFilter(query)
+	if len(ids) == 0 {
+		return docs, nil
+	}
+
+	return filterDocumentsByID(docs, ids), nil
 }
 
 // CreateDocument creates a new document upstream.
@@ -95,4 +121,43 @@ func (s *Service) ReorderDocuments(ctx context.Context, meta RequestMeta, req Do
 	}
 
 	return updatedDocs, nil
+}
+
+func extractIDFilter(query url.Values) map[int64]struct{} {
+	if query == nil {
+		return nil
+	}
+	raw := query["id"]
+	if len(raw) == 0 {
+		return nil
+	}
+	ids := make(map[int64]struct{}, len(raw))
+	for _, value := range raw {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			continue
+		}
+		id, err := strconv.ParseInt(trimmed, 10, 64)
+		if err != nil {
+			continue
+		}
+		ids[id] = struct{}{}
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	return ids
+}
+
+func filterDocumentsByID(items []ndrclient.Document, ids map[int64]struct{}) []ndrclient.Document {
+	if len(ids) == 0 {
+		return items
+	}
+	filtered := make([]ndrclient.Document, 0, len(items))
+	for _, doc := range items {
+		if _, ok := ids[doc.ID]; ok {
+			filtered = append(filtered, doc)
+		}
+	}
+	return filtered
 }
