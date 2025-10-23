@@ -1,8 +1,11 @@
 package api
 
 import (
+	"encoding/json"
 	"log"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -22,6 +25,7 @@ func NewRouter(h *Handler) http.Handler {
 	mux.Handle("/api/v1/documents", wrap(http.HandlerFunc(h.Documents)))
 	mux.Handle("/api/v1/documents/", wrap(http.HandlerFunc(h.DocumentRoutes)))
 	mux.Handle("/api/v1/nodes/", wrap(http.HandlerFunc(h.NodeRoutes)))
+	mux.Handle("/api/v1/authz/assignments", wrap(http.HandlerFunc(h.AuthzAssignments)))
 
 	return mux
 }
@@ -29,6 +33,7 @@ func NewRouter(h *Handler) http.Handler {
 func (h *Handler) applyMiddleware(next http.Handler) http.Handler {
 	handler := next
 	handler = requestContextMiddleware(h.defaults.UserID)(handler)
+	handler = authzMiddleware(h)(handler)
 	handler = corsMiddleware(handler)
 	handler = loggingMiddleware(handler)
 	return handler
@@ -60,7 +65,7 @@ func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// For development we allow all origins; adjust as needed for production.
 		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, x-api-key, x-user-id, x-request-id")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, x-api-key, x-user-id, x-request-id, x-admin-key, x-authz-enforce, x-domain")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
 
 		if r.Method == http.MethodOptions {
@@ -82,6 +87,52 @@ func requestContextMiddleware(defaultUserID string) func(http.Handler) http.Hand
 				r.Header.Set("x-request-id", uuid.NewString())
 			}
 			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// authzMiddleware performs Casbin checks. Report-only by default; can enforce via global or header.
+func authzMiddleware(h *Handler) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Skip preflight
+			if r.Method == http.MethodOptions {
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			// If enforcer is not set, pass-through
+			if h.enforcer == nil {
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			sub := r.Header.Get("x-user-id")
+			dom := r.Header.Get("x-domain")
+			if dom == "" {
+				dom = "*"
+			}
+			obj := r.URL.Path
+			act := r.Method
+
+			allowed, err := h.enforcer.Enforce(sub, dom, obj, act)
+			if err != nil {
+				// On error, do not block; log-like header and continue
+				w.Header().Set("x-authz-error", err.Error())
+				next.ServeHTTP(w, r)
+				return
+			}
+			w.Header().Set("x-authz-allowed", strconv.FormatBool(allowed))
+
+			// Enforce via global switch or header override
+			enforce := h.authzEnforce || strings.EqualFold(r.Header.Get("x-authz-enforce"), "true")
+			if !enforce || allowed {
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			w.WriteHeader(http.StatusForbidden)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": "forbidden"})
 		})
 	}
 }

@@ -24,11 +24,16 @@ import (
 	"github.com/yjxt/ydms/backend/internal/config"
 	"github.com/yjxt/ydms/backend/internal/ndrclient"
 	"github.com/yjxt/ydms/backend/internal/service"
+	"github.com/yjxt/ydms/backend/internal/db"
+	"github.com/yjxt/ydms/backend/internal/authz"
 )
 
-const devBinaryPath = "tmp/server-dev"
+var devBinaryPath = "./tmp/server-dev"
 
 func main() {
+	if runtime.GOOS == "windows" {
+		devBinaryPath += ".exe"
+	}
 	watch := flag.Bool("watch", false, "enable auto-reload in development mode")
 	flag.Parse()
 
@@ -48,7 +53,23 @@ func runServer() error {
 	loadDotEnv()
 
 	cfg := config.Load()
-	log.Printf("config loaded: ndr_base=%s default_user=%s admin_key_set=%t debug_traffic=%t", cfg.NDR.BaseURL, cfg.Auth.DefaultUserID, cfg.Auth.AdminKey != "not_set", cfg.Debug.Traffic)
+	log.Printf("config loaded: ndr_base=%s default_user=%s admin_key_set=%t debug_traffic=%t db_dsn_set=%t authz_enforce=%t", cfg.NDR.BaseURL, cfg.Auth.DefaultUserID, cfg.Auth.AdminKey != "not_set", cfg.Debug.Traffic, cfg.DB.DSN != "not_set", cfg.AuthZ.Enforce)
+
+	// Initialize database if configured
+	database, err := db.Init(cfg.DB)
+	if err != nil {
+		log.Printf("db init error: %v", err)
+	} else if database != nil {
+		log.Printf("db connected")
+	}
+
+	// Initialize authorization enforcer (persist to DB when available)
+	enforcer, err := authz.NewEnforcer(database)
+	if err != nil {
+		log.Printf("authz init error: %v", err)
+	} else {
+		log.Printf("authz enforcer ready")
+	}
 
 	cacheProvider := cache.NewNoop()
 	ndr := ndrclient.NewClient(ndrclient.NDRConfig{
@@ -62,6 +83,11 @@ func runServer() error {
 		UserID:   cfg.Auth.DefaultUserID,
 		AdminKey: cfg.Auth.AdminKey,
 	})
+	// Bind enforcer to handler for middleware usage.
+	handler.SetEnforcer(enforcer)
+	// Apply global authorization enforce switch.
+	handler.SetAuthZEnforce(cfg.AuthZ.Enforce)
+
 	router := api.NewRouter(handler)
 
 	server := &http.Server{
@@ -269,7 +295,11 @@ func buildBinary() error {
 }
 
 func startBinary() (*childProcess, error) {
-	cmd := exec.Command(devBinaryPath)
+	absPath, err := filepath.Abs(devBinaryPath)
+	if err != nil {
+		return nil, fmt.Errorf("could not get absolute path for binary: %w", err)
+	}
+	cmd := exec.Command(absPath)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Env = os.Environ()

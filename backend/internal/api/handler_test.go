@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yjxt/ydms/backend/internal/authz"
 	"github.com/yjxt/ydms/backend/internal/cache"
 	"github.com/yjxt/ydms/backend/internal/ndrclient"
 	"github.com/yjxt/ydms/backend/internal/service"
@@ -846,4 +847,83 @@ func (f *inMemoryNDR) removeChild(parentKey int64, id int64) {
 func (f *inMemoryNDR) tick() time.Time {
 	f.clock++
 	return time.Unix(0, f.clock*int64(time.Millisecond)).UTC()
+}
+
+func TestAuthzAssignments_CreateListDelete(t *testing.T) {
+	ndr := newInMemoryNDR()
+	svc := service.NewService(cache.NewNoop(), ndr)
+	handler := NewHandler(svc, HeaderDefaults{
+		APIKey:   "test-key",
+		UserID:   "tester",
+		AdminKey: "admin",
+	})
+	enf, err := authz.NewEnforcer(nil)
+	if err != nil {
+		t.Fatalf("authz init error: %v", err)
+	}
+	handler.SetEnforcer(enf)
+	router := NewRouter(handler)
+
+	assign := `{"user":"alice","role":"course_admin","domain":"course:42"}`
+	postReq := httptest.NewRequest(http.MethodPost, "/api/v1/authz/assignments", strings.NewReader(assign))
+	postReq.Header.Set("Content-Type", "application/json")
+	postReq.Header.Set("x-admin-key", "admin")
+	postRec := httptest.NewRecorder()
+	router.ServeHTTP(postRec, postReq)
+	if postRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d body=%s", postRec.Code, postRec.Body.String())
+	}
+	var postResp struct{ Assigned bool `json:"assigned"` }
+	if err := json.NewDecoder(postRec.Body).Decode(&postResp); err != nil {
+		t.Fatalf("decode assign response error: %v", err)
+	}
+	if !postResp.Assigned {
+		t.Fatalf("expected assigned=true")
+	}
+
+	getReq := httptest.NewRequest(http.MethodGet, "/api/v1/authz/assignments?user=alice&role=course_admin&domain=course:42", nil)
+	getReq.Header.Set("x-admin-key", "admin")
+	getRec := httptest.NewRecorder()
+	router.ServeHTTP(getRec, getReq)
+	if getRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", getRec.Code, getRec.Body.String())
+	}
+	var listResp struct{ Items []map[string]string `json:"items"` }
+	if err := json.NewDecoder(getRec.Body).Decode(&listResp); err != nil {
+		t.Fatalf("decode list response error: %v", err)
+	}
+	if len(listResp.Items) != 1 {
+		t.Fatalf("expected 1 item, got %d", len(listResp.Items))
+	}
+
+	delReq := httptest.NewRequest(http.MethodDelete, "/api/v1/authz/assignments", strings.NewReader(assign))
+	delReq.Header.Set("Content-Type", "application/json")
+	delReq.Header.Set("x-admin-key", "admin")
+	delRec := httptest.NewRecorder()
+	router.ServeHTTP(delRec, delReq)
+	if delRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", delRec.Code, delRec.Body.String())
+	}
+	var delResp struct{ Removed bool `json:"removed"` }
+	if err := json.NewDecoder(delRec.Body).Decode(&delResp); err != nil {
+		t.Fatalf("decode delete response error: %v", err)
+	}
+	if !delResp.Removed {
+		t.Fatalf("expected removed=true")
+	}
+
+	get2Req := httptest.NewRequest(http.MethodGet, "/api/v1/authz/assignments?user=alice&role=course_admin&domain=course:42", nil)
+	get2Req.Header.Set("x-admin-key", "admin")
+	get2Rec := httptest.NewRecorder()
+	router.ServeHTTP(get2Rec, get2Req)
+	if get2Rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", get2Rec.Code, get2Rec.Body.String())
+	}
+	var list2Resp struct{ Items []map[string]string `json:"items"` }
+	if err := json.NewDecoder(get2Rec.Body).Decode(&list2Resp); err != nil {
+		t.Fatalf("decode list2 response error: %v", err)
+	}
+	if len(list2Resp.Items) != 0 {
+		t.Fatalf("expected 0 items after delete, got %d", len(list2Resp.Items))
+	}
 }

@@ -9,12 +9,15 @@ import (
 	"strings"
 
 	"github.com/yjxt/ydms/backend/internal/service"
+	"github.com/casbin/casbin/v2"
 )
 
 // Handler exposes HTTP handlers that delegate to the service layer.
 type Handler struct {
-	service  *service.Service
-	defaults HeaderDefaults
+	service      *service.Service
+	defaults     HeaderDefaults
+	enforcer     *casbin.Enforcer
+	authzEnforce bool
 }
 
 type HeaderDefaults struct {
@@ -27,6 +30,12 @@ type HeaderDefaults struct {
 func NewHandler(service *service.Service, defaults HeaderDefaults) *Handler {
 	return &Handler{service: service, defaults: defaults}
 }
+
+// SetEnforcer attaches an authorization enforcer for middleware checks.
+func (h *Handler) SetEnforcer(e *casbin.Enforcer) { h.enforcer = e }
+
+// SetAuthZEnforce sets middleware enforcement behavior.
+func (h *Handler) SetAuthZEnforce(v bool) { h.authzEnforce = v }
 
 // Health reports basic liveness.
 func (h *Handler) Health(w http.ResponseWriter, r *http.Request) {
@@ -238,6 +247,8 @@ func (h *Handler) handleCategoryItem(w http.ResponseWriter, r *http.Request, met
 		respondError(w, http.StatusMethodNotAllowed, errors.New("method not allowed"))
 	}
 }
+
+// ----- Missing category helpers restored -----
 
 func (h *Handler) createCategory(w http.ResponseWriter, r *http.Request, meta service.RequestMeta) {
 	var payload service.CategoryCreateRequest
@@ -495,6 +506,8 @@ func (h *Handler) bulkMoveCategories(w http.ResponseWriter, r *http.Request, met
 	writeJSON(w, http.StatusOK, map[string]any{"items": items})
 }
 
+// ----- helpers -----
+
 func cloneQuery(values url.Values) url.Values {
 	if values == nil {
 		return nil
@@ -541,4 +554,73 @@ func writeJSON(w http.ResponseWriter, status int, payload any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(payload)
+}
+
+func (h *Handler) AuthzAssignments(w http.ResponseWriter, r *http.Request) {
+	meta := h.metaFromRequest(r)
+	if strings.TrimSpace(meta.AdminKey) == "" {
+		respondError(w, http.StatusForbidden, errors.New("admin required"))
+		return
+	}
+	if h.enforcer == nil {
+		respondError(w, http.StatusServiceUnavailable, errors.New("authz not available"))
+		return
+	}
+
+	// Support listing via GET with query filters: user, role, domain
+	if r.Method == http.MethodGet {
+		q := r.URL.Query()
+		user := q.Get("user")
+		role := q.Get("role")
+		domain := q.Get("domain")
+		var rows [][]string
+		if user != "" || role != "" || domain != "" {
+			rows, _ = h.enforcer.GetFilteredGroupingPolicy(0, user, role, domain)
+		} else {
+			rows, _ = h.enforcer.GetGroupingPolicy()
+		}
+		items := make([]map[string]string, 0, len(rows))
+		for _, row := range rows {
+			var u, r0, d string
+			if len(row) > 0 { u = row[0] }
+			if len(row) > 1 { r0 = row[1] }
+			if len(row) > 2 { d = row[2] }
+			items = append(items, map[string]string{"user": u, "role": r0, "domain": d})
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"items": items})
+		return
+	}
+
+	var payload struct {
+		User   string `json:"user"`
+		Role   string `json:"role"`
+		Domain string `json:"domain"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		respondError(w, http.StatusBadRequest, err)
+		return
+	}
+	if strings.TrimSpace(payload.User) == "" || strings.TrimSpace(payload.Role) == "" || strings.TrimSpace(payload.Domain) == "" {
+		respondError(w, http.StatusBadRequest, errors.New("user, role, and domain are required"))
+		return
+	}
+
+	switch r.Method {
+	case http.MethodPost:
+		ok, err := h.enforcer.AddGroupingPolicy(payload.User, payload.Role, payload.Domain)
+		if err != nil {
+			respondError(w, http.StatusBadGateway, err)
+			return
+		}
+		writeJSON(w, http.StatusCreated, map[string]any{"assigned": ok})
+	case http.MethodDelete:
+		ok, err := h.enforcer.RemoveGroupingPolicy(payload.User, payload.Role, payload.Domain)
+		if err != nil {
+			respondError(w, http.StatusBadGateway, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"removed": ok})
+	default:
+		respondError(w, http.StatusMethodNotAllowed, errors.New("method not allowed"))
+	}
 }

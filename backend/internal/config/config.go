@@ -11,7 +11,9 @@ type Config struct {
 	HTTPPort int
 	NDR      NDRConfig
 	Auth     AuthConfig
+	AuthZ    AuthZConfig
 	Debug    DebugConfig
+	DB       DBConfig
 }
 
 // NDRConfig stores settings for the upstream NDR service.
@@ -31,6 +33,16 @@ type AuthConfig struct {
 	AdminKey      string
 }
 
+// AuthZConfig controls authorization enforcement behavior.
+type AuthZConfig struct {
+	Enforce bool
+}
+
+// DBConfig stores database connection settings.
+type DBConfig struct {
+	DSN string
+}
+
 // Load builds a Config object from environment variables, providing sane defaults.
 func Load() Config {
 	return Config{
@@ -43,8 +55,14 @@ func Load() Config {
 			DefaultUserID: firstNonEmpty(os.Getenv("YDMS_DEFAULT_USER_ID"), "dms"),
 			AdminKey:      firstNonEmpty(os.Getenv("YDMS_ADMIN_KEY"), "not_set"),
 		},
+		AuthZ: AuthZConfig{
+			Enforce: parseEnvBool("YDMS_AUTHZ_ENFORCE", false),
+		},
 		Debug: DebugConfig{
 			Traffic: parseEnvBool("YDMS_DEBUG_TRAFFIC", false),
+		},
+		DB: DBConfig{
+			DSN: firstNonEmpty(os.Getenv("YDMS_DB_DSN"), "not_set"),
 		},
 	}
 }
