@@ -1,127 +1,56 @@
 import {
-  Alert,
   Button,
-  Card,
-  Collapse,
-  Empty,
   Form,
-  Input,
   Layout,
-  Menu,
-  Modal,
   Popconfirm,
-  Select,
   Space,
-  Spin,
-  Switch,
-  Table,
   Tag,
   Tooltip,
-  Tree,
   Typography,
   message,
 } from "antd";
-import type { MenuProps } from "antd";
-import type { TreeProps } from "antd";
-import type { DataNode, EventDataNode } from "antd/es/tree";
 import type { ColumnsType } from "antd/es/table";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { Key, MouseEvent as ReactMouseEvent } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  CloseCircleOutlined,
-  CopyOutlined,
-  DeleteFilled,
   DeleteOutlined,
   EditOutlined,
-  FileAddOutlined,
-  FileTextOutlined,
-  FolderAddOutlined,
-  SearchOutlined,
-  ScissorOutlined,
-  PlusOutlined,
-  PlusSquareOutlined,
-  ReloadOutlined,
   RollbackOutlined,
-  SnippetsOutlined,
-  ClearOutlined,
 } from "@ant-design/icons";
-import {
-  Category,
-  CategoryCreatePayload,
-  CategoryUpdatePayload,
-  createCategory,
-  deleteCategory,
-  getDeletedCategories,
-  getCategoryTree,
-  purgeCategory,
-  repositionCategory,
-  restoreCategory,
-  updateCategory,
-  bulkRestoreCategories,
-  bulkPurgeCategories,
-  bulkCopyCategories,
-  bulkMoveCategories,
-  bulkCheckCategories,
-  type CategoryBulkCopyPayload,
-  type CategoryBulkMovePayload,
-  type CategoryBulkCheckResponse,
-} from "./api/categories";
+import { Category, getCategoryTree } from "./api/categories";
 import {
   Document,
   DocumentCreatePayload,
   DocumentListParams,
+  DocumentReorderPayload,
   bindDocument,
   createDocument,
   getNodeDocuments,
+  reorderDocuments,
 } from "./api/documents";
+import { CategoryTreePanel } from "./features/categories/components/CategoryTreePanel";
+import { CategoryTrashModal } from "./features/categories/components/CategoryTrashModal";
+import { CategoryDeletePreviewModal } from "./features/categories/components/CategoryDeletePreviewModal";
+import { CategoryFormModal } from "./features/categories/components/CategoryFormModal";
+import { useTrashQuery } from "./features/categories/hooks/useTrashQuery";
+import { useDeletePreview } from "./features/categories/hooks/useDeletePreview";
+import { useTreeActions } from "./features/categories/hooks/useTreeActions";
+import type { ParentKey } from "./features/categories/types";
+import { buildLookups } from "./features/categories/utils";
+import { DocumentPanel } from "./features/documents/components/DocumentPanel";
+import { DOCUMENT_TYPES } from "./features/documents/constants";
+import type {
+  DocumentFilterFormValues,
+  DocumentFormValues,
+} from "./features/documents/types";
+import { DocumentCreateModal } from "./features/documents/components/DocumentCreateModal";
+import { DocumentReorderModal } from "./features/documents/components/DocumentReorderModal";
 const dragDebugEnabled =
   (import.meta.env.VITE_DEBUG_DRAG ?? "").toString().toLowerCase() === "1";
 const menuDebugEnabled =
   (import.meta.env.VITE_DEBUG_MENU ?? "").toString().toLowerCase() === "1";
 
 const { Sider, Content } = Layout;
-
-type TreeDataNode = DataNode & {
-  parentId: number | null;
-  children?: TreeDataNode[];
-};
-
-type ParentKey = number | null;
-
-type DocumentFilterFormValues = {
-  docId?: string;
-  query?: string;
-  type?: string;
-};
-
-type DocumentFormValues = {
-  title: string;
-  type: string;
-  content?: string;
-};
-
-type ClipboardMode = "copy" | "cut";
-
-interface ClipboardState {
-  mode: ClipboardMode;
-  sourceIds: number[];
-  parentId: number | null;
-}
-
-type ContextMenuState = {
-  open: boolean;
-  nodeId: number | null;
-  parentId: number | null;
-  x: number;
-  y: number;
-};
-
-const DOCUMENT_TYPES = [
-  { value: "markdown", label: "Markdown" },
-  { value: "rich-text", label: "富文本" },
-  { value: "link", label: "外部链接" },
-];
 
 const App = () => {
   const { data, isLoading, isFetching, error, refetch } = useQuery({
@@ -132,7 +61,6 @@ const App = () => {
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [selectionParentId, setSelectionParentId] = useState<number | null | undefined>(undefined);
   const [lastSelectedId, setLastSelectedId] = useState<number | null>(null);
-  const [isMutating, setIsMutating] = useState(false);
   const [messageApi, contextHolder] = message.useMessage();
   const [trashModalOpen, setTrashModalOpen] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState<{
@@ -141,45 +69,45 @@ const App = () => {
   }>({ open: false, parentId: null });
   const [showRenameModal, setShowRenameModal] = useState(false);
   const [categoryForm] = Form.useForm<{ name: string }>();
-  const [searchValue, setSearchValue] = useState("");
-  const [expandedKeys, setExpandedKeys] = useState<string[]>([]);
-  const [autoExpandParent, setAutoExpandParent] = useState(true);
-  const [selectedTrashRowKeys, setSelectedTrashRowKeys] = useState<Key[]>([]);
-  const [detailCollapseKeys, setDetailCollapseKeys] = useState<string[]>(["detail"]);
   const [documentModal, setDocumentModal] = useState<{ open: boolean; nodeId: number | null }>(
     { open: false, nodeId: null },
   );
+  const [reorderModal, setReorderModal] = useState(false);
   const [documentFilters, setDocumentFilters] = useState<DocumentFilterFormValues>({});
   const [includeDescendants, setIncludeDescendants] = useState(true);
   const [documentFilterForm] = Form.useForm<DocumentFilterFormValues>();
   const [documentForm] = Form.useForm<DocumentFormValues>();
-  const [clipboard, setClipboard] = useState<ClipboardState | null>(null);
-  const clipboardSourceSet = useMemo(() => new Set(clipboard?.sourceIds ?? []), [clipboard]);
-  const [deletePreview, setDeletePreview] = useState<{
-    visible: boolean;
-    mode: "soft" | "purge";
-    ids: number[];
-    loading: boolean;
-    result: CategoryBulkCheckResponse | null;
-  }>({ visible: false, mode: "soft", ids: [], loading: false, result: null });
-  const [contextMenu, setContextMenu] = useState<ContextMenuState>({
-    open: false,
-    nodeId: null,
-    parentId: null,
-    x: 0,
-    y: 0,
-  });
-  const menuContainerRef = useRef<HTMLDivElement | null>(null);
+  const {
+    trashQuery,
+    trashItems,
+    isInitialLoading: isTrashInitialLoading,
+    selectedRowKeys: selectedTrashRowKeys,
+    setSelectedRowKeys,
+    handleBulkRestore,
+    handleBulkPurge,
+    isProcessing: isTrashProcessing,
+  } = useTrashQuery(messageApi);
+
+  const handleTrashBulkRestore = useCallback(async () => {
+    await handleBulkRestore();
+    await queryClient.invalidateQueries({ queryKey: ["categories-tree"] });
+  }, [handleBulkRestore, queryClient]);
+
+  const handleTrashBulkPurge = useCallback(async () => {
+    await handleBulkPurge();
+    await queryClient.invalidateQueries({ queryKey: ["categories-tree"] });
+  }, [handleBulkPurge, queryClient]);
+
+  const {
+    deletePreview,
+    openPreview: openDeletePreview,
+    closePreview,
+    setLoading: setDeletePreviewLoading,
+  } = useDeletePreview(messageApi);
 
   useEffect(() => {
     document.title = "题库目录管理";
   }, []);
-
-  const trashQuery = useQuery({
-    queryKey: ["categories-trash"],
-    queryFn: () => getDeletedCategories(),
-    enabled: false,
-  });
 
   const selectedNodeId = selectedIds.length === 1 ? selectedIds[0] : null;
 
@@ -193,101 +121,39 @@ const App = () => {
       if (documentFilters.query?.trim()) {
         params.query = documentFilters.query.trim();
       }
+      if (documentFilters.type) {
+        params.type = documentFilters.type;
+      }
       if (documentFilters.docId) {
         const numericId = Number(documentFilters.docId);
         if (!Number.isNaN(numericId)) {
-          params.id = numericId;
+          params.id = [numericId];
         }
-      }
-      if (documentFilters.type) {
-        params.metadata = { type: documentFilters.type };
       }
       params.size = 100;
       params.include_descendants = includeDescendants;
-      return getNodeDocuments(selectedNodeId, params);
+
+      const docs = await getNodeDocuments(selectedNodeId, params);
+
+      // Sort by position to maintain consistent order
+      return docs.sort((a, b) => a.position - b.position);
     },
     enabled: selectedNodeId != null,
   });
 
   const documents = selectedNodeId == null ? [] : documentsQuery.data ?? [];
-  const trashData = trashQuery.data ?? [];
-  const isTrashInitialLoading =
-    trashQuery.isLoading || (trashQuery.isFetching && !trashQuery.data);
+  const categoriesList = data ?? [];
 
-  const createMutation = useMutation({
-    mutationFn: (payload: CategoryCreatePayload) => createCategory(payload),
-    onSuccess: async () => {
-      messageApi.success("目录创建成功");
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["categories-tree"] }),
-        queryClient.invalidateQueries({ queryKey: ["categories-trash"] }),
-      ]);
-      setShowCreateModal({ open: false, parentId: null });
-    },
-    onError: (err: unknown) => {
-      const msg = err instanceof Error ? err.message : "目录创建失败";
-      messageApi.error(msg);
-    },
-  });
-
-  const updateMutation = useMutation({
-    mutationFn: ({ id, payload }: { id: number; payload: CategoryUpdatePayload }) =>
-      updateCategory(id, payload),
-    onSuccess: async () => {
-      messageApi.success("目录更新成功");
-      await queryClient.invalidateQueries({ queryKey: ["categories-tree"] });
-      setShowRenameModal(false);
-    },
-    onError: (err: unknown) => {
-      const msg = err instanceof Error ? err.message : "目录更新失败";
-      messageApi.error(msg);
-    },
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: (id: number) => deleteCategory(id),
-    onSuccess: async () => {
-      messageApi.success("目录删除成功");
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["categories-tree"] }),
-        queryClient.invalidateQueries({ queryKey: ["categories-trash"] }),
-      ]);
-      setSelectedIds([]);
-      setSelectionParentId(undefined);
-      setLastSelectedId(null);
-    },
-    onError: (err: unknown) => {
-      const msg = err instanceof Error ? err.message : "目录删除失败";
-      messageApi.error(msg);
-    },
-  });
-
-  const restoreMutation = useMutation({
-    mutationFn: (id: number) => restoreCategory(id),
-    onSuccess: async () => {
-      messageApi.success("目录已恢复");
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["categories-tree"] }),
-        queryClient.invalidateQueries({ queryKey: ["categories-trash"] }),
-      ]);
-    },
-    onError: (err: unknown) => {
-      const msg = err instanceof Error ? err.message : "恢复目录失败";
-      messageApi.error(msg);
-    },
-  });
-
-  const purgeMutation = useMutation({
-    mutationFn: (id: number) => purgeCategory(id),
-    onSuccess: async () => {
-      messageApi.success("目录已彻底删除");
-      await queryClient.invalidateQueries({ queryKey: ["categories-trash"] });
-    },
-    onError: (err: unknown) => {
-      const msg = err instanceof Error ? err.message : "彻底删除失败";
-      messageApi.error(msg);
-    },
-  });
+  const {
+    createMutation,
+    updateMutation,
+    deleteMutation,
+    bulkDeleteMutation,
+    restoreMutation,
+    purgeMutation,
+    setMutating,
+    isMutating,
+  } = useTreeActions(messageApi);
 
   const trashTableColumns = useMemo(
     () =>
@@ -300,62 +166,74 @@ const App = () => {
     [restoreMutation.isPending, purgeMutation.isPending, restoreMutation.mutate, purgeMutation.mutate],
   );
 
-  const filteredTree = useMemo(() => {
-    if (!data) {
-      return { nodes: [] as TreeDataNode[], matchedKeys: new Set<string>() };
-    }
-    return buildFilteredTree(data, null, searchValue.trim());
-  }, [data, searchValue]);
-
-  const treeData = filteredTree.nodes;
-
   const lookups = useMemo(() => buildLookups(data ?? []), [data]);
 
-  useEffect(() => {
-    if (searchValue.trim()) {
-      setExpandedKeys(Array.from(filteredTree.matchedKeys));
-      setAutoExpandParent(true);
-    }
-  }, [filteredTree.matchedKeys, searchValue]);
+  const handleSelectionChange = useCallback(
+    ({
+      selectedIds: nextIds,
+      selectionParentId: nextParent,
+      lastSelectedId: nextLast,
+    }: {
+      selectedIds: number[];
+      selectionParentId: ParentKey | undefined;
+      lastSelectedId: number | null;
+    }) => {
+      setSelectedIds(nextIds);
+      setSelectionParentId(nextParent);
+      setLastSelectedId(nextLast);
+    },
+    [],
+  );
 
-  useEffect(() => {
-    if (!searchValue.trim() && data) {
-      setExpandedKeys((prev) =>
-        prev.length === 0 ? data.map((node) => node.id.toString()) : prev,
-      );
-    }
-  }, [data, searchValue]);
+  const handleRequestCreate = useCallback(
+    (parentId: number | null) => {
+      categoryForm.resetFields();
+      setShowCreateModal({ open: true, parentId });
+    },
+    [categoryForm],
+  );
 
-  useEffect(() => {
-    if (!data) {
-      setSelectedIds([]);
-      setSelectionParentId(undefined);
-      setLastSelectedId(null);
+  const handleRequestRename = useCallback(() => {
+    if (selectedIds.length !== 1) {
       return;
     }
-    const existing = new Set<number>();
-    const flatten = (nodes?: Category[]) => {
-      if (!nodes) return;
-      nodes.forEach((node) => {
-        existing.add(node.id);
-        if (node.children && node.children.length > 0) {
-          flatten(node.children);
-        }
-      });
-    };
-    flatten(data as Category[]);
-    setSelectedIds((prev) => {
-      const next = prev.filter((id) => existing.has(id));
-      if (next.length === 0) {
-        setSelectionParentId(undefined);
-        setLastSelectedId(null);
-      } else {
-        const current = lookups.byId.get(next[0]);
-        setSelectionParentId(current?.parent_id ?? null);
+    const current = lookups.byId.get(selectedIds[0]);
+    if (!current) {
+      return;
+    }
+    categoryForm.setFieldsValue({ name: current.name });
+    setShowRenameModal(true);
+  }, [categoryForm, lookups, selectedIds]);
+
+  const handleRequestDelete = useCallback(
+    (ids: number[]) => {
+      if (ids.length === 0) {
+        return;
       }
-      return next;
-    });
-  }, [data, lookups]);
+      openDeletePreview("soft", ids);
+    },
+    [openDeletePreview],
+  );
+
+  const handleOpenTrash = useCallback(() => {
+    setSelectedRowKeys([]);
+    setTrashModalOpen(true);
+    void trashQuery.refetch();
+  }, [setSelectedRowKeys, trashQuery]);
+
+  const handleRefreshTree = useCallback(() => refetch(), [refetch]);
+
+  const invalidateCategoryQueries = useCallback(async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["categories-tree"] }),
+      queryClient.invalidateQueries({ queryKey: ["categories-trash"] }),
+    ]);
+  }, [queryClient]);
+
+  const handleIncludeDescendantsChange = useCallback(
+    (value: boolean) => setIncludeDescendants(value),
+    [],
+  );
 
   useEffect(() => {
     if (showRenameModal && selectedIds.length === 1) {
@@ -380,335 +258,55 @@ const App = () => {
     }
   }, [documentForm, documentModal.open]);
 
-  useEffect(() => {
-    if (selectedIds.length > 0) {
-      setDetailCollapseKeys(["detail"]);
-    }
-  }, [selectedIds]);
-
-  const closeContextMenu = useCallback(
-    (reason?: string) => {
-      setContextMenu((prev) => {
-        if (!prev.open) {
-          if (menuDebugEnabled) {
-            // eslint-disable-next-line no-console
-            console.log("[menu-debug] skip close (already closed)", {
-              reason,
-              previous: prev,
-            });
-          }
-          return prev;
-        }
-        const next = { ...prev, open: false };
-        if (menuDebugEnabled) {
-          // eslint-disable-next-line no-console
-          console.log("[menu-debug] closing context menu", {
-            reason,
-            previous: prev,
-            next,
-          });
-        }
-        return next;
-      });
-    },
-    [menuDebugEnabled],
-  );
-
-  useEffect(() => {
-    if (!contextMenu.open) {
-      return;
-    }
-    if (menuDebugEnabled) {
-      // eslint-disable-next-line no-console
-      console.log("[menu-debug] validating context menu target", {
-        nodeId: contextMenu.nodeId,
-        known: lookups.byId.has(contextMenu.nodeId ?? -1),
-      });
-    }
-    if (contextMenu.nodeId == null) {
-      closeContextMenu("missing-node-id");
-      return;
-    }
-    if (!lookups.byId.has(contextMenu.nodeId)) {
-      closeContextMenu("stale-node-reference");
-    }
-  }, [closeContextMenu, contextMenu, lookups.byId, menuDebugEnabled]);
-
-  useEffect(() => {
-    if (!contextMenu.open) {
-      return;
-    }
-    const handlePointerDown = (event: MouseEvent | PointerEvent) => {
-      if ("button" in event && event.button === 2) {
-        if (menuDebugEnabled) {
-          // eslint-disable-next-line no-console
-          console.log("[menu-debug] pointerdown ignored (right button)", {
-            type: event.type,
-            button: event.button,
-          });
-        }
-        return;
-      }
-      const container = menuContainerRef.current;
-      if (container && event.target instanceof Node && container.contains(event.target)) {
-        if (menuDebugEnabled) {
-          // eslint-disable-next-line no-console
-          console.log("[menu-debug] pointerdown inside menu, skip close", {
-            type: event.type,
-          });
-        }
-        return;
-      }
-      if (menuDebugEnabled) {
-        // eslint-disable-next-line no-console
-        console.log("[menu-debug] pointerdown closing context menu", {
-          type: event.type,
-          button: "button" in event ? event.button : null,
-        });
-      }
-      closeContextMenu(`pointerdown:${event.type}`);
-    };
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        if (menuDebugEnabled) {
-          // eslint-disable-next-line no-console
-          console.log("[menu-debug] escape pressed, closing menu");
-        }
-        closeContextMenu("escape-key");
-      }
-    };
-    document.addEventListener("pointerdown", handlePointerDown, true);
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.removeEventListener("pointerdown", handlePointerDown, true);
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [closeContextMenu, contextMenu.open, menuDebugEnabled]);
-
-  const isDescendantOrSelf = useCallback(
-    (nodeId: number | null, sourceSet: Set<number>) => {
-      if (nodeId == null) {
-        return false;
-      }
-      const visited = new Set<number>();
-      let current = lookups.byId.get(nodeId);
-      while (current) {
-        if (sourceSet.has(current.id)) {
-          return true;
-        }
-        const parentId = current.parent_id;
-        if (parentId == null || visited.has(parentId)) {
-          break;
-        }
-        visited.add(parentId);
-        current = lookups.byId.get(parentId);
-      }
-      return false;
-    },
-    [lookups],
-  );
-
-  const handleCopySelection = useCallback(
-    (snapshot?: { ids: number[]; parentId: ParentKey }) => {
-      const effectiveIds = snapshot?.ids ?? selectedIds;
-      const effectiveParentRaw = snapshot?.parentId ?? selectionParentId;
-      if (effectiveParentRaw === undefined || effectiveIds.length === 0) {
-        messageApi.warning("请先选择要复制的目录");
-        return;
-      }
-      const effectiveParent = effectiveParentRaw ?? null;
-      setClipboard({ mode: "copy", sourceIds: [...effectiveIds], parentId: effectiveParent });
-      messageApi.success(`已复制 ${effectiveIds.length} 个目录`);
-    },
-    [messageApi, selectedIds, selectionParentId],
-  );
-
-  const handleCutSelection = useCallback(
-    (snapshot?: { ids: number[]; parentId: ParentKey }) => {
-      const effectiveIds = snapshot?.ids ?? selectedIds;
-      const effectiveParentRaw = snapshot?.parentId ?? selectionParentId;
-      if (effectiveParentRaw === undefined || effectiveIds.length === 0) {
-        messageApi.warning("请先选择要剪切的目录");
-        return;
-      }
-      const effectiveParent = effectiveParentRaw ?? null;
-      setClipboard({ mode: "cut", sourceIds: [...effectiveIds], parentId: effectiveParent });
-      messageApi.info(`已剪切 ${effectiveIds.length} 个目录`);
-    },
-    [messageApi, selectedIds, selectionParentId],
-  );
-
-  const clearClipboard = useCallback(() => {
-    setClipboard(null);
-    messageApi.success("剪贴板已清空");
-  }, [messageApi]);
-
-  const openDeletePreview = useCallback(
-    (mode: "soft" | "purge", ids: number[]) => {
-      if (ids.length === 0) {
-        return;
-      }
-      setDeletePreview({ visible: true, mode, ids, loading: true, result: null });
-      bulkCheckCategories({ ids, include_descendants: true })
-        .then((resp) => {
-          setDeletePreview((prev) => ({ ...prev, loading: false, result: resp }));
-        })
-        .catch((err) => {
-          const msg = err instanceof Error ? err.message : "删除校验失败，请重试";
-          messageApi.error(msg);
-          setDeletePreview({ visible: false, mode: "soft", ids: [], loading: false, result: null });
-        });
-    },
-    [messageApi],
-  );
-
   const handleConfirmDelete = useCallback(() => {
     if (!deletePreview.visible || deletePreview.ids.length === 0) {
       return;
     }
-    const targetId = deletePreview.ids[0];
-    setDeletePreview((prev) => ({ ...prev, loading: true }));
+    const targetIds = deletePreview.ids;
+    setDeletePreviewLoading(true);
+    const handleError = (err: unknown, fallback: string) => {
+      const msg = err instanceof Error ? err.message : fallback;
+      messageApi.error(msg);
+      setDeletePreviewLoading(false);
+    };
     if (deletePreview.mode === "soft") {
-      deleteMutation.mutate(targetId, {
-        onSuccess: () => {
-          setDeletePreview({ visible: false, mode: "soft", ids: [], loading: false, result: null });
-        },
-        onError: (err) => {
-          const msg = err instanceof Error ? err.message : "删除失败，请重试";
-          messageApi.error(msg);
-          setDeletePreview((prev) => ({ ...prev, loading: false }));
-        },
-      });
+      if (targetIds.length === 1) {
+        const targetId = targetIds[0];
+        deleteMutation.mutate(targetId, {
+          onSuccess: () => {
+            closePreview();
+          },
+          onError: (err) => handleError(err, "删除失败，请重试"),
+        });
+      } else {
+        bulkDeleteMutation.mutate(
+          { ids: targetIds },
+          {
+            onSuccess: () => {
+              closePreview();
+            },
+            onError: (err) => handleError(err, "批量删除失败，请重试"),
+          },
+        );
+      }
     } else {
+      const targetId = targetIds[0];
       purgeMutation.mutate(targetId, {
         onSuccess: () => {
-          setDeletePreview({ visible: false, mode: "soft", ids: [], loading: false, result: null });
+          closePreview();
         },
-        onError: (err) => {
-          const msg = err instanceof Error ? err.message : "彻底删除失败，请重试";
-          messageApi.error(msg);
-          setDeletePreview((prev) => ({ ...prev, loading: false }));
-        },
+        onError: (err) => handleError(err, "彻底删除失败，请重试"),
       });
     }
-  }, [deleteMutation, deletePreview, messageApi, purgeMutation, setDeletePreview]);
-
-  const handlePaste = useCallback(
-    async ({
-      targetParentId,
-      insertBeforeId,
-      insertAfterId,
-      targetNodeId,
-    }: {
-      targetParentId: number | null;
-      insertBeforeId?: number | null;
-      insertAfterId?: number | null;
-      targetNodeId?: number | null;
-    }) => {
-      if (!clipboard) {
-        messageApi.warning("剪贴板为空");
-        return;
-      }
-      if (isMutating) {
-        return;
-      }
-      if (targetNodeId != null && isDescendantOrSelf(targetNodeId, clipboardSourceSet)) {
-        messageApi.error("无法粘贴到剪贴板节点自身或其子节点");
-        return;
-      }
-      if (isDescendantOrSelf(targetParentId, clipboardSourceSet)) {
-        messageApi.error("无法粘贴到剪贴板节点自身或其子节点");
-        return;
-      }
-      if (insertBeforeId != null && clipboardSourceSet.has(insertBeforeId)) {
-        messageApi.error("无法以剪贴板节点作为参考位置");
-        return;
-      }
-      if (insertAfterId != null && clipboardSourceSet.has(insertAfterId)) {
-        messageApi.error("无法以剪贴板节点作为参考位置");
-        return;
-      }
-
-      setIsMutating(true);
-      try {
-        if (clipboard.mode === "copy") {
-          const payload: CategoryBulkCopyPayload = {
-            source_ids: clipboard.sourceIds,
-            target_parent_id: targetParentId ?? null,
-          };
-          if (insertBeforeId != null) {
-            payload.insert_before_id = insertBeforeId;
-          }
-          if (insertAfterId != null) {
-            payload.insert_after_id = insertAfterId;
-          }
-          await bulkCopyCategories(payload);
-          messageApi.success(`已粘贴 ${clipboard.sourceIds.length} 个目录`);
-        } else {
-          const payload: CategoryBulkMovePayload = {
-            source_ids: clipboard.sourceIds,
-            target_parent_id: targetParentId ?? null,
-          };
-          if (insertBeforeId != null) {
-            payload.insert_before_id = insertBeforeId;
-          }
-          if (insertAfterId != null) {
-            payload.insert_after_id = insertAfterId;
-          }
-          await bulkMoveCategories(payload);
-          messageApi.success(`已移动 ${clipboard.sourceIds.length} 个目录`);
-          setClipboard(null);
-          setSelectedIds([]);
-          setSelectionParentId(undefined);
-          setLastSelectedId(null);
-        }
-        await Promise.all([
-          queryClient.invalidateQueries({ queryKey: ["categories-tree"] }),
-          queryClient.invalidateQueries({ queryKey: ["categories-trash"] }),
-        ]);
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : "粘贴失败，请重试";
-        messageApi.error(msg);
-      } finally {
-        setIsMutating(false);
-      }
-    },
-    [
-      clipboard,
-      clipboardSourceSet,
-      isMutating,
-      isDescendantOrSelf,
-      messageApi,
-      queryClient,
-      setClipboard,
-      setLastSelectedId,
-      setSelectedIds,
-      setSelectionParentId,
-    ],
-  );
-
-  const handlePasteAsChild = useCallback(
-    (nodeId: number) => {
-      void handlePaste({ targetParentId: nodeId, targetNodeId: nodeId });
-    },
-    [handlePaste],
-  );
-
-  const handlePasteBefore = useCallback(
-    (nodeId: number) => {
-      const parentId = lookups.byId.get(nodeId)?.parent_id ?? null;
-      void handlePaste({ targetParentId: parentId, insertBeforeId: nodeId });
-    },
-    [handlePaste, lookups],
-  );
-
-  const handlePasteAfter = useCallback(
-    (nodeId: number) => {
-      const parentId = lookups.byId.get(nodeId)?.parent_id ?? null;
-      void handlePaste({ targetParentId: parentId, insertAfterId: nodeId });
-    },
-    [handlePaste, lookups],
-  );
+  }, [
+    bulkDeleteMutation,
+    closePreview,
+    deleteMutation,
+    deletePreview,
+    messageApi,
+    purgeMutation,
+    setDeletePreviewLoading,
+  ]);
 
   const handleOpenAddDocument = useCallback(
     (nodeId: number) => {
@@ -720,563 +318,11 @@ const App = () => {
       }
       setSelectedIds([nodeId]);
       setLastSelectedId(nodeId);
-      setDetailCollapseKeys(["detail"]);
       documentForm.resetFields();
       setDocumentModal({ open: true, nodeId });
     },
-    [documentForm, lookups, setDetailCollapseKeys, setLastSelectedId, setSelectionParentId, setSelectedIds],
+    [documentForm, lookups, setLastSelectedId, setSelectionParentId, setSelectedIds],
   );
-
-
-  const renderTreeTitle = useCallback(
-    (node: DataNode) => {
-      const treeNode = node as TreeDataNode;
-      const nodeId = Number(treeNode.key);
-      const isCutNode = clipboard?.mode === "cut" && clipboardSourceSet.has(nodeId);
-
-      return <span style={isCutNode ? { opacity: 0.5 } : undefined}>{node.title as string}</span>;
-    },
-    [clipboard, clipboardSourceSet],
-  );
-
-  const suppressNativeTreeContextMenu = useCallback(
-    (event: ReactMouseEvent<Element>) => {
-      if (menuDebugEnabled) {
-        const target = event.target as HTMLElement | null;
-        const targetInfo =
-          target instanceof HTMLElement
-            ? {
-                tag: target.tagName,
-                className: target.className,
-                dataset: { ...target.dataset },
-              }
-            : null;
-        // eslint-disable-next-line no-console
-        console.log("[menu-debug] suppress native contextmenu", {
-          type: event.type,
-          target: targetInfo,
-        });
-      }
-      event.preventDefault();
-      if (typeof event.nativeEvent?.preventDefault === "function") {
-        event.nativeEvent.preventDefault();
-      }
-    },
-    [menuDebugEnabled],
-  );
-
-  const handleTreeRightClick = useCallback(
-    (info: { event: ReactMouseEvent; node: EventDataNode<DataNode> }) => {
-      const { event, node } = info;
-      event.preventDefault();
-      event.stopPropagation();
-      if (typeof event.nativeEvent?.preventDefault === "function") {
-        event.nativeEvent.preventDefault();
-      }
-      const nodeId = Number(node.key);
-      const parentId = getParentId(node);
-      const normalizedParent = parentId ?? null;
-
-      if (menuDebugEnabled) {
-        // eslint-disable-next-line no-console
-        console.log("[menu-debug] onRightClick", {
-          nodeId,
-          parentId: normalizedParent,
-          client: { x: event.clientX, y: event.clientY },
-          selectedIds,
-          selectionParentId,
-          nativeType: event.nativeEvent?.type,
-          nativeButton: event.nativeEvent?.button,
-        });
-      }
-
-      if (!selectedIds.includes(nodeId)) {
-        if (menuDebugEnabled) {
-          // eslint-disable-next-line no-console
-          console.log("[menu-debug] updating selection for context menu", {
-            nextSelectedIds: [nodeId],
-          });
-        }
-        setSelectionParentId(normalizedParent);
-        setSelectedIds([nodeId]);
-        setLastSelectedId(nodeId);
-      } else if (selectionParentId !== normalizedParent) {
-        if (menuDebugEnabled) {
-          // eslint-disable-next-line no-console
-          console.log("[menu-debug] syncing selection parent", {
-            previousParent: selectionParentId,
-            nextParent: normalizedParent,
-          });
-        }
-        setSelectionParentId(normalizedParent);
-      }
-
-      const nextState: ContextMenuState = {
-        open: true,
-        nodeId,
-        parentId: normalizedParent,
-        x: event.clientX,
-        y: event.clientY,
-      };
-      if (menuDebugEnabled) {
-        // eslint-disable-next-line no-console
-        console.log("[menu-debug] opening context menu", {
-          state: nextState,
-        });
-      }
-      setContextMenu(nextState);
-    },
-    [menuDebugEnabled, selectedIds, selectionParentId, setSelectionParentId, setSelectedIds, setLastSelectedId],
-  );
-
-  const contextMenuItems = useMemo<MenuProps["items"]>(() => {
-    if (!contextMenu.open || contextMenu.nodeId == null) {
-      if (!clipboard) {
-        return [];
-      }
-      return [
-        {
-          key: "clear-clipboard",
-          icon: <ClearOutlined />,
-          label: "清空剪贴板",
-          onClick: () => {
-            closeContextMenu("action:clear-clipboard-fallback");
-            clearClipboard();
-          },
-        },
-      ];
-    }
-
-    const nodeId = contextMenu.nodeId;
-    const nodeParentId = contextMenu.parentId;
-    const selectionIncludesNode = selectedIds.includes(nodeId);
-    const resolvedSelectionParent =
-      selectionIncludesNode && selectionParentId !== undefined
-        ? selectionParentId
-        : contextMenu.parentId;
-    const resolvedSelectionIds = selectionIncludesNode ? selectedIds : [nodeId];
-    const resolvedSelectionAvailable =
-      resolvedSelectionParent !== undefined && resolvedSelectionIds.length > 0;
-    const contextCanCopy = !isMutating && resolvedSelectionAvailable;
-
-    const items: MenuProps["items"] = [
-      {
-        key: "add-document",
-        icon: <FileAddOutlined />,
-        label: "添加文档",
-        onClick: () => {
-          closeContextMenu("action:add-document");
-          handleOpenAddDocument(nodeId);
-        },
-      },
-    ];
-
-    if (resolvedSelectionAvailable) {
-      items.push(
-        {
-          key: "copy-selection",
-          icon: <CopyOutlined />,
-          label: "复制所选",
-          disabled: !contextCanCopy,
-          onClick: () => {
-            closeContextMenu("action:copy-selection");
-            handleCopySelection({
-              ids: resolvedSelectionIds,
-              parentId: resolvedSelectionParent ?? null,
-            });
-          },
-        },
-        {
-          key: "cut-selection",
-          icon: <ScissorOutlined />,
-          label: "剪切所选",
-          disabled: !contextCanCopy,
-          onClick: () => {
-            closeContextMenu("action:cut-selection");
-            handleCutSelection({
-              ids: resolvedSelectionIds,
-              parentId: resolvedSelectionParent ?? null,
-            });
-          },
-        },
-      );
-    }
-
-    if (clipboard) {
-      items.push({ type: "divider" });
-      items.push(
-        {
-          key: "paste-child",
-          icon: clipboard.mode === "cut" ? <ScissorOutlined /> : <SnippetsOutlined />,
-          label: clipboard.mode === "cut" ? "剪切到该节点" : "粘贴为子节点",
-          disabled: isMutating || isDescendantOrSelf(nodeId, clipboardSourceSet),
-          onClick: () => {
-            closeContextMenu("action:paste-child");
-            handlePasteAsChild(nodeId);
-          },
-        },
-        {
-          key: "paste-before",
-          icon: <SnippetsOutlined />,
-          label: clipboard.mode === "cut" ? "剪切到此前" : "粘贴到此前",
-          disabled:
-            isMutating ||
-            clipboardSourceSet.has(nodeId) ||
-            isDescendantOrSelf(nodeParentId, clipboardSourceSet),
-          onClick: () => {
-            closeContextMenu("action:paste-before");
-            handlePasteBefore(nodeId);
-          },
-        },
-        {
-          key: "paste-after",
-          icon: <SnippetsOutlined />,
-          label: clipboard.mode === "cut" ? "剪切到此后" : "粘贴到此后",
-          disabled:
-            isMutating ||
-            clipboardSourceSet.has(nodeId) ||
-            isDescendantOrSelf(nodeParentId, clipboardSourceSet),
-          onClick: () => {
-            closeContextMenu("action:paste-after");
-            handlePasteAfter(nodeId);
-          },
-        },
-      );
-      items.push({ type: "divider" });
-      items.push({
-        key: "clear-clipboard",
-        icon: <ClearOutlined />,
-        label: "清空剪贴板",
-        onClick: () => {
-          closeContextMenu("action:clear-clipboard");
-          clearClipboard();
-        },
-      });
-    }
-
-    if (menuDebugEnabled) {
-      // eslint-disable-next-line no-console
-      console.log("[menu-debug] context menu items", {
-        nodeId,
-        selectionIncludesNode,
-        resolvedSelectionIds,
-        resolvedSelectionParent,
-        count: items.length,
-        keys: items.map((item) => {
-          if (!item) {
-            return null;
-          }
-          if ("key" in item && item.key) {
-            return item.key;
-          }
-          return item.type ?? null;
-        }),
-      });
-    }
-
-    return items;
-  }, [
-    clearClipboard,
-    clipboard,
-    clipboardSourceSet,
-    closeContextMenu,
-    contextMenu,
-    handleCopySelection,
-    handleCutSelection,
-    handleOpenAddDocument,
-    handlePasteAfter,
-    handlePasteAsChild,
-    handlePasteBefore,
-    isDescendantOrSelf,
-    isMutating,
-    menuDebugEnabled,
-    selectedIds,
-    selectionParentId,
-  ]);
-
-  const contextMenuVisible = contextMenu.open && (contextMenuItems?.length ?? 0) > 0;
-
-  useEffect(() => {
-    if (menuDebugEnabled) {
-      // eslint-disable-next-line no-console
-      console.log("[menu-debug] visibility", {
-        open: contextMenu.open,
-        itemCount: contextMenuItems?.length ?? 0,
-        visible: contextMenuVisible,
-        coords: { x: contextMenu.x, y: contextMenu.y },
-      });
-    }
-  }, [contextMenu, contextMenuItems, contextMenuVisible, menuDebugEnabled]);
-
-  const handleDrop = useCallback<NonNullable<TreeProps["onDrop"]>>(
-    async (info) => {
-      const dragId = Number(info.dragNode.key);
-      const dropId = Number(info.node.key);
-      if (menuDebugEnabled) {
-        // eslint-disable-next-line no-console
-        console.log("[menu-debug] handleDrop", {
-          dragId,
-          dropId,
-          dropToGap: info.dropToGap,
-          dropPosition: info.dropPosition,
-        });
-      }
-      closeContextMenu("tree-drop");
-      const nodePosition = Number(
-        (info.node.pos ?? "0").split("-").pop() ?? 0,
-      );
-      const dropRelative = info.dropPosition - nodePosition;
-
-      const baseParentId = getParentId(info.node);
-      let targetParentId: number | null;
-      if (info.dropToGap) {
-        targetParentId = baseParentId;
-      } else if (dropRelative < 0) {
-        // Drop above current node; keep same parent
-        targetParentId = baseParentId;
-      } else {
-        targetParentId = dropId;
-      }
-
-      const dragCategory = lookups.byId.get(dragId);
-      if (!dragCategory) {
-        messageApi.error("拖拽节点信息缺失，无法完成操作");
-        return;
-      }
-
-      const sourceParentId = getParentId(info.dragNode);
-
-      // Prepare new ordering
-      const targetSiblingsBaseline =
-        lookups.parentToChildren.get(targetParentId) ?? [];
-
-      const orderedWithoutDrag = targetSiblingsBaseline.filter(
-        (item) => item.id !== dragId,
-      );
-
-      let insertIndex = orderedWithoutDrag.length;
-      const dropOnSameParentTop =
-        !info.dropToGap &&
-        dropRelative === 0 &&
-        sourceParentId !== null &&
-        Number(info.node.key) === sourceParentId;
-      if (dropOnSameParentTop) {
-        insertIndex = 0;
-      }
-
-      if (info.dropToGap) {
-        const targetIndex = orderedWithoutDrag.findIndex(
-          (item) => item.id === dropId,
-        );
-        if (targetIndex === -1) {
-          insertIndex = orderedWithoutDrag.length;
-        } else {
-          insertIndex = targetIndex + (dropRelative > 0 ? 1 : 0);
-        }
-      }
-
-      const updatedDragCategory: Category = {
-        ...dragCategory,
-        parent_id: targetParentId,
-      };
-
-      const reordered = [...orderedWithoutDrag];
-      reordered.splice(insertIndex, 0, updatedDragCategory);
-      const orderedIds = reordered.map((item) => item.id);
-
-      const originalIds = targetSiblingsBaseline.map((item) => item.id);
-      const isSameOrder =
-        sourceParentId === targetParentId &&
-        orderedIds.length === originalIds.length &&
-        orderedIds.every((id, idx) => id === originalIds[idx]);
-      if (dragDebugEnabled) {
-        // eslint-disable-next-line no-console
-        console.log("[drag-debug] drop event", {
-          dragId,
-          dropId,
-          dropPosition: info.dropPosition,
-          dropRelative,
-          sourceParentId,
-          targetParentId,
-          orderedIds,
-          originalIds,
-        });
-      }
-
-      if (isSameOrder) {
-        if (dragDebugEnabled) {
-          // eslint-disable-next-line no-console
-          console.log("[drag-debug] skip reorder: order unchanged");
-        }
-        return;
-      }
-
-      setIsMutating(true);
-      try {
-        const repositionPayload =
-          sourceParentId === targetParentId
-            ? { ordered_ids: orderedIds }
-            : {
-                new_parent_id: targetParentId,
-                ordered_ids: orderedIds,
-              };
-        if (dragDebugEnabled) {
-          // eslint-disable-next-line no-console
-          console.log("[drag-debug] reposition payload", {
-            dragId,
-            payload: repositionPayload,
-          });
-        }
-        await repositionCategory(dragId, repositionPayload);
-        messageApi.success("目录顺序已更新");
-        await refetch();
-      } catch (err) {
-        const msg =
-          err instanceof Error ? err.message : "调整目录顺序失败，请重试";
-        messageApi.error(msg);
-      } finally {
-        setIsMutating(false);
-      }
-    },
-    [closeContextMenu, lookups, menuDebugEnabled, messageApi, refetch],
-  );
-
-  const handleBulkRestore = useCallback(async () => {
-    if (selectedTrashRowKeys.length === 0) {
-      return;
-    }
-    const ids = selectedTrashRowKeys.map((key) => Number(key));
-    setIsMutating(true);
-    try {
-      await bulkRestoreCategories({ ids });
-      messageApi.success(`已恢复 ${ids.length} 个目录`);
-      setSelectedTrashRowKeys([]);
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["categories-tree"] }),
-        trashQuery.refetch(),
-      ]);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "批量恢复失败，请重试";
-      messageApi.error(msg);
-    } finally {
-      setIsMutating(false);
-    }
-  }, [messageApi, queryClient, selectedTrashRowKeys, trashQuery]);
-
-  const handleBulkPurge = useCallback(async () => {
-    if (selectedTrashRowKeys.length === 0) {
-      return;
-    }
-    const ids = selectedTrashRowKeys.map((key) => Number(key));
-    setIsMutating(true);
-    try {
-      await bulkPurgeCategories({ ids });
-      messageApi.success(`已彻底删除 ${ids.length} 个目录`);
-      setSelectedTrashRowKeys([]);
-      await trashQuery.refetch();
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "批量彻底删除失败，请重试";
-      messageApi.error(msg);
-    } finally {
-      setIsMutating(false);
-    }
-  }, [messageApi, selectedTrashRowKeys, trashQuery]);
-
-  const handleSelect: NonNullable<TreeProps["onSelect"]> = (_keys, info) => {
-    const clickedId = Number(info.node.key);
-    const parentId = getParentId(info.node);
-    const normalizedParent = parentId ?? null;
-    const nativeEvent = info.nativeEvent as MouseEvent | undefined;
-    const isContextMenuEvent =
-      nativeEvent?.type === "contextmenu" || (nativeEvent?.button ?? 0) === 2;
-    const isShift = nativeEvent?.shiftKey ?? false;
-    const isMeta = nativeEvent ? nativeEvent.metaKey || nativeEvent.ctrlKey : false;
-
-    if (menuDebugEnabled) {
-      // eslint-disable-next-line no-console
-      console.log("[menu-debug] onSelect", {
-        clickedId,
-        normalizedParent,
-        isContextMenuEvent,
-        isShift,
-        isMeta,
-        selected: info.selected,
-        currentSelection: selectedIds,
-      });
-    }
-
-    if (!isContextMenuEvent) {
-      closeContextMenu("tree-select");
-    }
-
-    if (info.selected) {
-      if (
-        selectionParentId !== undefined &&
-        selectionParentId !== normalizedParent &&
-        (selectedIds.length > 1 || isMeta || isShift)
-      ) {
-        messageApi.warning("仅支持同一父节点下的多选");
-        return;
-      }
-
-      if (
-        selectionParentId !== undefined &&
-        selectionParentId !== normalizedParent &&
-        !isMeta &&
-        !isShift
-      ) {
-        // 单选场景，允许切换层级
-        setSelectionParentId(normalizedParent);
-        setSelectedIds([clickedId]);
-        setLastSelectedId(clickedId);
-        return;
-      }
-
-      let nextIds = selectedIds;
-      if (!isMeta && !isShift) {
-        nextIds = [clickedId];
-      } else if (isShift && lastSelectedId != null && selectionParentId !== undefined) {
-        const siblings = lookups.parentToChildren.get(normalizedParent) ?? [];
-        const order = siblings.map((node) => node.id);
-        const lastIndex = order.indexOf(lastSelectedId);
-        const currentIndex = order.indexOf(clickedId);
-        if (lastIndex !== -1 && currentIndex !== -1) {
-          const [start, end] = [Math.min(lastIndex, currentIndex), Math.max(lastIndex, currentIndex)];
-          const rangeSet = new Set<number>(nextIds);
-          for (let i = start; i <= end; i += 1) {
-            rangeSet.add(order[i]);
-          }
-          nextIds = order.filter((id) => rangeSet.has(id));
-        } else if (!nextIds.includes(clickedId)) {
-          nextIds = [...nextIds, clickedId];
-        }
-      } else if (!nextIds.includes(clickedId)) {
-        nextIds = [...nextIds, clickedId];
-      }
-
-      const siblingsOrder = lookups.parentToChildren.get(normalizedParent) ?? [];
-      const orderIds = siblingsOrder.map((node) => node.id);
-      const uniqueIds = Array.from(new Set(nextIds));
-      const sorted =
-        orderIds.length > 0
-          ? orderIds.filter((id) => uniqueIds.includes(id))
-          : uniqueIds;
-
-      setSelectionParentId(normalizedParent);
-      setSelectedIds(sorted);
-      setLastSelectedId(clickedId);
-    } else {
-      const nextIds = selectedIds.filter((id) => id !== clickedId);
-      setSelectedIds(nextIds);
-      if (nextIds.length === 0) {
-        setSelectionParentId(undefined);
-        setLastSelectedId(null);
-      } else if (!nextIds.includes(lastSelectedId ?? -1)) {
-        setLastSelectedId(nextIds[nextIds.length - 1]);
-      }
-    }
-  };
-
   const handleDocumentSearch = useCallback(
     (values: DocumentFilterFormValues) => {
       const trimmed: DocumentFilterFormValues = {
@@ -1322,11 +368,20 @@ const App = () => {
       },
       {
         title: "类型",
+        dataIndex: "type",
         key: "type",
-        render: (_: unknown, record: Document) => {
-          const type = record.metadata?.type;
-          return <Typography.Text>{type ? String(type) : "-"}</Typography.Text>;
-        },
+        render: (value: string | undefined) => (
+          <Typography.Text>{value || "-"}</Typography.Text>
+        ),
+      },
+      {
+        title: "位置",
+        dataIndex: "position",
+        key: "position",
+        width: 80,
+        render: (value: number) => (
+          <Typography.Text>{value}</Typography.Text>
+        ),
       },
       {
         title: "更新时间",
@@ -1358,8 +413,11 @@ const App = () => {
     mutationFn: async ({ nodeId, values }: { nodeId: number; values: DocumentFormValues }) => {
       const payload: DocumentCreatePayload = {
         title: values.title.trim(),
-        metadata: { type: values.type },
+        type: values.type,
       };
+      if (values.position !== undefined) {
+        payload.position = values.position;
+      }
       const contentText = values.content?.trim();
       if (contentText) {
         payload.content = { preview: contentText };
@@ -1406,6 +464,40 @@ const App = () => {
     handleOpenAddDocument(selectedNodeId);
   }, [handleOpenAddDocument, messageApi, selectedNodeId]);
 
+  const documentReorderMutation = useMutation({
+    mutationFn: async (payload: DocumentReorderPayload) => {
+      return reorderDocuments(payload);
+    },
+    onSuccess: async () => {
+      messageApi.success("文档排序调整成功");
+      setReorderModal(false);
+      if (selectedNodeId != null) {
+        await queryClient.invalidateQueries({ queryKey: ["node-documents", selectedNodeId] });
+      }
+    },
+    onError: (err: unknown) => {
+      const msg = err instanceof Error ? err.message : "排序调整失败";
+      messageApi.error(msg);
+    },
+  });
+
+  const handleOpenReorderModal = useCallback(() => {
+    if (selectedNodeId == null || documents.length <= 1) {
+      return;
+    }
+    setReorderModal(true);
+  }, [documents.length, selectedNodeId]);
+
+  const handleReorderConfirm = useCallback((orderedIds: number[]) => {
+    if (selectedNodeId == null) {
+      return;
+    }
+    documentReorderMutation.mutate({
+      node_id: selectedNodeId,
+      ordered_ids: orderedIds,
+    });
+  }, [documentReorderMutation, selectedNodeId]);
+
   return (
     <Layout style={{ minHeight: "100vh" }}>
       {contextHolder}
@@ -1418,711 +510,169 @@ const App = () => {
             borderRight: "1px solid #f0f0f0",
           }}
         >
-          {contextMenuVisible ? (
-            <div
-              ref={menuContainerRef}
-              style={{
-                position: "fixed",
-                top: contextMenu.y,
-                left: contextMenu.x,
-                zIndex: 1050,
-                background: "#fff",
-                border: "1px solid #d9d9d9",
-                borderRadius: 6,
-                boxShadow: "0 6px 18px rgba(0,0,0,0.15)",
-                minWidth: 160,
-                overflow: "hidden",
-              }}
-            >
-              <Menu
-                selectable={false}
-                items={contextMenuItems}
-                onClick={({ domEvent }) => {
-                  domEvent.stopPropagation();
-                  domEvent.preventDefault();
-                }}
-              />
-            </div>
-          ) : null}
-          <div
-            style={{
-              display: "flex",
-              flexWrap: "wrap",
-              alignItems: "center",
-              gap: 8,
-              marginBottom: 16,
-            }}
-          >
-            <Input.Search
-              placeholder="搜索目录"
-              allowClear
-              value={searchValue}
-              onChange={(e) => setSearchValue(e.target.value)}
-              onSearch={(val) => setSearchValue(val)}
-              style={{ width: 200 }}
-            />
-            <Tooltip title="刷新目录">
-              <Button
-                icon={<ReloadOutlined />}
-                type="text"
-                shape="circle"
-                onClick={() => refetch()}
-                loading={isFetching || isMutating}
-                aria-label="刷新目录"
-              />
-            </Tooltip>
-            <Tooltip title="新建根目录">
-              <span style={{ display: "inline-flex" }}>
-                <Button
-                  icon={<FolderAddOutlined />}
-                  type="primary"
-                  shape="circle"
-                  onClick={() => {
-                    categoryForm.resetFields();
-                    setShowCreateModal({ open: true, parentId: null });
-                  }}
-                  loading={createMutation.isPending}
-                  disabled={createMutation.isPending}
-                  aria-label="新建根目录"
-                />
-              </span>
-            </Tooltip>
-            <Tooltip title="新建子目录">
-              <span style={{ display: "inline-flex" }}>
-                <Button
-                  icon={<PlusSquareOutlined />}
-                  type="primary"
-                  shape="circle"
-                  onClick={() => {
-                    const current =
-                      selectedIds.length === 1 ? lookups.byId.get(selectedIds[0]) : null;
-                    categoryForm.resetFields();
-                    setShowCreateModal({ open: true, parentId: current?.id ?? null });
-                  }}
-                  loading={createMutation.isPending}
-                  disabled={selectedIds.length !== 1 || createMutation.isPending}
-                  aria-label="新建子目录"
-                />
-              </span>
-            </Tooltip>
-            <Tooltip title="重命名目录">
-              <span style={{ display: "inline-flex" }}>
-                <Button
-                  icon={<EditOutlined />}
-                  type="text"
-                  shape="circle"
-                  onClick={() => {
-                    const current =
-                      selectedIds.length === 1 ? lookups.byId.get(selectedIds[0]) : null;
-                    if (!current) return;
-                    categoryForm.setFieldsValue({ name: current.name });
-                    setShowRenameModal(true);
-                  }}
-                  loading={updateMutation.isPending}
-                  disabled={selectedIds.length !== 1 || updateMutation.isPending}
-                  aria-label="重命名目录"
-                />
-              </span>
-            </Tooltip>
-            <Popconfirm
-              title="确认删除该目录？"
-              okText="删除"
-              cancelText="取消"
-              okButtonProps={{ danger: true }}
-              onConfirm={() => {
-                if (selectedIds.length !== 1) return;
-                const childList = lookups.parentToChildren.get(selectedIds[0]) ?? [];
-                if (childList.length > 0) {
-                  messageApi.error("无法删除含子节点的目录");
-                  return;
-                }
-                openDeletePreview("soft", [selectedIds[0]]);
-              }}
-              disabled={selectedIds.length !== 1}
-            >
-              <Tooltip title="删除目录">
-                <span style={{ display: "inline-flex" }}>
-                  <Button
-                    icon={<DeleteOutlined />}
-                    danger
-                    type="text"
-                    shape="circle"
-                    disabled={selectedIds.length !== 1 || deleteMutation.isPending}
-                    loading={deleteMutation.isPending}
-                    aria-label="删除目录"
-                  />
-                </span>
-              </Tooltip>
-            </Popconfirm>
-            <Tooltip title="打开回收站">
-              <span style={{ display: "inline-flex" }}>
-                <Button
-                  icon={<DeleteFilled />}
-                  type="text"
-                  shape="circle"
-                  onClick={() => {
-                    setSelectedTrashRowKeys([]);
-                    setTrashModalOpen(true);
-                    void trashQuery.refetch();
-                  }}
-                  loading={trashQuery.isFetching}
-                  aria-label="打开回收站"
-                />
-              </span>
-            </Tooltip>
-            <Tooltip
-              title={
-                includeDescendants
-                  ? "显示当前节点及子节点的文档"
-                  : "仅显示当前节点文档"
-              }
-            >
-              <span style={{ display: "inline-flex", alignItems: "center" }}>
-                <Switch
-                  size="small"
-                  checked={includeDescendants}
-                  onChange={(checked) => setIncludeDescendants(checked)}
-                  checkedChildren="含子"
-                  unCheckedChildren="当前"
-                  aria-label="切换文档范围"
-                  disabled={selectedNodeId == null}
-                  style={{ marginLeft: 4 }}
-                />
-              </span>
-            </Tooltip>
-          </div>
-          {clipboard ? (
-            <Tag
-              color={clipboard.mode === "cut" ? "orange" : "blue"}
-              style={{ marginBottom: 16 }}
-            >
-              剪贴板：{clipboard.mode === "cut" ? "剪切" : "复制"} {clipboard.sourceIds.length} 项
-            </Tag>
-          ) : null}
-          {isLoading ? (
-            <div style={{ display: "flex", justifyContent: "center", marginTop: 32 }}>
-              <Spin />
-            </div>
-          ) : error ? (
-            <Alert type="error" message="目录树加载失败" description={(error as Error).message} />
-          ) : treeData.length === 0 ? (
-            <Empty description="暂无目录" />
-          ) : (
-            <div onContextMenuCapture={suppressNativeTreeContextMenu}>
-              <Tree
-                blockNode
-                draggable={{ icon: false }}
-                showLine={{ showLeafIcon: false }}
-                multiple
-                treeData={treeData}
-                titleRender={renderTreeTitle}
-                onDrop={handleDrop}
-                selectedKeys={selectedIds.map(String)}
-                onSelect={handleSelect}
-                onRightClick={handleTreeRightClick}
-                expandedKeys={expandedKeys}
-                autoExpandParent={autoExpandParent}
-                onExpand={(keys) => {
-                  setExpandedKeys(keys.map(String));
-                  setAutoExpandParent(false);
-                }}
-                height={600}
-                style={{ userSelect: "none" }}
-              />
-            </div>
-          )}
-          <Collapse
-            activeKey={detailCollapseKeys}
-            onChange={(keys) => {
-              const nextKeys = (Array.isArray(keys) ? keys : [keys]).map((key) =>
-                key.toString(),
-              );
-              setDetailCollapseKeys(nextKeys);
-            }}
-            items={[
-              {
-                key: "detail",
-                label: "目录详情",
-                children:
-                  selectedIds.length === 1 ? (
-                    <CategoryDetail category={lookups.byId.get(selectedIds[0]) ?? null} />
-                  ) : selectedIds.length > 1 ? (
-                    <Typography.Paragraph type="secondary">
-                      已选择 {selectedIds.length} 个节点。请使用右键菜单执行批量操作。
-                    </Typography.Paragraph>
-                  ) : (
-                    <Typography.Paragraph type="secondary">
-                      请选择一个目录节点查看详情。可通过折叠按钮隐藏该面板。
-                    </Typography.Paragraph>
-                  ),
-              },
-            ]}
-            style={{ marginTop: 16 }}
+          <CategoryTreePanel
+            categories={categoriesList}
+            lookups={lookups}
+            isLoading={isLoading}
+            isFetching={isFetching}
+            error={error}
+            isMutating={isMutating}
+            selectedIds={selectedIds}
+            selectionParentId={selectionParentId}
+            lastSelectedId={lastSelectedId}
+            selectedNodeId={selectedNodeId}
+            includeDescendants={includeDescendants}
+            createLoading={createMutation.isPending}
+            trashIsFetching={trashQuery.isFetching}
+            messageApi={messageApi}
+            dragDebugEnabled={dragDebugEnabled}
+            menuDebugEnabled={menuDebugEnabled}
+            onSelectionChange={handleSelectionChange}
+            onRequestCreate={handleRequestCreate}
+            onRequestRename={handleRequestRename}
+            onRequestDelete={handleRequestDelete}
+            onOpenTrash={handleOpenTrash}
+            onOpenAddDocument={handleOpenAddDocument}
+            onIncludeDescendantsChange={handleIncludeDescendantsChange}
+            onRefresh={handleRefreshTree}
+            onInvalidateQueries={invalidateCategoryQueries}
+            setIsMutating={setMutating}
           />
         </Sider>
         <Content style={{ padding: "24px" }}>
           <Space direction="vertical" size="large" style={{ width: "100%" }}>
-            <Card>
-              <Form
-                layout="inline"
-                form={documentFilterForm}
-                onFinish={handleDocumentSearch}
-                style={{ gap: 16, flexWrap: "wrap" }}
-              >
-                <Form.Item name="docId" label="文档 ID">
-                  <Input placeholder="例如 123" allowClear style={{ width: 160 }} />
-                </Form.Item>
-                <Form.Item name="query" label="关键字">
-                  <Input placeholder="标题 / 内容" allowClear style={{ width: 200 }} />
-                </Form.Item>
-                <Form.Item name="type" label="文档类型">
-                  <Select
-                    allowClear
-                    style={{ width: 160 }}
-                    placeholder="选择类型"
-                    options={DOCUMENT_TYPES}
-                  />
-                </Form.Item>
-                <Form.Item>
-                  <Space>
-                    <Button type="primary" htmlType="submit" icon={<SearchOutlined />}>
-                      筛选
-                    </Button>
-                    <Button onClick={handleDocumentReset}>重置</Button>
-                  </Space>
-                </Form.Item>
-              </Form>
-            </Card>
-            <Card
-              title={
-                <Space>
-                  <FileTextOutlined />
-                  <span>文档列表</span>
-                </Space>
-              }
-              extra={
-                <Tooltip title="新增文档">
-                  <Button
-                    type="primary"
-                    icon={<PlusOutlined />}
-                    onClick={handleToolbarAddDocument}
-                    disabled={selectedNodeId == null}
-                    aria-label="新增文档"
-                  />
-                </Tooltip>
-              }
-            >
-              {selectedNodeId == null ? (
-                <Typography.Paragraph type="secondary">
-                  请选择单个目录节点以查看文档。
-                </Typography.Paragraph>
-              ) : documentsQuery.isLoading ? (
-                <div style={{ display: "flex", justifyContent: "center", padding: "48px 0" }}>
-                  <Spin />
-                </div>
-              ) : documentsQuery.error ? (
-                <Alert
-                  type="error"
-                  message="文档加载失败"
-                  description={(documentsQuery.error as Error).message}
-                />
-              ) : documents.length === 0 ? (
-                <Empty description="暂无文档" />
-              ) : (
-                <Table
-                  rowKey="id"
-                  dataSource={documents}
-                  columns={documentColumns}
-                  pagination={false}
-                  loading={documentsQuery.isFetching}
-                />
-              )}
-            </Card>
+            <DocumentPanel
+              filterForm={documentFilterForm}
+              documentTypes={DOCUMENT_TYPES}
+              selectedNodeId={selectedNodeId}
+              documents={documents}
+              columns={documentColumns}
+              isLoading={documentsQuery.isLoading}
+              isFetching={documentsQuery.isFetching}
+              error={documentsQuery.error}
+              onSearch={handleDocumentSearch}
+              onReset={handleDocumentReset}
+              onAddDocument={handleToolbarAddDocument}
+              onReorderDocuments={handleOpenReorderModal}
+            />
           </Space>
         </Content>
       </Layout>
-      <Modal
-        title="回收站"
+      <CategoryTrashModal
         open={trashModalOpen}
-        footer={null}
-        width={720}
-        onCancel={() => {
+        loading={trashQuery.isFetching || isTrashProcessing}
+        isInitialLoading={isTrashInitialLoading}
+        error={trashQuery.error}
+        trashItems={trashItems}
+        columns={trashTableColumns}
+        selectedRowKeys={selectedTrashRowKeys}
+        onSelectedRowKeysChange={(keys) => setSelectedRowKeys(keys)}
+        onRefresh={() => {
+          void trashQuery.refetch();
+        }}
+        onClose={() => {
           setTrashModalOpen(false);
-          setSelectedTrashRowKeys([]);
+          setSelectedRowKeys([]);
         }}
-      >
-        <div
-          style={{
-            display: "flex",
-            gap: 8,
-            flexWrap: "wrap",
-            alignItems: "center",
-            marginBottom: 16,
-          }}
-        >
-          <Tooltip title="刷新回收站">
-            <Button
-              icon={<ReloadOutlined />}
-              type="text"
-              shape="circle"
-              onClick={() => {
-                void trashQuery.refetch();
-              }}
-              loading={trashQuery.isFetching || isMutating}
-              aria-label="刷新回收站"
-            />
-          </Tooltip>
-          <Tooltip title="批量恢复">
-            <span style={{ display: "inline-flex" }}>
-              <Button
-                icon={<RollbackOutlined />}
-                type="primary"
-                shape="circle"
-                onClick={handleBulkRestore}
-                disabled={selectedTrashRowKeys.length === 0 || isMutating}
-                loading={isMutating}
-                aria-label="批量恢复"
-              />
-            </span>
-          </Tooltip>
-          <Popconfirm
-            title={`确认彻底删除选中的 ${selectedTrashRowKeys.length} 个目录？`}
-            okText="删除"
-            cancelText="取消"
-            okButtonProps={{
-              danger: true,
-              disabled: selectedTrashRowKeys.length === 0,
-            }}
-            onConfirm={handleBulkPurge}
-            disabled={selectedTrashRowKeys.length === 0 || isMutating}
-          >
-            <Tooltip title="批量彻底删除">
-              <span style={{ display: "inline-flex" }}>
-                <Button
-                  icon={<DeleteOutlined />}
-                  danger
-                  type="text"
-                  shape="circle"
-                  disabled={selectedTrashRowKeys.length === 0 || isMutating}
-                  loading={isMutating}
-                  aria-label="批量彻底删除"
-                />
-              </span>
-            </Tooltip>
-          </Popconfirm>
-          <Tooltip title="清空选择">
-            <span style={{ display: "inline-flex" }}>
-              <Button
-                icon={<CloseCircleOutlined />}
-                type="text"
-                shape="circle"
-                onClick={() => setSelectedTrashRowKeys([])}
-                disabled={selectedTrashRowKeys.length === 0}
-                aria-label="清空选择"
-              />
-            </span>
-          </Tooltip>
-        </div>
-        {isTrashInitialLoading ? (
-          <div style={{ display: "flex", justifyContent: "center", marginTop: 32 }}>
-            <Spin />
-          </div>
-        ) : trashQuery.error ? (
-          <Alert
-            type="error"
-            message="回收站加载失败"
-            description={(trashQuery.error as Error).message}
-          />
-        ) : trashData.length === 0 ? (
-          <Empty description="暂无已删除目录" />
-        ) : (
-          <Table
-            rowKey="id"
-            pagination={false}
-            dataSource={trashData}
-            columns={trashTableColumns}
-            rowSelection={{
-              selectedRowKeys: selectedTrashRowKeys,
-              onChange: (keys) => setSelectedTrashRowKeys(keys),
-            }}
-          />
-        )}
-      </Modal>
-      <Modal
-        title={deletePreview.mode === "purge" ? "彻底删除确认" : "删除确认"}
-        open={deletePreview.visible}
-        confirmLoading={
-          deletePreview.loading || deleteMutation.isPending || purgeMutation.isPending
-        }
-        onCancel={() =>
-          setDeletePreview({ visible: false, mode: "soft", ids: [], loading: false, result: null })
-        }
-        onOk={handleConfirmDelete}
-        okText={deletePreview.mode === "purge" ? "彻底删除" : "删除"}
-        cancelButtonProps={{
-          disabled: deletePreview.loading || deleteMutation.isPending || purgeMutation.isPending,
-        }}
-        width={520}
-      >
-        {deletePreview.loading ? (
-          <div style={{ display: "flex", justifyContent: "center", padding: "24px 0" }}>
-            <Spin />
-          </div>
-        ) : deletePreview.result ? (
-          <Space direction="vertical" style={{ width: "100%" }}>
-            {deletePreview.result.items.map((item) => (
-              <Card size="small" key={item.id} bordered={false} style={{ border: "1px solid #f0f0f0" }}>
-                <Typography.Text strong>{item.name}</Typography.Text>
-                <Typography.Paragraph type="secondary" style={{ marginBottom: 8 }}>
-                  {item.path}
-                </Typography.Paragraph>
-                <Typography.Text>关联文档：{item.document_count}</Typography.Text>
-                {item.warnings && item.warnings.length > 0 ? (
-                  <ul style={{ paddingLeft: 16, margin: "8px 0 0" }}>
-                    {item.warnings.map((warn, idx) => (
-                      <li key={idx}>{warn}</li>
-                    ))}
-                  </ul>
-                ) : (
-                  <Typography.Paragraph type="secondary" style={{ margin: "8px 0 0" }}>
-                    无关联风险
-                  </Typography.Paragraph>
-                )}
-              </Card>
-            ))}
-          </Space>
-        ) : (
-          <Typography.Paragraph type="secondary">
-            正在加载删除校验信息...
-          </Typography.Paragraph>
-        )}
-      </Modal>
-      <Modal
-        title="添加文档"
+        onBulkRestore={handleTrashBulkRestore}
+        onBulkPurge={handleTrashBulkPurge}
+        isMutating={isTrashProcessing}
+        onClearSelection={() => setSelectedRowKeys([])}
+      />
+      <DocumentCreateModal
         open={documentModal.open}
         confirmLoading={documentCreateMutation.isPending}
+        nodeId={documentModal.nodeId}
+        form={documentForm}
+        documentTypes={DOCUMENT_TYPES}
         onCancel={handleDocumentModalCancel}
         onOk={handleDocumentModalOk}
-        destroyOnClose
-      >
-        {documentModal.nodeId ? (
-          <Typography.Paragraph type="secondary">
-            绑定目录 ID：{documentModal.nodeId}
-          </Typography.Paragraph>
-        ) : null}
-        <Form form={documentForm} layout="vertical" preserve={false}>
-          <Form.Item
-            name="title"
-            label="文档名称"
-            rules={[
-              {
-                required: true,
-                message: "请输入文档名称",
-              },
-              {
-                max: 100,
-                message: "名称不超过 100 个字符",
-              },
-            ]}
-          >
-            <Input placeholder="请输入" autoFocus />
-          </Form.Item>
-          <Form.Item
-            name="type"
-            label="文档类型"
-            rules={[
-              {
-                required: true,
-                message: "请选择文档类型",
-              },
-            ]}
-          >
-            <Select options={DOCUMENT_TYPES} placeholder="请选择" />
-          </Form.Item>
-          <Form.Item name="content" label="备注 / 内容预览">
-            <Input.TextArea rows={4} placeholder="可选，填写内容概要" />
-          </Form.Item>
-        </Form>
-      </Modal>
-      <Modal
-        title={showCreateModal.parentId ? "新建子目录" : "新建根目录"}
+      />
+      <DocumentReorderModal
+        open={reorderModal}
+        documents={documents}
+        loading={documentReorderMutation.isPending}
+        onCancel={() => setReorderModal(false)}
+        onConfirm={handleReorderConfirm}
+      />
+      <CategoryDeletePreviewModal
+        open={deletePreview.visible}
+        mode={deletePreview.mode}
+        loading={deletePreview.loading}
+        result={deletePreview.result}
+        confirmLoading={
+          deletePreview.loading ||
+          deleteMutation.isPending ||
+          bulkDeleteMutation.isPending ||
+          purgeMutation.isPending
+        }
+        onCancel={closePreview}
+        onConfirm={handleConfirmDelete}
+      />
+      <CategoryFormModal
         open={showCreateModal.open}
+        title={showCreateModal.parentId ? "新建子目录" : "新建根目录"}
         confirmLoading={createMutation.isPending}
+        form={categoryForm}
         onCancel={() => setShowCreateModal({ open: false, parentId: null })}
-        onOk={() => {
+        onSubmit={() => {
           categoryForm
             .validateFields()
             .then((values) => {
-              createMutation.mutate({
-                name: values.name.trim(),
-                parent_id: showCreateModal.parentId,
-              });
+              setMutating(true);
+              createMutation.mutate(
+                {
+                  name: values.name.trim(),
+                  parent_id: showCreateModal.parentId,
+                },
+                {
+                  onSuccess: () => {
+                    setShowCreateModal({ open: false, parentId: null });
+                  },
+                  onError: () => {
+                    setMutating(false);
+                  },
+                },
+              );
             })
             .catch(() => undefined);
         }}
-        destroyOnClose
-      >
-        <Form form={categoryForm} layout="vertical" preserve={false}>
-          <Form.Item
-            name="name"
-            label="目录名称"
-            rules={[
-              {
-                validator: (_, value: string) => {
-                  const trimmed = value?.trim() ?? "";
-                  if (!trimmed) {
-                    return Promise.reject(new Error("请输入目录名称"));
-                  }
-                  if (trimmed.length > 50) {
-                    return Promise.reject(new Error("名称不超过 50 个字符"));
-                  }
-                  return Promise.resolve();
-                },
-              },
-            ]}
-          >
-            <Input placeholder="请输入" />
-          </Form.Item>
-        </Form>
-      </Modal>
-      <Modal
-        title="重命名目录"
+      />
+      <CategoryFormModal
         open={showRenameModal}
+        title="重命名目录"
         confirmLoading={updateMutation.isPending}
+        form={categoryForm}
         onCancel={() => setShowRenameModal(false)}
-        onOk={() => {
+        onSubmit={() => {
           categoryForm
             .validateFields()
             .then((values) => {
               if (selectedIds.length !== 1) return;
-              updateMutation.mutate({
-                id: selectedIds[0],
-                payload: { name: values.name.trim() },
-              });
+              setMutating(true);
+              updateMutation.mutate(
+                {
+                  id: selectedIds[0],
+                  payload: { name: values.name.trim() },
+                },
+                {
+                  onSuccess: () => {
+                    setShowRenameModal(false);
+                  },
+                  onError: () => {
+                    setMutating(false);
+                  },
+                },
+              );
             })
             .catch(() => undefined);
         }}
-        destroyOnClose
-      >
-        <Form form={categoryForm} layout="vertical" preserve={false}>
-          <Form.Item
-            name="name"
-            label="目录名称"
-            rules={[
-              {
-                validator: (_, value: string) => {
-                  const trimmed = value?.trim() ?? "";
-                  if (!trimmed) {
-                    return Promise.reject(new Error("请输入目录名称"));
-                  }
-                  if (trimmed.length > 50) {
-                    return Promise.reject(new Error("名称不超过 50 个字符"));
-                  }
-                  return Promise.resolve();
-                },
-              },
-            ]}
-          >
-            <Input placeholder="请输入" />
-          </Form.Item>
-        </Form>
-      </Modal>
+      />
     </Layout>
   );
 };
 
 export default App;
-
-function buildFilteredTree(
-  nodes: Category[],
-  parentId: ParentKey,
-  search: string,
-) {
-  const trimmed = search.toLowerCase();
-  if (!trimmed) {
-    return { nodes: buildTreeData(nodes, parentId), matchedKeys: new Set<string>() };
-  }
-  const matchedKeys = new Set<string>();
-  const filtered = filterNodes(nodes, parentId, [], matchedKeys, trimmed);
-  return { nodes: filtered, matchedKeys };
-}
-
-function buildTreeData(
-  nodes: Category[],
-  parentId: ParentKey,
-): TreeDataNode[] {
-  const sorted = sortCategories(nodes);
-  return sorted.map((node) => ({
-    key: node.id.toString(),
-    title: node.name,
-    parentId,
-    children: buildTreeData(node.children ?? [], node.id),
-  }));
-}
-
-function filterNodes(
-  nodes: Category[],
-  parentId: ParentKey,
-  ancestors: string[],
-  matchedKeys: Set<string>,
-  search: string,
-): TreeDataNode[] {
-  const sorted = sortCategories(nodes);
-  const result: TreeDataNode[] = [];
-  sorted.forEach((node) => {
-    const key = node.id.toString();
-    const childAncestors = [...ancestors, key];
-    const children = filterNodes(node.children ?? [], node.id, childAncestors, matchedKeys, search);
-    const nameMatch = node.name.toLowerCase().includes(search);
-    const includeNode = nameMatch || children.length > 0;
-    if (!includeNode) {
-      return;
-    }
-    if (nameMatch || children.length > 0) {
-      matchedKeys.add(key);
-      ancestors.forEach((ancestorKey) => matchedKeys.add(ancestorKey));
-    }
-    result.push({
-      key,
-      title: node.name,
-      parentId,
-      children: children.length > 0 ? children : undefined,
-    });
-  });
-  return result;
-}
-
-function buildLookups(nodes: Category[]) {
-  const byId = new Map<number, Category>();
-  const parentToChildren = new Map<ParentKey, Category[]>();
-
-  const walk = (list: Category[], parentId: ParentKey) => {
-    const sorted = sortCategories(list);
-    parentToChildren.set(parentId, sorted);
-    sorted.forEach((node) => {
-      byId.set(node.id, node);
-      if (node.children && node.children.length > 0) {
-        walk(node.children, node.id);
-      }
-    });
-  };
-
-  walk(nodes, null);
-  return { byId, parentToChildren };
-}
-
-function sortCategories(nodes: Category[]): Category[] {
-  return [...nodes].sort((a, b) => {
-    if (a.position !== b.position) {
-      return a.position - b.position;
-    }
-    return a.name.localeCompare(b.name, "zh-CN");
-  });
-}
-
-function getParentId(node: EventDataNode<DataNode>): number | null {
-  return (node as TreeDataNode & EventDataNode<DataNode>).parentId ?? null;
-}
 
 function buildTrashColumns(
   restoreLoading: boolean,
@@ -2135,7 +685,7 @@ function buildTrashColumns(
       title: "名称",
       dataIndex: "name",
       key: "name",
-      render: (value: string, record: Category) => (
+      render: (value: string) => (
         <Space>
           <Typography.Text>{value}</Typography.Text>
           <Tag color="red">已删除</Tag>
@@ -2197,51 +747,4 @@ function buildTrashColumns(
       ),
     },
   ];
-}
-
-interface CategoryDetailProps {
-  category: Category | null;
-}
-
-function CategoryDetail({ category }: CategoryDetailProps) {
-  if (!category) {
-    return (
-      <Typography.Paragraph type="secondary">
-        目录信息已更新，请重新选择节点查看详情。
-      </Typography.Paragraph>
-    );
-  }
-  return (
-    <Card style={{ width: "100%" }}>
-      <Space direction="vertical">
-        <Typography.Text strong>名称</Typography.Text>
-        <Space>
-          <Typography.Text>{category.name}</Typography.Text>
-          {category.deleted_at ? <Tag color="red">已删除</Tag> : null}
-        </Space>
-        <Typography.Text strong>路径</Typography.Text>
-        <Typography.Text code>{category.path}</Typography.Text>
-        <Typography.Text strong>父级 ID</Typography.Text>
-        <Typography.Text>{category.parent_id ?? "根目录"}</Typography.Text>
-        <Typography.Text strong>排序位置</Typography.Text>
-        <Typography.Text>{category.position}</Typography.Text>
-        <Typography.Text strong>创建时间</Typography.Text>
-        <Typography.Text>
-          {new Date(category.created_at).toLocaleString()}
-        </Typography.Text>
-        <Typography.Text strong>更新时间</Typography.Text>
-        <Typography.Text>
-          {new Date(category.updated_at).toLocaleString()}
-        </Typography.Text>
-        {category.deleted_at ? (
-          <>
-            <Typography.Text strong>删除时间</Typography.Text>
-            <Typography.Text>
-              {new Date(category.deleted_at).toLocaleString()}
-            </Typography.Text>
-          </>
-        ) : null}
-      </Space>
-    </Card>
-  );
 }

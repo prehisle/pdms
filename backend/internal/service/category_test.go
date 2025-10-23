@@ -38,6 +38,21 @@ type fakeNDR struct {
 	getErr        error
 	restoreErr    error
 	purgeErr      error
+
+	// Document-related fields
+	createdDocs []ndrclient.DocumentCreate
+	updatedDocs []struct {
+		ID   int64
+		Body ndrclient.DocumentUpdate
+	}
+	createDocResp   ndrclient.Document
+	updateDocResp   ndrclient.Document
+	createDocErr    error
+	updateDocErr    error
+	docsListResp    ndrclient.DocumentsPage
+	nodeDocsResp    []ndrclient.Document
+	docsListErr     error
+	nodeDocsErr     error
 }
 
 func newFakeNDR() *fakeNDR {
@@ -127,19 +142,28 @@ func (f *fakeNDR) PurgeNode(_ context.Context, _ ndrclient.RequestMeta, id int64
 }
 
 func (f *fakeNDR) ListDocuments(context.Context, ndrclient.RequestMeta, url.Values) (ndrclient.DocumentsPage, error) {
-	return ndrclient.DocumentsPage{}, nil
+	return f.docsListResp, f.docsListErr
 }
 
 func (f *fakeNDR) ListNodeDocuments(context.Context, ndrclient.RequestMeta, int64, url.Values) ([]ndrclient.Document, error) {
-	return nil, nil
+	return f.nodeDocsResp, f.nodeDocsErr
 }
 
-func (f *fakeNDR) CreateDocument(context.Context, ndrclient.RequestMeta, ndrclient.DocumentCreate) (ndrclient.Document, error) {
-	return ndrclient.Document{}, nil
+func (f *fakeNDR) CreateDocument(_ context.Context, _ ndrclient.RequestMeta, body ndrclient.DocumentCreate) (ndrclient.Document, error) {
+	f.createdDocs = append(f.createdDocs, body)
+	return f.createDocResp, f.createDocErr
 }
 
 func (f *fakeNDR) BindDocument(context.Context, ndrclient.RequestMeta, int64, int64) error {
 	return nil
+}
+
+func (f *fakeNDR) UpdateDocument(_ context.Context, _ ndrclient.RequestMeta, id int64, body ndrclient.DocumentUpdate) (ndrclient.Document, error) {
+	f.updatedDocs = append(f.updatedDocs, struct {
+		ID   int64
+		Body ndrclient.DocumentUpdate
+	}{ID: id, Body: body})
+	return f.updateDocResp, f.updateDocErr
 }
 
 func TestCreateCategory(t *testing.T) {
@@ -462,6 +486,39 @@ func TestBulkRestoreCategories(t *testing.T) {
 	}
 	if len(items) != 1 || items[0].ID != 30 {
 		t.Fatalf("unexpected items %v", items)
+	}
+}
+
+func TestBulkDeleteCategories(t *testing.T) {
+	fake := newFakeNDR()
+	svc := NewService(cache.NewNoop(), fake)
+
+	ids, err := svc.BulkDeleteCategories(context.Background(), RequestMeta{}, []int64{40, 41, 40})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(ids) != 2 {
+		t.Fatalf("expected 2 unique ids, got %v", ids)
+	}
+	if len(fake.deletedNodes) != 2 || fake.deletedNodes[0] != 40 || fake.deletedNodes[1] != 41 {
+		t.Fatalf("unexpected deleted nodes %v", fake.deletedNodes)
+	}
+}
+
+func TestBulkDeleteCategoriesWithChildren(t *testing.T) {
+	fake := newFakeNDR()
+	now := time.Now().UTC()
+	parent := sampleNode(200, "Parent", "/parent", nil, 1, now, now)
+	child := sampleNode(201, "Child", "/parent/child", ptr[int64](200), 1, now, now)
+	fake.getNodes[200] = parent
+	fake.getNodes[201] = child
+	svc := NewService(cache.NewNoop(), fake)
+
+	if _, err := svc.BulkDeleteCategories(context.Background(), RequestMeta{}, []int64{200}); err == nil {
+		t.Fatalf("expected error when deleting parent with children")
+	}
+	if len(fake.deletedNodes) != 0 {
+		t.Fatalf("expected no delete calls, got %v", fake.deletedNodes)
 	}
 }
 

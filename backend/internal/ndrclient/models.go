@@ -70,6 +70,8 @@ type Document struct {
 	ID        int64          `json:"id"`
 	Title     string         `json:"title"`
 	Content   map[string]any `json:"content"`
+	Type      *string        `json:"type"`
+	Position  int            `json:"position"`
 	CreatedBy string         `json:"created_by"`
 	UpdatedBy string         `json:"updated_by"`
 	CreatedAt time.Time      `json:"created_at"`
@@ -83,6 +85,17 @@ type DocumentCreate struct {
 	Title    string         `json:"title"`
 	Metadata map[string]any `json:"metadata,omitempty"`
 	Content  map[string]any `json:"content,omitempty"`
+	Type     *string        `json:"type,omitempty"`
+	Position *int           `json:"position,omitempty"`
+}
+
+// DocumentUpdate mirrors the upstream update payload.
+type DocumentUpdate struct {
+	Title    *string        `json:"title,omitempty"`
+	Content  map[string]any `json:"content,omitempty"`
+	Metadata map[string]any `json:"metadata,omitempty"`
+	Type     *string        `json:"type,omitempty"`
+	Position *int           `json:"position,omitempty"`
 }
 
 // DocumentsPage wraps paginated document results.

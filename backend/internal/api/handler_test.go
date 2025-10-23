@@ -495,6 +495,61 @@ func TestCategoryBulkEndpoints(t *testing.T) {
 	}
 }
 
+func TestBulkDeleteCategoriesEndpoint(t *testing.T) {
+	ndr := newInMemoryNDR()
+	svc := service.NewService(cache.NewNoop(), ndr)
+	handler := NewHandler(svc, HeaderDefaults{})
+	router := NewRouter(handler)
+
+	root := createCategory(t, router, `{"name":"Root"}`)
+	childA := createCategory(t, router, fmt.Sprintf(`{"name":"ChildA","parent_id":%d}`, root.ID))
+	childB := createCategory(t, router, fmt.Sprintf(`{"name":"ChildB","parent_id":%d}`, root.ID))
+
+	payload := fmt.Sprintf(`{"ids":[%d,%d]}`, childA.ID, childB.ID)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/categories/bulk/delete", strings.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200 for bulk delete, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		DeletedIDs []int64 `json:"deleted_ids"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response error: %v", err)
+	}
+	if len(resp.DeletedIDs) != 2 {
+		t.Fatalf("expected 2 deleted ids, got %v", resp.DeletedIDs)
+	}
+
+	trashReq := httptest.NewRequest(http.MethodGet, "/api/v1/categories/trash", nil)
+	trashRec := httptest.NewRecorder()
+	router.ServeHTTP(trashRec, trashReq)
+	if trashRec.Code != http.StatusOK {
+		t.Fatalf("expected status 200 for trash, got %d", trashRec.Code)
+	}
+	var trashItems []service.Category
+	if err := json.NewDecoder(trashRec.Body).Decode(&trashItems); err != nil {
+		t.Fatalf("decode trash response error: %v", err)
+	}
+	if len(trashItems) != 2 {
+		t.Fatalf("expected 2 items in trash, got %d", len(trashItems))
+	}
+
+	parent := createCategory(t, router, `{"name":"Parent"}`)
+	createCategory(t, router, fmt.Sprintf(`{"name":"Child","parent_id":%d}`, parent.ID))
+
+	badPayload := fmt.Sprintf(`{"ids":[%d]}`, parent.ID)
+	badReq := httptest.NewRequest(http.MethodPost, "/api/v1/categories/bulk/delete", strings.NewReader(badPayload))
+	badReq.Header.Set("Content-Type", "application/json")
+	badRec := httptest.NewRecorder()
+	router.ServeHTTP(badRec, badReq)
+	if badRec.Code != http.StatusBadGateway {
+		t.Fatalf("expected status 502 when deleting parent with children, got %d body=%s", badRec.Code, badRec.Body.String())
+	}
+}
+
 func createCategory(t *testing.T, router http.Handler, payload string) service.Category {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/categories", strings.NewReader(payload))
@@ -776,9 +831,15 @@ func (f *inMemoryNDR) CreateDocument(ctx context.Context, meta ndrclient.Request
 			content[k] = v
 		}
 	}
+	position := 1
+	if body.Position != nil {
+		position = *body.Position
+	}
 	doc := ndrclient.Document{
 		ID:        id,
 		Title:     body.Title,
+		Type:      body.Type,
+		Position:  position,
 		Metadata:  metadata,
 		Content:   content,
 		CreatedAt: createdAt,
@@ -799,6 +860,31 @@ func (f *inMemoryNDR) BindDocument(ctx context.Context, meta ndrclient.RequestMe
 	}
 	f.bindings[nodeID][docID] = struct{}{}
 	return nil
+}
+
+func (f *inMemoryNDR) UpdateDocument(ctx context.Context, meta ndrclient.RequestMeta, docID int64, body ndrclient.DocumentUpdate) (ndrclient.Document, error) {
+	doc, ok := f.documents[docID]
+	if !ok {
+		return ndrclient.Document{}, fmt.Errorf("document %d not found", docID)
+	}
+	if body.Title != nil {
+		doc.Title = *body.Title
+	}
+	if body.Content != nil {
+		doc.Content = body.Content
+	}
+	if body.Metadata != nil {
+		doc.Metadata = body.Metadata
+	}
+	if body.Type != nil {
+		doc.Type = body.Type
+	}
+	if body.Position != nil {
+		doc.Position = *body.Position
+	}
+	doc.UpdatedAt = f.tick()
+	f.documents[docID] = doc
+	return doc, nil
 }
 
 func (f *inMemoryNDR) composePath(parentID *int64, slug string) string {
@@ -925,5 +1011,286 @@ func TestAuthzAssignments_CreateListDelete(t *testing.T) {
 	}
 	if len(list2Resp.Items) != 0 {
 		t.Fatalf("expected 0 items after delete, got %d", len(list2Resp.Items))
+	}
+}
+
+func TestListDocumentsIDFilter(t *testing.T) {
+	ndr := newInMemoryNDR()
+	svc := service.NewService(cache.NewNoop(), ndr)
+	handler := NewHandler(svc, HeaderDefaults{})
+	router := NewRouter(handler)
+
+	docA, err := ndr.CreateDocument(context.Background(), ndrclient.RequestMeta{}, ndrclient.DocumentCreate{Title: "Doc A"})
+	if err != nil {
+		t.Fatalf("create document A error: %v", err)
+	}
+	docB, err := ndr.CreateDocument(context.Background(), ndrclient.RequestMeta{}, ndrclient.DocumentCreate{Title: "Doc B"})
+	if err != nil {
+		t.Fatalf("create document B error: %v", err)
+	}
+	docC, err := ndr.CreateDocument(context.Background(), ndrclient.RequestMeta{}, ndrclient.DocumentCreate{Title: "Doc C"})
+	if err != nil {
+		t.Fatalf("create document C error: %v", err)
+	}
+
+	url := fmt.Sprintf("/api/v1/documents?id=%d&id=%d", docA.ID, docC.ID)
+	req := httptest.NewRequest(http.MethodGet, url, nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var page ndrclient.DocumentsPage
+	if err := json.NewDecoder(rec.Body).Decode(&page); err != nil {
+		t.Fatalf("decode documents page error: %v", err)
+	}
+
+	if len(page.Items) != 2 {
+		t.Fatalf("expected 2 documents, got %d", len(page.Items))
+	}
+	if page.Total != 2 {
+		t.Fatalf("expected total 2, got %d", page.Total)
+	}
+
+	ids := []int64{page.Items[0].ID, page.Items[1].ID}
+	for _, unexpected := range []int64{docB.ID} {
+		for _, id := range ids {
+			if id == unexpected {
+				t.Fatalf("unexpected document id %d in response", unexpected)
+			}
+		}
+	}
+	if ids[0] != docA.ID || ids[1] != docC.ID {
+		t.Fatalf("expected documents [%d %d], got %v", docA.ID, docC.ID, ids)
+	}
+}
+
+func TestListNodeDocumentsIDFilter(t *testing.T) {
+	ndr := newInMemoryNDR()
+	svc := service.NewService(cache.NewNoop(), ndr)
+	handler := NewHandler(svc, HeaderDefaults{})
+	router := NewRouter(handler)
+
+	root := createCategory(t, router, `{"name":"Root"}`)
+
+	docA, err := ndr.CreateDocument(context.Background(), ndrclient.RequestMeta{}, ndrclient.DocumentCreate{Title: "Doc A"})
+	if err != nil {
+		t.Fatalf("create document A error: %v", err)
+	}
+	docB, err := ndr.CreateDocument(context.Background(), ndrclient.RequestMeta{}, ndrclient.DocumentCreate{Title: "Doc B"})
+	if err != nil {
+		t.Fatalf("create document B error: %v", err)
+	}
+	docC, err := ndr.CreateDocument(context.Background(), ndrclient.RequestMeta{}, ndrclient.DocumentCreate{Title: "Doc C"})
+	if err != nil {
+		t.Fatalf("create document C error: %v", err)
+	}
+
+	if err := ndr.BindDocument(context.Background(), ndrclient.RequestMeta{}, root.ID, docA.ID); err != nil {
+		t.Fatalf("bind document A error: %v", err)
+	}
+	if err := ndr.BindDocument(context.Background(), ndrclient.RequestMeta{}, root.ID, docB.ID); err != nil {
+		t.Fatalf("bind document B error: %v", err)
+	}
+	if err := ndr.BindDocument(context.Background(), ndrclient.RequestMeta{}, root.ID, docC.ID); err != nil {
+		t.Fatalf("bind document C error: %v", err)
+	}
+
+	url := fmt.Sprintf("/api/v1/nodes/%d/subtree-documents?id=%d&id=%d", root.ID, docA.ID, docC.ID)
+	req := httptest.NewRequest(http.MethodGet, url, nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var docs []ndrclient.Document
+	if err := json.NewDecoder(rec.Body).Decode(&docs); err != nil {
+		t.Fatalf("decode documents error: %v", err)
+	}
+
+	if len(docs) != 2 {
+		t.Fatalf("expected 2 documents, got %d", len(docs))
+	}
+	if docs[0].ID != docA.ID || docs[1].ID != docC.ID {
+		t.Fatalf("expected document ids [%d %d], got [%d %d]", docA.ID, docC.ID, docs[0].ID, docs[1].ID)
+	}
+	for _, doc := range docs {
+		if doc.ID == docB.ID {
+			t.Fatalf("unexpected document id %d in response", docB.ID)
+		}
+	}
+}
+
+func TestDocumentReorderEndpoint(t *testing.T) {
+	ndr := newInMemoryNDR()
+	svc := service.NewService(cache.NewNoop(), ndr)
+	handler := NewHandler(svc, HeaderDefaults{})
+	router := NewRouter(handler)
+
+	// Create some documents
+	docType := "markdown"
+	doc1, err := ndr.CreateDocument(context.Background(), ndrclient.RequestMeta{}, ndrclient.DocumentCreate{
+		Title:   "Document A",
+		Type:    &docType,
+		Content: map[string]any{"text": "Content A"},
+	})
+	if err != nil {
+		t.Fatalf("create document 1 error: %v", err)
+	}
+
+	doc2, err := ndr.CreateDocument(context.Background(), ndrclient.RequestMeta{}, ndrclient.DocumentCreate{
+		Title:   "Document B",
+		Type:    &docType,
+		Content: map[string]any{"text": "Content B"},
+	})
+	if err != nil {
+		t.Fatalf("create document 2 error: %v", err)
+	}
+
+	// Test reordering documents
+	payload := fmt.Sprintf(`{"node_id":100,"ordered_ids":[%d,%d]}`, doc2.ID, doc1.ID)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/documents/reorder", strings.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200 for document reorder, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var docs []ndrclient.Document
+	if err := json.NewDecoder(rec.Body).Decode(&docs); err != nil {
+		t.Fatalf("decode reorder response error: %v", err)
+	}
+
+	if len(docs) != 2 {
+		t.Fatalf("expected 2 documents in response, got %d", len(docs))
+	}
+
+	// Check that positions were updated correctly
+	for i, doc := range docs {
+		expectedPosition := i + 1
+		if doc.Position != expectedPosition {
+			t.Fatalf("expected document %d to have position %d, got %d", doc.ID, expectedPosition, doc.Position)
+		}
+	}
+
+	// Doc2 should be first (position 1), Doc1 should be second (position 2)
+	if docs[0].ID != doc2.ID || docs[0].Position != 1 {
+		t.Fatalf("expected first document to be doc2 with position 1, got ID=%d position=%d", docs[0].ID, docs[0].Position)
+	}
+	if docs[1].ID != doc1.ID || docs[1].Position != 2 {
+		t.Fatalf("expected second document to be doc1 with position 2, got ID=%d position=%d", docs[1].ID, docs[1].Position)
+	}
+}
+
+func TestDocumentReorderEndpoint_EmptyOrderedIDs(t *testing.T) {
+	ndr := newInMemoryNDR()
+	svc := service.NewService(cache.NewNoop(), ndr)
+	handler := NewHandler(svc, HeaderDefaults{})
+	router := NewRouter(handler)
+
+	payload := `{"node_id":100,"ordered_ids":[]}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/documents/reorder", strings.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("expected status 502 for empty ordered_ids, got %d", rec.Code)
+	}
+}
+
+func TestDocumentReorderEndpoint_InvalidJSON(t *testing.T) {
+	ndr := newInMemoryNDR()
+	svc := service.NewService(cache.NewNoop(), ndr)
+	handler := NewHandler(svc, HeaderDefaults{})
+	router := NewRouter(handler)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/documents/reorder", strings.NewReader("{"))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400 for invalid JSON, got %d", rec.Code)
+	}
+}
+
+func TestDocumentCreationWithTypeAndPosition(t *testing.T) {
+	ndr := newInMemoryNDR()
+	svc := service.NewService(cache.NewNoop(), ndr)
+	handler := NewHandler(svc, HeaderDefaults{})
+	router := NewRouter(handler)
+
+	payload := `{"title":"Test Document","type":"markdown","position":5,"content":{"text":"Hello World"}}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/documents", strings.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected status 201 for document creation, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var doc ndrclient.Document
+	if err := json.NewDecoder(rec.Body).Decode(&doc); err != nil {
+		t.Fatalf("decode document response error: %v", err)
+	}
+
+	if doc.Title != "Test Document" {
+		t.Fatalf("expected title 'Test Document', got '%s'", doc.Title)
+	}
+	if doc.Type == nil || *doc.Type != "markdown" {
+		t.Fatalf("expected type 'markdown', got %v", doc.Type)
+	}
+	if doc.Position != 5 {
+		t.Fatalf("expected position 5, got %d", doc.Position)
+	}
+}
+
+func TestDocumentUpdateWithTypeAndPosition(t *testing.T) {
+	ndr := newInMemoryNDR()
+	svc := service.NewService(cache.NewNoop(), ndr)
+	handler := NewHandler(svc, HeaderDefaults{})
+	router := NewRouter(handler)
+
+	// Create a document first
+	doc, err := ndr.CreateDocument(context.Background(), ndrclient.RequestMeta{}, ndrclient.DocumentCreate{
+		Title:   "Original Title",
+		Content: map[string]any{"text": "Original content"},
+	})
+	if err != nil {
+		t.Fatalf("create document error: %v", err)
+	}
+
+	// Update the document
+	payload := `{"title":"Updated Title","type":"html","position":3}`
+	req := httptest.NewRequest(http.MethodPut, fmt.Sprintf("/api/v1/documents/%d", doc.ID), strings.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200 for document update, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var updatedDoc ndrclient.Document
+	if err := json.NewDecoder(rec.Body).Decode(&updatedDoc); err != nil {
+		t.Fatalf("decode updated document response error: %v", err)
+	}
+
+	if updatedDoc.Title != "Updated Title" {
+		t.Fatalf("expected updated title 'Updated Title', got '%s'", updatedDoc.Title)
+	}
+	if updatedDoc.Type == nil || *updatedDoc.Type != "html" {
+		t.Fatalf("expected updated type 'html', got %v", updatedDoc.Type)
+	}
+	if updatedDoc.Position != 3 {
+		t.Fatalf("expected updated position 3, got %d", updatedDoc.Position)
 	}
 }

@@ -3,6 +3,8 @@ import { buildQuery, http } from "./http";
 export interface Document {
   id: number;
   title: string;
+  type?: string;
+  position: number;
   content?: Record<string, unknown>;
   created_by: string;
   updated_by: string;
@@ -14,6 +16,16 @@ export interface Document {
 
 export interface DocumentCreatePayload {
   title: string;
+  type?: string;
+  position?: number;
+  metadata?: Record<string, unknown>;
+  content?: Record<string, unknown>;
+}
+
+export interface DocumentUpdatePayload {
+  title?: string;
+  type?: string;
+  position?: number;
   metadata?: Record<string, unknown>;
   content?: Record<string, unknown>;
 }
@@ -26,14 +38,20 @@ export interface DocumentsPage {
 }
 
 export interface DocumentListParams {
-  id?: number;
   page?: number;
   size?: number;
   query?: string;
+  type?: string;
+  id?: number[];
   include_deleted?: boolean;
   include_descendants?: boolean;
   metadata?: Record<string, string | number | boolean | Array<string | number | boolean>>;
   tags?: string[];
+}
+
+export interface DocumentReorderPayload {
+  node_id: number;
+  ordered_ids: number[];
 }
 
 function buildDocumentQuery(params?: DocumentListParams): string {
@@ -69,6 +87,20 @@ export async function getNodeDocuments(
 
 export async function createDocument(payload: DocumentCreatePayload): Promise<Document> {
   return http<Document>("/api/v1/documents", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateDocument(docId: number, payload: DocumentUpdatePayload): Promise<Document> {
+  return http<Document>(`/api/v1/documents/${docId}`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function reorderDocuments(payload: DocumentReorderPayload): Promise<Document[]> {
+  return http<Document[]>("/api/v1/documents/reorder", {
     method: "POST",
     body: JSON.stringify(payload),
   });

@@ -87,6 +87,10 @@ func (h *Handler) CategoryRoutes(w http.ResponseWriter, r *http.Request) {
 			h.bulkRestoreCategories(w, r, meta)
 			return
 		}
+		if relPath == "bulk/delete" {
+			h.bulkDeleteCategories(w, r, meta)
+			return
+		}
 		if relPath == "bulk/purge" {
 			h.bulkPurgeCategories(w, r, meta)
 			return
@@ -172,9 +176,75 @@ func (h *Handler) Documents(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// DocumentRoutes currently returns 404 for unsupported operations.
+// DocumentRoutes handles document-related operations and sub-resources.
 func (h *Handler) DocumentRoutes(w http.ResponseWriter, r *http.Request) {
+	relPath := strings.TrimPrefix(r.URL.Path, "/api/v1/documents/")
+	if relPath == "" {
+		h.Documents(w, r)
+		return
+	}
+
+	if relPath == "reorder" {
+		h.reorderDocuments(w, r, h.metaFromRequest(r))
+		return
+	}
+
+	parts := strings.Split(relPath, "/")
+	id, err := strconv.ParseInt(parts[0], 10, 64)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, errors.New("invalid document id"))
+		return
+	}
+
+	meta := h.metaFromRequest(r)
+
+	if len(parts) == 1 {
+		h.handleDocumentItem(w, r, meta, id)
+		return
+	}
+
 	respondError(w, http.StatusNotFound, errors.New("not found"))
+}
+
+func (h *Handler) handleDocumentItem(w http.ResponseWriter, r *http.Request, meta service.RequestMeta, id int64) {
+	switch r.Method {
+	case http.MethodPut:
+		h.updateDocument(w, r, meta, id)
+	default:
+		respondError(w, http.StatusMethodNotAllowed, errors.New("method not allowed"))
+	}
+}
+
+func (h *Handler) updateDocument(w http.ResponseWriter, r *http.Request, meta service.RequestMeta, id int64) {
+	var payload service.DocumentUpdateRequest
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		respondError(w, http.StatusBadRequest, err)
+		return
+	}
+	doc, err := h.service.UpdateDocument(r.Context(), meta, id, payload)
+	if err != nil {
+		respondError(w, http.StatusBadGateway, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, doc)
+}
+
+func (h *Handler) reorderDocuments(w http.ResponseWriter, r *http.Request, meta service.RequestMeta) {
+	if r.Method != http.MethodPost {
+		respondError(w, http.StatusMethodNotAllowed, errors.New("method not allowed"))
+		return
+	}
+	var payload service.DocumentReorderRequest
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		respondError(w, http.StatusBadRequest, err)
+		return
+	}
+	docs, err := h.service.ReorderDocuments(r.Context(), meta, payload)
+	if err != nil {
+		respondError(w, http.StatusBadGateway, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, docs)
 }
 
 // NodeRoutes handles node-related sub-resources.
@@ -418,6 +488,24 @@ func (h *Handler) bulkRestoreCategories(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 	writeJSON(w, http.StatusOK, items)
+}
+
+func (h *Handler) bulkDeleteCategories(w http.ResponseWriter, r *http.Request, meta service.RequestMeta) {
+	if r.Method != http.MethodPost {
+		respondError(w, http.StatusMethodNotAllowed, errors.New("method not allowed"))
+		return
+	}
+	var payload service.CategoryBulkIDsRequest
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		respondError(w, http.StatusBadRequest, err)
+		return
+	}
+	ids, err := h.service.BulkDeleteCategories(r.Context(), meta, payload.IDs)
+	if err != nil {
+		respondError(w, http.StatusBadGateway, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"deleted_ids": ids})
 }
 
 func (h *Handler) bulkPurgeCategories(w http.ResponseWriter, r *http.Request, meta service.RequestMeta) {
