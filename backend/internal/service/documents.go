@@ -53,6 +53,31 @@ func (s *Service) ListNodeDocuments(ctx context.Context, meta RequestMeta, nodeI
 	return filterDocumentsByID(docs, ids), nil
 }
 
+// ListDeletedDocuments returns documents that are currently soft-deleted.
+func (s *Service) ListDeletedDocuments(ctx context.Context, meta RequestMeta, query url.Values) (ndrclient.DocumentsPage, error) {
+	if query == nil {
+		query = url.Values{}
+	}
+	query.Set("include_deleted", "true")
+
+	page, err := s.ndr.ListDocuments(ctx, toNDRMeta(meta), query)
+	if err != nil {
+		return ndrclient.DocumentsPage{}, err
+	}
+
+	filtered := make([]ndrclient.Document, 0, len(page.Items))
+	for _, doc := range page.Items {
+		if doc.DeletedAt != nil {
+			filtered = append(filtered, doc)
+		}
+	}
+
+	page.Items = filtered
+	page.Total = len(filtered)
+	page.Size = len(filtered)
+	return page, nil
+}
+
 // CreateDocument creates a new document upstream.
 func (s *Service) CreateDocument(ctx context.Context, meta RequestMeta, payload DocumentCreateRequest) (ndrclient.Document, error) {
 	// Validate document type if provided
@@ -87,6 +112,26 @@ func (s *Service) CreateDocument(ctx context.Context, meta RequestMeta, payload 
 // BindDocument associates a document with a specific node.
 func (s *Service) BindDocument(ctx context.Context, meta RequestMeta, nodeID, docID int64) error {
 	return s.ndr.BindDocument(ctx, toNDRMeta(meta), nodeID, docID)
+}
+
+// GetDocument fetches a single document by ID.
+func (s *Service) GetDocument(ctx context.Context, meta RequestMeta, docID int64) (ndrclient.Document, error) {
+	return s.ndr.GetDocument(ctx, toNDRMeta(meta), docID)
+}
+
+// DeleteDocument performs a soft delete on the document.
+func (s *Service) DeleteDocument(ctx context.Context, meta RequestMeta, docID int64) error {
+	return s.ndr.DeleteDocument(ctx, toNDRMeta(meta), docID)
+}
+
+// RestoreDocument restores a previously soft-deleted document.
+func (s *Service) RestoreDocument(ctx context.Context, meta RequestMeta, docID int64) (ndrclient.Document, error) {
+	return s.ndr.RestoreDocument(ctx, toNDRMeta(meta), docID)
+}
+
+// PurgeDocument permanently removes a document.
+func (s *Service) PurgeDocument(ctx context.Context, meta RequestMeta, docID int64) error {
+	return s.ndr.PurgeDocument(ctx, toNDRMeta(meta), docID)
 }
 
 // DocumentUpdateRequest represents the payload required to update a document.
@@ -306,4 +351,3 @@ func (s *Service) GetDocumentVersionDiff(ctx context.Context, meta RequestMeta, 
 func (s *Service) RestoreDocumentVersion(ctx context.Context, meta RequestMeta, docID int64, versionNumber int) (ndrclient.Document, error) {
 	return s.ndr.RestoreDocumentVersion(ctx, toNDRMeta(meta), docID, versionNumber)
 }
-

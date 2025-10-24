@@ -45,14 +45,23 @@ type fakeNDR struct {
 		ID   int64
 		Body ndrclient.DocumentUpdate
 	}
-	createDocResp   ndrclient.Document
-	updateDocResp   ndrclient.Document
-	createDocErr    error
-	updateDocErr    error
-	docsListResp    ndrclient.DocumentsPage
-	nodeDocsResp    []ndrclient.Document
-	docsListErr     error
-	nodeDocsErr     error
+	createDocResp  ndrclient.Document
+	updateDocResp  ndrclient.Document
+	createDocErr   error
+	updateDocErr   error
+	docsListResp   ndrclient.DocumentsPage
+	nodeDocsResp   []ndrclient.Document
+	docsListErr    error
+	nodeDocsErr    error
+	deleteDocErr   error
+	restoreDocErr  error
+	restoreDocResp ndrclient.Document
+	purgeDocErr    error
+	getDocResp     ndrclient.Document
+	getDocErr      error
+	deletedDocIDs  []int64
+	restoredDocIDs []int64
+	purgedDocIDs   []int64
 }
 
 func newFakeNDR() *fakeNDR {
@@ -167,19 +176,34 @@ func (f *fakeNDR) UpdateDocument(_ context.Context, _ ndrclient.RequestMeta, id 
 }
 
 func (f *fakeNDR) GetDocument(_ context.Context, _ ndrclient.RequestMeta, id int64) (ndrclient.Document, error) {
-	return ndrclient.Document{ID: id}, nil
+	if f.getDocErr != nil {
+		return ndrclient.Document{}, f.getDocErr
+	}
+	if f.getDocResp.ID == 0 {
+		return ndrclient.Document{ID: id}, nil
+	}
+	return f.getDocResp, nil
 }
 
 func (f *fakeNDR) DeleteDocument(_ context.Context, _ ndrclient.RequestMeta, id int64) error {
-	return nil
+	f.deletedDocIDs = append(f.deletedDocIDs, id)
+	return f.deleteDocErr
 }
 
 func (f *fakeNDR) RestoreDocument(_ context.Context, meta ndrclient.RequestMeta, docID int64) (ndrclient.Document, error) {
+	f.restoredDocIDs = append(f.restoredDocIDs, docID)
+	if f.restoreDocErr != nil {
+		return ndrclient.Document{}, f.restoreDocErr
+	}
+	if f.restoreDocResp.ID != 0 {
+		return f.restoreDocResp, nil
+	}
 	return ndrclient.Document{ID: docID}, nil
 }
 
 func (f *fakeNDR) PurgeDocument(_ context.Context, _ ndrclient.RequestMeta, docID int64) error {
-	return nil
+	f.purgedDocIDs = append(f.purgedDocIDs, docID)
+	return f.purgeDocErr
 }
 
 func (f *fakeNDR) UnbindDocument(_ context.Context, _ ndrclient.RequestMeta, nodeID, docID int64) error {
@@ -228,7 +252,6 @@ func (f *fakeNDR) GetDocumentVersionDiff(_ context.Context, _ ndrclient.RequestM
 func (f *fakeNDR) RestoreDocumentVersion(_ context.Context, meta ndrclient.RequestMeta, docID int64, versionNumber int) (ndrclient.Document, error) {
 	return ndrclient.Document{ID: docID}, nil
 }
-
 
 func TestCreateCategory(t *testing.T) {
 	fake := newFakeNDR()

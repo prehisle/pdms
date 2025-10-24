@@ -18,6 +18,7 @@ import { useNavigate } from "react-router-dom";
 import {
   DeleteOutlined,
   EditOutlined,
+  HistoryOutlined,
   RollbackOutlined,
 } from "@ant-design/icons";
 import { Category, getCategoryTree } from "./api/categories";
@@ -26,10 +27,19 @@ import {
   DocumentCreatePayload,
   DocumentListParams,
   DocumentReorderPayload,
+  DocumentTrashParams,
+  DocumentTrashPage,
+  DocumentVersionsPage,
   bindDocument,
   createDocument,
+  deleteDocument,
+  getDeletedDocuments,
+  getDocumentVersions,
   getNodeDocuments,
+  purgeDocument,
   reorderDocuments,
+  restoreDocument,
+  restoreDocumentVersion,
 } from "./api/documents";
 import { CategoryTreePanel } from "./features/categories/components/CategoryTreePanel";
 import { CategoryTrashModal } from "./features/categories/components/CategoryTrashModal";
@@ -48,6 +58,8 @@ import type {
   DocumentFormValues,
 } from "./features/documents/types";
 import { DocumentCreateModal } from "./features/documents/components/DocumentCreateModal";
+import { DocumentHistoryDrawer } from "./features/documents/components/DocumentHistoryDrawer";
+import { DocumentTrashDrawer } from "./features/documents/components/DocumentTrashDrawer";
 import { DocumentReorderModal } from "./features/documents/components/DocumentReorderModal";
 const dragDebugEnabled =
   (import.meta.env.VITE_DEBUG_DRAG ?? "").toString().toLowerCase() === "1";
@@ -94,6 +106,17 @@ const App = () => {
     docId: number | null;
     nodeId: number | null;
   }>({ open: false, docId: null, nodeId: null });
+  const [documentTrashOpen, setDocumentTrashOpen] = useState(false);
+  const [documentTrashParams, setDocumentTrashParams] = useState<DocumentTrashParams>({
+    page: 1,
+    size: 20,
+  });
+  const [documentHistoryState, setDocumentHistoryState] = useState<{
+    open: boolean;
+    docId: number | null;
+    title?: string;
+  }>({ open: false, docId: null, title: undefined });
+  const [documentHistoryParams, setDocumentHistoryParams] = useState({ page: 1, size: 10 });
   const [reorderModal, setReorderModal] = useState(false);
   const [documentFilters, setDocumentFilters] = useState<DocumentFilterFormValues>({});
   const [includeDescendants, setIncludeDescendants] = useState(true);
@@ -165,6 +188,28 @@ const App = () => {
 
   const documents = selectedNodeId == null ? [] : documentsQuery.data ?? [];
   const categoriesList = data ?? [];
+
+  const documentTrashQuery = useQuery({
+    queryKey: ["documents-trash", documentTrashParams],
+    queryFn: () => getDeletedDocuments(documentTrashParams),
+    enabled: documentTrashOpen,
+    staleTime: 10_000,
+  });
+
+  const handleRefreshDocumentTrash = useCallback(() => {
+    void documentTrashQuery.refetch();
+  }, [documentTrashQuery]);
+
+  const documentHistoryQuery = useQuery({
+    queryKey: ["document-history", documentHistoryState.docId, documentHistoryParams],
+    queryFn: async () => {
+      if (documentHistoryState.docId == null) {
+        return null as DocumentVersionsPage | null;
+      }
+      return getDocumentVersions(documentHistoryState.docId, documentHistoryParams);
+    },
+    enabled: documentHistoryState.open && documentHistoryState.docId != null,
+  });
 
   const {
     createMutation,
@@ -353,6 +398,42 @@ const App = () => {
     setDocumentFilters({});
   }, [documentFilterForm]);
 
+  const handleOpenDocumentTrash = useCallback(() => {
+    setDocumentTrashOpen(true);
+  }, []);
+
+  const handleCloseDocumentTrash = useCallback(() => {
+    setDocumentTrashOpen(false);
+  }, []);
+
+  const handleDocumentTrashSearch = useCallback((query?: string) => {
+    setDocumentTrashParams((prev) => ({
+      ...prev,
+      page: 1,
+      query,
+    }));
+  }, []);
+
+  const handleDocumentTrashPageChange = useCallback((page: number, pageSize?: number) => {
+    setDocumentTrashParams((prev) => ({
+      ...prev,
+      page,
+      size: pageSize ?? prev.size,
+    }));
+  }, []);
+
+  const handleCloseDocumentHistory = useCallback(() => {
+    setDocumentHistoryState({ open: false, docId: null, title: undefined });
+  }, []);
+
+  const handleDocumentHistoryPageChange = useCallback((page: number, pageSize?: number) => {
+    setDocumentHistoryParams((prev) => ({
+      ...prev,
+      page,
+      size: pageSize ?? prev.size,
+    }));
+  }, []);
+
   const handleEditDocument = useCallback(
     (doc: Document) => {
       setDocumentEditorState({
@@ -364,67 +445,8 @@ const App = () => {
     [selectedNodeId],
   );
 
-  const documentColumns = useMemo<ColumnsType<Document>>(
-    () => [
-      {
-        title: "ID",
-        dataIndex: "id",
-        key: "id",
-        width: 80,
-      },
-      {
-        title: "名称",
-        dataIndex: "title",
-        key: "title",
-        render: (value: string, record: Document) => (
-          <Space>
-            <Typography.Text>{value}</Typography.Text>
-            {record.deleted_at ? <Tag color="red">已删除</Tag> : null}
-          </Space>
-        ),
-      },
-      {
-        title: "类型",
-        dataIndex: "type",
-        key: "type",
-        render: (value: string | undefined) => (
-          <Typography.Text>{value || "-"}</Typography.Text>
-        ),
-      },
-      {
-        title: "位置",
-        dataIndex: "position",
-        key: "position",
-        width: 80,
-        render: (value: number) => (
-          <Typography.Text>{value}</Typography.Text>
-        ),
-      },
-      {
-        title: "更新时间",
-        dataIndex: "updated_at",
-        key: "updated_at",
-        render: (value: string) => new Date(value).toLocaleString(),
-      },
-      {
-        title: "操作",
-        key: "actions",
-        width: 80,
-        render: (_: unknown, record: Document) => (
-          <Tooltip title="编辑文档">
-            <Button
-              icon={<EditOutlined />}
-              type="text"
-              shape="circle"
-              onClick={() => handleEditDocument(record)}
-              aria-label="编辑文档"
-            />
-          </Tooltip>
-        ),
-      },
-    ],
-    [handleEditDocument],
-  );
+
+  // documentColumns will be defined later after mutations and callbacks
 
   const documentCreateMutation = useMutation({
     mutationFn: async ({ nodeId, values }: { nodeId: number; values: DocumentFormValues }) => {
@@ -460,6 +482,69 @@ const App = () => {
     },
     onError: (err: unknown) => {
       const msg = err instanceof Error ? err.message : "文档创建失败";
+      messageApi.error(msg);
+    },
+  });
+
+  const deleteDocumentMutation = useMutation<void, Error, number>({
+    mutationFn: async (docId) => {
+      await deleteDocument(docId);
+    },
+    onSuccess: async (_result, docId) => {
+      messageApi.success("文档已移入回收站");
+      await queryClient.invalidateQueries({ queryKey: ["node-documents"] });
+      await queryClient.invalidateQueries({ queryKey: ["documents-trash"] });
+      // 若当前编辑抽屉打开且删除的文档即为当前编辑文档，则关闭
+      setDocumentEditorState((prev) => {
+        if (prev.open && prev.docId === docId) {
+          return { open: false, docId: null, nodeId: null };
+        }
+        return prev;
+      });
+    },
+    onError: (err) => {
+      const msg = err instanceof Error ? err.message : "文档移入回收站失败";
+      messageApi.error(msg);
+    },
+  });
+
+  const restoreDocumentMutation = useMutation<Document, Error, number>({
+    mutationFn: async (docId) => restoreDocument(docId),
+    onSuccess: async () => {
+      messageApi.success("文档已恢复");
+      await queryClient.invalidateQueries({ queryKey: ["documents-trash"] });
+      await queryClient.invalidateQueries({ queryKey: ["node-documents"] });
+    },
+    onError: (err) => {
+      const msg = err instanceof Error ? err.message : "恢复文档失败";
+      messageApi.error(msg);
+    },
+  });
+
+  const purgeDocumentMutation = useMutation<void, Error, number>({
+    mutationFn: async (docId) => {
+      await purgeDocument(docId);
+    },
+    onSuccess: async () => {
+      messageApi.success("文档已彻底删除");
+      await queryClient.invalidateQueries({ queryKey: ["documents-trash"] });
+      await queryClient.invalidateQueries({ queryKey: ["node-documents"] });
+    },
+    onError: (err) => {
+      const msg = err instanceof Error ? err.message : "彻底删除失败";
+      messageApi.error(msg);
+    },
+  });
+
+  const restoreDocumentVersionMutation = useMutation<Document, Error, { docId: number; version: number }>({
+    mutationFn: ({ docId, version }) => restoreDocumentVersion(docId, version),
+    onSuccess: async (_doc, variables) => {
+      messageApi.success(`已恢复至版本 v${variables.version}`);
+      await queryClient.invalidateQueries({ queryKey: ["document-history", variables.docId] });
+      await queryClient.invalidateQueries({ queryKey: ["node-documents"] });
+    },
+    onError: (err) => {
+      const msg = err instanceof Error ? err.message : "版本回退失败";
       messageApi.error(msg);
     },
   });
@@ -510,6 +595,120 @@ const App = () => {
       messageApi.error(msg);
     },
   });
+
+  const deletingDocId = deleteDocumentMutation.isPending ? deleteDocumentMutation.variables ?? null : null;
+  const restoringDocId = restoreDocumentMutation.isPending ? restoreDocumentMutation.variables ?? null : null;
+  const purgingDocId = purgeDocumentMutation.isPending ? purgeDocumentMutation.variables ?? null : null;
+  const restoringVersionNumber = restoreDocumentVersionMutation.isPending
+    ? restoreDocumentVersionMutation.variables?.version ?? null
+    : null;
+
+  const handleSoftDeleteDocument = useCallback(
+    (doc: Document) => {
+      deleteDocumentMutation.mutate(doc.id);
+    },
+    [deleteDocumentMutation],
+  );
+
+  const handleOpenDocumentHistory = useCallback((doc: Document) => {
+    setDocumentHistoryState({ open: true, docId: doc.id, title: doc.title });
+    setDocumentHistoryParams((prev) => ({ ...prev, page: 1 }));
+  }, []);
+
+  const documentColumns = useMemo<ColumnsType<Document>>(
+    () => [
+      {
+        title: "ID",
+        dataIndex: "id",
+        key: "id",
+        width: 80,
+      },
+      {
+        title: "名称",
+        dataIndex: "title",
+        key: "title",
+        render: (value: string) => <Typography.Text>{value}</Typography.Text>,
+      },
+      {
+        title: "类型",
+        dataIndex: "type",
+        key: "type",
+        render: (value: string | undefined) => (
+          <Typography.Text>{value || "-"}</Typography.Text>
+        ),
+      },
+      {
+        title: "位置",
+        dataIndex: "position",
+        key: "position",
+        width: 80,
+        render: (value: number) => <Typography.Text>{value}</Typography.Text>,
+      },
+      {
+        title: "更新时间",
+        dataIndex: "updated_at",
+        key: "updated_at",
+        render: (value: string) => new Date(value).toLocaleString(),
+      },
+      {
+        title: "操作",
+        key: "actions",
+        width: 200,
+        render: (_: unknown, record: Document) => {
+          const deleting = deletingDocId === record.id;
+          return (
+            <Space>
+              <Tooltip title="编辑文档">
+                <Button
+                  icon={<EditOutlined />}
+                  type="text"
+                  shape="circle"
+                  onClick={() => handleEditDocument(record)}
+                  aria-label="编辑文档"
+                />
+              </Tooltip>
+              <Popconfirm
+                title="确认将该文档移入回收站？"
+                okText="移入"
+                cancelText="取消"
+                onConfirm={() => handleSoftDeleteDocument(record)}
+                disabled={deleteDocumentMutation.isPending && !deleting}
+              >
+                <Tooltip title="移入回收站">
+                  <span style={{ display: "inline-flex" }}>
+                    <Button
+                      icon={<DeleteOutlined />}
+                      type="text"
+                      danger
+                      shape="circle"
+                      loading={deleteDocumentMutation.isPending && deleting}
+                      aria-label="移入回收站"
+                    />
+                  </span>
+                </Tooltip>
+              </Popconfirm>
+              <Tooltip title="历史版本">
+                <Button
+                  icon={<HistoryOutlined />}
+                  type="text"
+                  shape="circle"
+                  onClick={() => handleOpenDocumentHistory(record)}
+                  aria-label="查看历史版本"
+                />
+              </Tooltip>
+            </Space>
+          );
+        },
+      },
+    ],
+    [
+      deleteDocumentMutation.isPending,
+      deletingDocId,
+      handleEditDocument,
+      handleOpenDocumentHistory,
+      handleSoftDeleteDocument,
+    ],
+  );
 
   const handleOpenReorderModal = useCallback(() => {
     if (selectedNodeId == null || documents.length <= 1) {
@@ -584,6 +783,7 @@ const App = () => {
               onReset={handleDocumentReset}
               onAddDocument={handleToolbarAddDocument}
               onReorderDocuments={handleOpenReorderModal}
+              onOpenTrash={handleOpenDocumentTrash}
             />
           </Space>
         </Content>
@@ -646,6 +846,38 @@ const App = () => {
         loading={documentReorderMutation.isPending}
         onCancel={() => setReorderModal(false)}
         onConfirm={handleReorderConfirm}
+      />
+      <DocumentTrashDrawer
+        open={documentTrashOpen}
+        loading={documentTrashQuery.isLoading || documentTrashQuery.isFetching}
+        data={documentTrashQuery.data}
+        error={documentTrashQuery.error}
+        onClose={handleCloseDocumentTrash}
+        onRefresh={handleRefreshDocumentTrash}
+        onSearch={handleDocumentTrashSearch}
+        onPageChange={handleDocumentTrashPageChange}
+        onRestore={(doc) => restoreDocumentMutation.mutate(doc.id)}
+        onPurge={(doc) => purgeDocumentMutation.mutate(doc.id)}
+        restoreLoadingId={restoringDocId}
+        purgeLoadingId={purgingDocId}
+        queryValue={documentTrashParams.query}
+      />
+      <DocumentHistoryDrawer
+        open={documentHistoryState.open}
+        documentTitle={documentHistoryState.title}
+        loading={documentHistoryQuery.isLoading || documentHistoryQuery.isFetching}
+        data={documentHistoryQuery.data ?? undefined}
+        error={documentHistoryQuery.error ?? undefined}
+        onClose={handleCloseDocumentHistory}
+        onPageChange={handleDocumentHistoryPageChange}
+        onRestore={(version) => {
+          if (documentHistoryState.docId == null) return;
+          restoreDocumentVersionMutation.mutate({
+            docId: documentHistoryState.docId,
+            version: version.version_number,
+          });
+        }}
+        restoreLoadingVersion={restoringVersionNumber}
       />
       <CategoryDeletePreviewModal
         open={deletePreview.visible}

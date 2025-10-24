@@ -180,6 +180,11 @@ func (h *Handler) DocumentRoutes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if relPath == "trash" {
+		h.listDeletedDocuments(w, r, h.metaFromRequest(r))
+		return
+	}
+
 	parts := strings.Split(relPath, "/")
 	id, err := strconv.ParseInt(parts[0], 10, 64)
 	if err != nil {
@@ -191,6 +196,16 @@ func (h *Handler) DocumentRoutes(w http.ResponseWriter, r *http.Request) {
 
 	if len(parts) == 1 {
 		h.handleDocumentItem(w, r, meta, id)
+		return
+	}
+
+	if parts[1] == "restore" {
+		h.restoreDocument(w, r, meta, id)
+		return
+	}
+
+	if parts[1] == "purge" {
+		h.purgeDocument(w, r, meta, id)
 		return
 	}
 
@@ -234,8 +249,12 @@ func (h *Handler) DocumentRoutes(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleDocumentItem(w http.ResponseWriter, r *http.Request, meta service.RequestMeta, id int64) {
 	switch r.Method {
+	case http.MethodGet:
+		h.getDocument(w, r, meta, id)
 	case http.MethodPut:
 		h.updateDocument(w, r, meta, id)
+	case http.MethodDelete:
+		h.deleteDocument(w, r, meta, id)
 	default:
 		respondError(w, http.StatusMethodNotAllowed, errors.New("method not allowed"))
 	}
@@ -255,6 +274,48 @@ func (h *Handler) updateDocument(w http.ResponseWriter, r *http.Request, meta se
 	writeJSON(w, http.StatusOK, doc)
 }
 
+func (h *Handler) getDocument(w http.ResponseWriter, r *http.Request, meta service.RequestMeta, id int64) {
+	doc, err := h.service.GetDocument(r.Context(), meta, id)
+	if err != nil {
+		respondError(w, http.StatusBadGateway, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, doc)
+}
+
+func (h *Handler) deleteDocument(w http.ResponseWriter, r *http.Request, meta service.RequestMeta, id int64) {
+	if err := h.service.DeleteDocument(r.Context(), meta, id); err != nil {
+		respondError(w, http.StatusBadGateway, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) restoreDocument(w http.ResponseWriter, r *http.Request, meta service.RequestMeta, id int64) {
+	if r.Method != http.MethodPost {
+		respondError(w, http.StatusMethodNotAllowed, errors.New("method not allowed"))
+		return
+	}
+	doc, err := h.service.RestoreDocument(r.Context(), meta, id)
+	if err != nil {
+		respondError(w, http.StatusBadGateway, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, doc)
+}
+
+func (h *Handler) purgeDocument(w http.ResponseWriter, r *http.Request, meta service.RequestMeta, id int64) {
+	if r.Method != http.MethodDelete {
+		respondError(w, http.StatusMethodNotAllowed, errors.New("method not allowed"))
+		return
+	}
+	if err := h.service.PurgeDocument(r.Context(), meta, id); err != nil {
+		respondError(w, http.StatusBadGateway, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (h *Handler) reorderDocuments(w http.ResponseWriter, r *http.Request, meta service.RequestMeta) {
 	if r.Method != http.MethodPost {
 		respondError(w, http.StatusMethodNotAllowed, errors.New("method not allowed"))
@@ -271,6 +332,19 @@ func (h *Handler) reorderDocuments(w http.ResponseWriter, r *http.Request, meta 
 		return
 	}
 	writeJSON(w, http.StatusOK, docs)
+}
+
+func (h *Handler) listDeletedDocuments(w http.ResponseWriter, r *http.Request, meta service.RequestMeta) {
+	if r.Method != http.MethodGet {
+		respondError(w, http.StatusMethodNotAllowed, errors.New("method not allowed"))
+		return
+	}
+	page, err := h.service.ListDeletedDocuments(r.Context(), meta, cloneQuery(r.URL.Query()))
+	if err != nil {
+		respondError(w, http.StatusBadGateway, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, page)
 }
 
 func (h *Handler) listDocumentVersions(w http.ResponseWriter, r *http.Request, meta service.RequestMeta, docID int64) {

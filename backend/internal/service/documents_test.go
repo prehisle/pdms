@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"net/url"
 	"testing"
 	"time"
 
@@ -138,6 +139,87 @@ func TestReorderDocumentsEmptyOrderedIDs(t *testing.T) {
 	}
 	if len(fake.updatedDocs) != 0 {
 		t.Fatalf("expected no update calls for invalid request")
+	}
+}
+
+func TestDeleteDocument(t *testing.T) {
+	fake := newFakeNDR()
+	svc := NewService(cache.NewNoop(), fake)
+
+	if err := svc.DeleteDocument(context.Background(), RequestMeta{}, 42); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(fake.deletedDocIDs) != 1 || fake.deletedDocIDs[0] != 42 {
+		t.Fatalf("expected document 42 to be deleted, got %+v", fake.deletedDocIDs)
+	}
+}
+
+func TestRestoreDocument(t *testing.T) {
+	fake := newFakeNDR()
+	fake.restoreDocResp = ndrclient.Document{ID: 7, Title: "Restored"}
+	svc := NewService(cache.NewNoop(), fake)
+
+	doc, err := svc.RestoreDocument(context.Background(), RequestMeta{}, 7)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if doc.ID != 7 || doc.Title != "Restored" {
+		t.Fatalf("unexpected restore response %+v", doc)
+	}
+	if len(fake.restoredDocIDs) != 1 || fake.restoredDocIDs[0] != 7 {
+		t.Fatalf("expected restore call for document 7")
+	}
+}
+
+func TestPurgeDocument(t *testing.T) {
+	fake := newFakeNDR()
+	svc := NewService(cache.NewNoop(), fake)
+
+	if err := svc.PurgeDocument(context.Background(), RequestMeta{}, 55); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(fake.purgedDocIDs) != 1 || fake.purgedDocIDs[0] != 55 {
+		t.Fatalf("expected purge call for document 55")
+	}
+}
+
+func TestListDeletedDocuments(t *testing.T) {
+	now := time.Now().UTC()
+	fake := newFakeNDR()
+	fake.docsListResp = ndrclient.DocumentsPage{
+		Page:  1,
+		Size:  2,
+		Total: 2,
+		Items: []ndrclient.Document{
+			{
+				ID:        1,
+				Title:     "Active",
+				Position:  1,
+				CreatedAt: now,
+				UpdatedAt: now,
+			},
+			{
+				ID:        2,
+				Title:     "Deleted",
+				Position:  2,
+				CreatedAt: now,
+				UpdatedAt: now,
+				DeletedAt: &now,
+			},
+		},
+	}
+
+	svc := NewService(cache.NewNoop(), fake)
+
+	page, err := svc.ListDeletedDocuments(context.Background(), RequestMeta{}, url.Values{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if page.Total != 1 || len(page.Items) != 1 {
+		t.Fatalf("expected one deleted document, got %+v", page)
+	}
+	if page.Items[0].ID != 2 {
+		t.Fatalf("expected deleted document ID 2, got %d", page.Items[0].ID)
 	}
 }
 

@@ -27,7 +27,7 @@ import { YAMLPreview } from "./YAMLPreview";
 import {
   bindDocument,
   createDocument,
-  getDocument,
+  getDocumentDetail,
   updateDocument,
   type Document,
   type DocumentCreatePayload,
@@ -97,7 +97,7 @@ export const DocumentEditor: FC<DocumentEditorProps> = ({ mode, docId: docIdProp
       if (!effectiveDocId) {
         return null;
       }
-      return getDocument(effectiveDocId);
+	return getDocumentDetail(effectiveDocId);
     },
     enabled: isEditMode && typeof effectiveDocId === "number",
   });

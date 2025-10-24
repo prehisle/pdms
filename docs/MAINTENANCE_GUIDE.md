@@ -63,6 +63,10 @@ YDMS 由 Go 后端与 React 前端组成，面向题库管理及文档维护场�
 5. **文档维护**：
    - 重大变更更新 `docs/` 中相关说明与 OpenAPI。
    - 若工作流变化，需要同步更新 `AGENTS.md` 或本指南。
+6. **文档操作约定**：
+   - 列表页中的“移入回收站”仅触发软删除，真实数据保存在 `/api/v1/documents` 回收站内，可随时恢复或彻底删除。
+   - 回收站入口位于文档面板右上方，所有操作会自动刷新当前节点的文档列表与回收站视图。
+   - 历史版本抽屉提供版本浏览与一键回退，回退成功后会刷新历史列表与节点文档数据，确保前后端状态一致。
 
 ## 5. 依赖与版本管理
 
@@ -125,6 +129,9 @@ YDMS 由 Go 后端与 React 前端组成，面向题库管理及文档维护场�
 - **目录树异常**：使用 `GET /api/v1/categories/tree` 校验服务返回；若排序错误，可调用 `PATCH /api/v1/categories/{id}/reposition` 重排。
 - **批量操作失败**：根据日志确认是否触发回滚函数，参考 `internal/service/category.go` 中的实现以定位问题。
 - **前端构建报错**：确保 Node 版本满足要求，清理 `node_modules` 后重新安装；检查 TypeScript 配置与新增类型定义。
+- **文档找回/回退**：
+  - 软删除的文档可通过 `GET /api/v1/documents/trash` 查看，`POST /api/v1/documents/{id}/restore` 恢复，`DELETE /api/v1/documents/{id}/purge` 彻底删除。
+  - 历史版本通过 `GET /api/v1/documents/{id}/versions` 获取，`POST /api/v1/documents/{id}/versions/{version}/restore` 回退。前端抽屉中会展示更新时间、操作者、备注及源码预览，便于核对后执行回退。
 
 ## 9. 安全与合规
 

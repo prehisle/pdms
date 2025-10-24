@@ -34,6 +34,7 @@ interface DocumentPanelProps {
   onReset: () => void;
   onAddDocument: () => void;
   onReorderDocuments: () => void;
+  onOpenTrash: () => void;
 }
 
 export const DocumentPanel: FC<DocumentPanelProps> = ({
@@ -49,6 +50,7 @@ export const DocumentPanel: FC<DocumentPanelProps> = ({
   onReset,
   onAddDocument,
   onReorderDocuments,
+  onOpenTrash,
 }) => (
   <Space direction="vertical" size="large" style={{ width: "100%" }}>
     <Card>
@@ -101,6 +103,11 @@ export const DocumentPanel: FC<DocumentPanelProps> = ({
       }
       extra={
         <Space>
+          <Tooltip title="文档回收站">
+            <Button onClick={onOpenTrash}>
+              回收站
+            </Button>
+          </Tooltip>
           <Tooltip title="调整排序">
             <Button
               icon={<SortAscendingOutlined />}

@@ -80,6 +80,38 @@ export interface DocumentReorderPayload {
   ordered_ids: number[];
 }
 
+export interface DocumentTrashParams {
+  page?: number;
+  size?: number;
+  query?: string;
+}
+
+export interface DocumentTrashPage {
+  page: number;
+  size: number;
+  total: number;
+  items: Document[];
+}
+
+export interface DocumentVersion {
+  document_id: number;
+  version_number: number;
+  title: string;
+  type?: string;
+  metadata?: Record<string, unknown>;
+  content?: Record<string, unknown>;
+  created_by: string;
+  created_at: string;
+  change_message?: string | null;
+}
+
+export interface DocumentVersionsPage {
+  page: number;
+  size: number;
+  total: number;
+  versions: DocumentVersion[];
+}
+
 function buildDocumentQuery(params?: DocumentListParams): string {
   if (!params) return "";
   const flatParams: Record<string, unknown> = {};
@@ -103,13 +135,8 @@ export async function getDocuments(params?: DocumentListParams): Promise<Documen
   return http<DocumentsPage>(`/api/v1/documents${query}`);
 }
 
-export async function getDocument(docId: number): Promise<Document> {
-  const page = await getDocuments({ id: [docId], size: 1 });
-  const doc = page.items?.[0];
-  if (!doc) {
-    throw new Error("未找到文档");
-  }
-  return doc;
+export async function getDocumentDetail(docId: number): Promise<Document> {
+  return http<Document>(`/api/v1/documents/${docId}`);
 }
 
 export async function getNodeDocuments(
@@ -143,6 +170,44 @@ export async function reorderDocuments(payload: DocumentReorderPayload): Promise
 
 export async function bindDocument(nodeId: number, docId: number): Promise<void> {
   await http<void>(`/api/v1/nodes/${nodeId}/bind/${docId}`, {
+    method: "POST",
+  });
+}
+
+export async function deleteDocument(docId: number): Promise<void> {
+  await http<void>(`/api/v1/documents/${docId}`, { method: "DELETE" });
+}
+
+export async function restoreDocument(docId: number): Promise<Document> {
+  return http<Document>(`/api/v1/documents/${docId}/restore`, { method: "POST" });
+}
+
+export async function purgeDocument(docId: number): Promise<void> {
+  await http<void>(`/api/v1/documents/${docId}/purge`, { method: "DELETE" });
+}
+
+export async function getDeletedDocuments(params?: DocumentTrashParams): Promise<DocumentTrashPage> {
+  const query = buildQuery({
+    page: params?.page,
+    size: params?.size,
+    query: params?.query,
+  });
+  return http<DocumentTrashPage>(`/api/v1/documents/trash${query}`);
+}
+
+export async function getDocumentVersions(
+  docId: number,
+  params?: { page?: number; size?: number },
+): Promise<DocumentVersionsPage> {
+  const query = buildQuery({
+    page: params?.page,
+    size: params?.size,
+  });
+  return http<DocumentVersionsPage>(`/api/v1/documents/${docId}/versions${query}`);
+}
+
+export async function restoreDocumentVersion(docId: number, versionNumber: number): Promise<Document> {
+  return http<Document>(`/api/v1/documents/${docId}/versions/${versionNumber}/restore`, {
     method: "POST",
   });
 }

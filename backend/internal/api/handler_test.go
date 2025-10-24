@@ -762,8 +762,19 @@ func (f *inMemoryNDR) PurgeNode(ctx context.Context, meta ndrclient.RequestMeta,
 }
 
 func (f *inMemoryNDR) ListDocuments(ctx context.Context, meta ndrclient.RequestMeta, query url.Values) (ndrclient.DocumentsPage, error) {
+	includeDeleted := false
+	if query != nil {
+		val := strings.ToLower(strings.TrimSpace(query.Get("include_deleted")))
+		if val == "true" || val == "1" || val == "yes" {
+			includeDeleted = true
+		}
+	}
+
 	items := make([]ndrclient.Document, 0, len(f.documents))
 	for _, doc := range f.documents {
+		if !includeDeleted && doc.DeletedAt != nil {
+			continue
+		}
 		items = append(items, doc)
 	}
 	sort.Slice(items, func(i, j int) bool { return items[i].ID < items[j].ID })
@@ -895,11 +906,14 @@ func (f *inMemoryNDR) GetDocument(ctx context.Context, meta ndrclient.RequestMet
 }
 
 func (f *inMemoryNDR) DeleteDocument(ctx context.Context, meta ndrclient.RequestMeta, docID int64) error {
-	_, ok := f.documents[docID]
+	doc, ok := f.documents[docID]
 	if !ok {
 		return fmt.Errorf("document %d not found", docID)
 	}
-	delete(f.documents, docID)
+	ts := f.tick()
+	doc.DeletedAt = &ts
+	doc.UpdatedAt = ts
+	f.documents[docID] = doc
 	return nil
 }
 
@@ -909,6 +923,7 @@ func (f *inMemoryNDR) RestoreDocument(ctx context.Context, meta ndrclient.Reques
 		return ndrclient.Document{}, fmt.Errorf("document %d not found", docID)
 	}
 	doc.DeletedAt = nil
+	doc.UpdatedAt = f.tick()
 	f.documents[docID] = doc
 	return doc, nil
 }
@@ -1014,7 +1029,6 @@ func (f *inMemoryNDR) RestoreDocumentVersion(_ context.Context, meta ndrclient.R
 	}
 	return ndrclient.Document{ID: docID}, nil
 }
-
 
 func (f *inMemoryNDR) composePath(parentID *int64, slug string) string {
 	if parentID == nil {
@@ -1268,6 +1282,157 @@ func TestDocumentReorderEndpoint_InvalidJSON(t *testing.T) {
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected status 400 for invalid JSON, got %d", rec.Code)
+	}
+}
+
+func TestDeleteDocumentEndpoint(t *testing.T) {
+	ndr := newInMemoryNDR()
+	svc := service.NewService(cache.NewNoop(), ndr)
+	handler := NewHandler(svc, HeaderDefaults{})
+	router := NewRouter(handler)
+
+	doc, err := ndr.CreateDocument(context.Background(), ndrclient.RequestMeta{}, ndrclient.DocumentCreate{Title: "Doc"})
+	if err != nil {
+		t.Fatalf("create document error: %v", err)
+	}
+
+	url := fmt.Sprintf("/api/v1/documents/%d", doc.ID)
+	req := httptest.NewRequest(http.MethodDelete, url, nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d", rec.Code)
+	}
+	stored, ok := ndr.documents[doc.ID]
+	if !ok {
+		t.Fatalf("expected document to remain after soft delete")
+	}
+	if stored.DeletedAt == nil {
+		t.Fatalf("expected document to be marked deleted")
+	}
+}
+
+func TestRestoreDocumentEndpoint(t *testing.T) {
+	ndr := newInMemoryNDR()
+	svc := service.NewService(cache.NewNoop(), ndr)
+	handler := NewHandler(svc, HeaderDefaults{})
+	router := NewRouter(handler)
+
+	doc, err := ndr.CreateDocument(context.Background(), ndrclient.RequestMeta{}, ndrclient.DocumentCreate{Title: "Doc"})
+	if err != nil {
+		t.Fatalf("create document error: %v", err)
+	}
+	if err := ndr.DeleteDocument(context.Background(), ndrclient.RequestMeta{}, doc.ID); err != nil {
+		t.Fatalf("delete document error: %v", err)
+	}
+
+	url := fmt.Sprintf("/api/v1/documents/%d/restore", doc.ID)
+	req := httptest.NewRequest(http.MethodPost, url, nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	var restored ndrclient.Document
+	if err := json.NewDecoder(rec.Body).Decode(&restored); err != nil {
+		t.Fatalf("decode response error: %v", err)
+	}
+	if restored.ID != doc.ID {
+		t.Fatalf("expected restored doc id %d, got %d", doc.ID, restored.ID)
+	}
+	stored, ok := ndr.documents[doc.ID]
+	if !ok {
+		t.Fatalf("document missing after restore")
+	}
+	if stored.DeletedAt != nil {
+		t.Fatalf("expected deleted_at cleared after restore")
+	}
+}
+
+func TestPurgeDocumentEndpoint(t *testing.T) {
+	ndr := newInMemoryNDR()
+	svc := service.NewService(cache.NewNoop(), ndr)
+	handler := NewHandler(svc, HeaderDefaults{})
+	router := NewRouter(handler)
+
+	doc, err := ndr.CreateDocument(context.Background(), ndrclient.RequestMeta{}, ndrclient.DocumentCreate{Title: "Doc"})
+	if err != nil {
+		t.Fatalf("create document error: %v", err)
+	}
+
+	url := fmt.Sprintf("/api/v1/documents/%d/purge", doc.ID)
+	req := httptest.NewRequest(http.MethodDelete, url, nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d", rec.Code)
+	}
+	if _, ok := ndr.documents[doc.ID]; ok {
+		t.Fatalf("expected document to be purged")
+	}
+}
+
+func TestListDeletedDocumentsEndpoint(t *testing.T) {
+	ndr := newInMemoryNDR()
+	svc := service.NewService(cache.NewNoop(), ndr)
+	handler := NewHandler(svc, HeaderDefaults{})
+	router := NewRouter(handler)
+
+	doc, err := ndr.CreateDocument(context.Background(), ndrclient.RequestMeta{}, ndrclient.DocumentCreate{Title: "Doc"})
+	if err != nil {
+		t.Fatalf("create document error: %v", err)
+	}
+	if err := ndr.DeleteDocument(context.Background(), ndrclient.RequestMeta{}, doc.ID); err != nil {
+		t.Fatalf("delete document error: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/documents/trash", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	var page ndrclient.DocumentsPage
+	if err := json.NewDecoder(rec.Body).Decode(&page); err != nil {
+		t.Fatalf("decode response error: %v", err)
+	}
+	if page.Total != 1 || len(page.Items) != 1 {
+		t.Fatalf("expected one deleted document, got %+v", page)
+	}
+	if page.Items[0].ID != doc.ID {
+		t.Fatalf("expected document id %d in trash, got %d", doc.ID, page.Items[0].ID)
+	}
+}
+
+func TestGetDocumentEndpoint(t *testing.T) {
+	ndr := newInMemoryNDR()
+	svc := service.NewService(cache.NewNoop(), ndr)
+	handler := NewHandler(svc, HeaderDefaults{})
+	router := NewRouter(handler)
+
+	doc, err := ndr.CreateDocument(context.Background(), ndrclient.RequestMeta{}, ndrclient.DocumentCreate{Title: "Doc"})
+	if err != nil {
+		t.Fatalf("create document error: %v", err)
+	}
+
+	url := fmt.Sprintf("/api/v1/documents/%d", doc.ID)
+	req := httptest.NewRequest(http.MethodGet, url, nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	var fetched ndrclient.Document
+	if err := json.NewDecoder(rec.Body).Decode(&fetched); err != nil {
+		t.Fatalf("decode response error: %v", err)
+	}
+	if fetched.ID != doc.ID {
+		t.Fatalf("expected document id %d, got %d", doc.ID, fetched.ID)
 	}
 }
 
