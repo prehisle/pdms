@@ -166,6 +166,70 @@ func (f *fakeNDR) UpdateDocument(_ context.Context, _ ndrclient.RequestMeta, id 
 	return f.updateDocResp, f.updateDocErr
 }
 
+func (f *fakeNDR) GetDocument(_ context.Context, _ ndrclient.RequestMeta, id int64) (ndrclient.Document, error) {
+	return ndrclient.Document{ID: id}, nil
+}
+
+func (f *fakeNDR) DeleteDocument(_ context.Context, _ ndrclient.RequestMeta, id int64) error {
+	return nil
+}
+
+func (f *fakeNDR) RestoreDocument(_ context.Context, meta ndrclient.RequestMeta, docID int64) (ndrclient.Document, error) {
+	return ndrclient.Document{ID: docID}, nil
+}
+
+func (f *fakeNDR) PurgeDocument(_ context.Context, _ ndrclient.RequestMeta, docID int64) error {
+	return nil
+}
+
+func (f *fakeNDR) UnbindDocument(_ context.Context, _ ndrclient.RequestMeta, nodeID, docID int64) error {
+	return nil
+}
+
+func (f *fakeNDR) BindRelationship(_ context.Context, meta ndrclient.RequestMeta, nodeID, docID int64) (ndrclient.Relationship, error) {
+	return ndrclient.Relationship{
+		NodeID:     nodeID,
+		DocumentID: docID,
+		CreatedBy:  meta.UserID,
+	}, nil
+}
+
+func (f *fakeNDR) UnbindRelationship(_ context.Context, _ ndrclient.RequestMeta, nodeID, docID int64) error {
+	return nil
+}
+
+func (f *fakeNDR) ListRelationships(_ context.Context, meta ndrclient.RequestMeta, nodeID, docID *int64) ([]ndrclient.Relationship, error) {
+	return []ndrclient.Relationship{}, nil
+}
+
+func (f *fakeNDR) ListDocumentVersions(_ context.Context, _ ndrclient.RequestMeta, docID int64, page, size int) (ndrclient.DocumentVersionsPage, error) {
+	return ndrclient.DocumentVersionsPage{
+		Page:     page,
+		Size:     size,
+		Total:    0,
+		Versions: []ndrclient.DocumentVersion{},
+	}, nil
+}
+
+func (f *fakeNDR) GetDocumentVersion(_ context.Context, _ ndrclient.RequestMeta, docID int64, versionNumber int) (ndrclient.DocumentVersion, error) {
+	return ndrclient.DocumentVersion{
+		DocumentID:    docID,
+		VersionNumber: versionNumber,
+	}, nil
+}
+
+func (f *fakeNDR) GetDocumentVersionDiff(_ context.Context, _ ndrclient.RequestMeta, docID int64, fromVersion, toVersion int) (ndrclient.DocumentVersionDiff, error) {
+	return ndrclient.DocumentVersionDiff{
+		FromVersion: fromVersion,
+		ToVersion:   toVersion,
+	}, nil
+}
+
+func (f *fakeNDR) RestoreDocumentVersion(_ context.Context, meta ndrclient.RequestMeta, docID int64, versionNumber int) (ndrclient.Document, error) {
+	return ndrclient.Document{ID: docID}, nil
+}
+
+
 func TestCreateCategory(t *testing.T) {
 	fake := newFakeNDR()
 	now := time.Now().UTC()

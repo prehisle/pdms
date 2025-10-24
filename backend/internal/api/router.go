@@ -21,6 +21,9 @@ func NewRouter(h *Handler) http.Handler {
 	mux.Handle("/api/v1/categories/", wrap(http.HandlerFunc(h.CategoryRoutes)))
 	mux.Handle("/api/v1/documents", wrap(http.HandlerFunc(h.Documents)))
 	mux.Handle("/api/v1/documents/", wrap(http.HandlerFunc(h.DocumentRoutes)))
+	mux.Handle("/api/v1/materials", wrap(http.HandlerFunc(h.Materials)))
+	mux.Handle("/api/v1/materials/", wrap(http.HandlerFunc(h.MaterialRoutes)))
+	mux.Handle("/api/v1/relationships", wrap(http.HandlerFunc(h.Relationships)))
 	mux.Handle("/api/v1/nodes/", wrap(http.HandlerFunc(h.NodeRoutes)))
 
 	return mux

@@ -29,8 +29,20 @@ type Client interface {
 	ListDocuments(ctx context.Context, meta RequestMeta, query url.Values) (DocumentsPage, error)
 	ListNodeDocuments(ctx context.Context, meta RequestMeta, id int64, query url.Values) ([]Document, error)
 	CreateDocument(ctx context.Context, meta RequestMeta, body DocumentCreate) (Document, error)
+	GetDocument(ctx context.Context, meta RequestMeta, docID int64) (Document, error)
 	UpdateDocument(ctx context.Context, meta RequestMeta, docID int64, body DocumentUpdate) (Document, error)
+	DeleteDocument(ctx context.Context, meta RequestMeta, docID int64) error
+	RestoreDocument(ctx context.Context, meta RequestMeta, docID int64) (Document, error)
+	PurgeDocument(ctx context.Context, meta RequestMeta, docID int64) error
 	BindDocument(ctx context.Context, meta RequestMeta, nodeID, docID int64) error
+	UnbindDocument(ctx context.Context, meta RequestMeta, nodeID, docID int64) error
+	BindRelationship(ctx context.Context, meta RequestMeta, nodeID, docID int64) (Relationship, error)
+	UnbindRelationship(ctx context.Context, meta RequestMeta, nodeID, docID int64) error
+	ListRelationships(ctx context.Context, meta RequestMeta, nodeID, docID *int64) ([]Relationship, error)
+	ListDocumentVersions(ctx context.Context, meta RequestMeta, docID int64, page, size int) (DocumentVersionsPage, error)
+	GetDocumentVersion(ctx context.Context, meta RequestMeta, docID int64, versionNumber int) (DocumentVersion, error)
+	GetDocumentVersionDiff(ctx context.Context, meta RequestMeta, docID int64, fromVersion, toVersion int) (DocumentVersionDiff, error)
+	RestoreDocumentVersion(ctx context.Context, meta RequestMeta, docID int64, versionNumber int) (Document, error)
 }
 
 // NDRConfig describes the minimal configuration required by the client.
@@ -232,6 +244,17 @@ func (c *httpClient) CreateDocument(ctx context.Context, meta RequestMeta, body 
 	return resp, err
 }
 
+func (c *httpClient) GetDocument(ctx context.Context, meta RequestMeta, docID int64) (Document, error) {
+	endpoint := fmt.Sprintf("/api/v1/documents/%d", docID)
+	req, err := c.newRequest(ctx, http.MethodGet, endpoint, meta, nil)
+	if err != nil {
+		return Document{}, err
+	}
+	var resp Document
+	_, err = c.do(req, &resp)
+	return resp, err
+}
+
 func (c *httpClient) UpdateDocument(ctx context.Context, meta RequestMeta, docID int64, body DocumentUpdate) (Document, error) {
 	endpoint := fmt.Sprintf("/api/v1/documents/%d", docID)
 	req, err := c.newRequest(ctx, http.MethodPut, endpoint, meta, body)
@@ -243,6 +266,16 @@ func (c *httpClient) UpdateDocument(ctx context.Context, meta RequestMeta, docID
 	return resp, err
 }
 
+func (c *httpClient) DeleteDocument(ctx context.Context, meta RequestMeta, docID int64) error {
+	endpoint := fmt.Sprintf("/api/v1/documents/%d", docID)
+	req, err := c.newRequest(ctx, http.MethodDelete, endpoint, meta, nil)
+	if err != nil {
+		return err
+	}
+	_, err = c.do(req, nil)
+	return err
+}
+
 func (c *httpClient) BindDocument(ctx context.Context, meta RequestMeta, nodeID, docID int64) error {
 	endpoint := fmt.Sprintf("/api/v1/nodes/%d/bind/%d", nodeID, docID)
 	req, err := c.newRequest(ctx, http.MethodPost, endpoint, meta, nil)
@@ -251,6 +284,132 @@ func (c *httpClient) BindDocument(ctx context.Context, meta RequestMeta, nodeID,
 	}
 	_, err = c.do(req, nil)
 	return err
+}
+
+func (c *httpClient) UnbindDocument(ctx context.Context, meta RequestMeta, nodeID, docID int64) error {
+	endpoint := fmt.Sprintf("/api/v1/nodes/%d/unbind/%d", nodeID, docID)
+	req, err := c.newRequest(ctx, http.MethodDelete, endpoint, meta, nil)
+	if err != nil {
+		return err
+	}
+	_, err = c.do(req, nil)
+	return err
+}
+
+func (c *httpClient) RestoreDocument(ctx context.Context, meta RequestMeta, docID int64) (Document, error) {
+	endpoint := fmt.Sprintf("/api/v1/documents/%d/restore", docID)
+	req, err := c.newRequest(ctx, http.MethodPost, endpoint, meta, nil)
+	if err != nil {
+		return Document{}, err
+	}
+	var resp Document
+	_, err = c.do(req, &resp)
+	return resp, err
+}
+
+func (c *httpClient) PurgeDocument(ctx context.Context, meta RequestMeta, docID int64) error {
+	endpoint := fmt.Sprintf("/api/v1/documents/%d/purge", docID)
+	req, err := c.newRequest(ctx, http.MethodDelete, endpoint, meta, nil)
+	if err != nil {
+		return err
+	}
+	_, err = c.do(req, nil)
+	return err
+}
+
+func (c *httpClient) BindRelationship(ctx context.Context, meta RequestMeta, nodeID, docID int64) (Relationship, error) {
+	query := url.Values{}
+	query.Set("node_id", fmt.Sprintf("%d", nodeID))
+	query.Set("document_id", fmt.Sprintf("%d", docID))
+	req, err := c.newRequestWithQuery(ctx, http.MethodPost, "/api/v1/relationships", meta, nil, query)
+	if err != nil {
+		return Relationship{}, err
+	}
+	var resp Relationship
+	_, err = c.do(req, &resp)
+	return resp, err
+}
+
+func (c *httpClient) UnbindRelationship(ctx context.Context, meta RequestMeta, nodeID, docID int64) error {
+	query := url.Values{}
+	query.Set("node_id", fmt.Sprintf("%d", nodeID))
+	query.Set("document_id", fmt.Sprintf("%d", docID))
+	req, err := c.newRequestWithQuery(ctx, http.MethodDelete, "/api/v1/relationships", meta, nil, query)
+	if err != nil {
+		return err
+	}
+	_, err = c.do(req, nil)
+	return err
+}
+
+func (c *httpClient) ListRelationships(ctx context.Context, meta RequestMeta, nodeID, docID *int64) ([]Relationship, error) {
+	query := url.Values{}
+	if nodeID != nil {
+		query.Set("node_id", fmt.Sprintf("%d", *nodeID))
+	}
+	if docID != nil {
+		query.Set("document_id", fmt.Sprintf("%d", *docID))
+	}
+	req, err := c.newRequestWithQuery(ctx, http.MethodGet, "/api/v1/relationships", meta, nil, query)
+	if err != nil {
+		return nil, err
+	}
+	var resp []Relationship
+	_, err = c.do(req, &resp)
+	return resp, err
+}
+
+func (c *httpClient) ListDocumentVersions(ctx context.Context, meta RequestMeta, docID int64, page, size int) (DocumentVersionsPage, error) {
+	endpoint := fmt.Sprintf("/api/v1/documents/%d/versions", docID)
+	query := url.Values{}
+	if page > 0 {
+		query.Set("page", fmt.Sprintf("%d", page))
+	}
+	if size > 0 {
+		query.Set("size", fmt.Sprintf("%d", size))
+	}
+	req, err := c.newRequestWithQuery(ctx, http.MethodGet, endpoint, meta, nil, query)
+	if err != nil {
+		return DocumentVersionsPage{}, err
+	}
+	var resp DocumentVersionsPage
+	_, err = c.do(req, &resp)
+	return resp, err
+}
+
+func (c *httpClient) GetDocumentVersion(ctx context.Context, meta RequestMeta, docID int64, versionNumber int) (DocumentVersion, error) {
+	endpoint := fmt.Sprintf("/api/v1/documents/%d/versions/%d", docID, versionNumber)
+	req, err := c.newRequest(ctx, http.MethodGet, endpoint, meta, nil)
+	if err != nil {
+		return DocumentVersion{}, err
+	}
+	var resp DocumentVersion
+	_, err = c.do(req, &resp)
+	return resp, err
+}
+
+func (c *httpClient) GetDocumentVersionDiff(ctx context.Context, meta RequestMeta, docID int64, fromVersion, toVersion int) (DocumentVersionDiff, error) {
+	endpoint := fmt.Sprintf("/api/v1/documents/%d/versions/%d/diff", docID, fromVersion)
+	query := url.Values{}
+	query.Set("to", fmt.Sprintf("%d", toVersion))
+	req, err := c.newRequestWithQuery(ctx, http.MethodGet, endpoint, meta, nil, query)
+	if err != nil {
+		return DocumentVersionDiff{}, err
+	}
+	var resp DocumentVersionDiff
+	_, err = c.do(req, &resp)
+	return resp, err
+}
+
+func (c *httpClient) RestoreDocumentVersion(ctx context.Context, meta RequestMeta, docID int64, versionNumber int) (Document, error) {
+	endpoint := fmt.Sprintf("/api/v1/documents/%d/versions/%d/restore", docID, versionNumber)
+	req, err := c.newRequest(ctx, http.MethodPost, endpoint, meta, nil)
+	if err != nil {
+		return Document{}, err
+	}
+	var resp Document
+	_, err = c.do(req, &resp)
+	return resp, err
 }
 
 func (c *httpClient) newRequest(ctx context.Context, method, endpoint string, meta RequestMeta, body any) (*http.Request, error) {

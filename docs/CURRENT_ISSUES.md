@@ -1,26 +1,19 @@
 # Current Issues
 
-## TypeScript Test Dependencies
+## TypeScript Test Dependencies ✅ Resolved
 
-### Problem
-Test files are missing required dependencies for TypeScript compilation:
+### Previous Problem
+Test files were missing required dependencies for TypeScript compilation.
 
-```
-src/api/__tests__/documents.test.ts(1,54): error TS2307: Cannot find module 'vitest' or its corresponding type declarations.
-src/features/documents/__tests__/documentFiltering.test.ts(1,38): error TS2307: Cannot find module 'vitest' or its corresponding type declarations.
-src/features/documents/__tests__/documentQueryLogic.test.ts(1,42): error TS2307: Cannot find module 'vitest' or its corresponding type declarations.
-src/features/documents/components/__tests__/DocumentReorderModal.test.tsx(1,43): error TS2307: Cannot find module '@testing-library/react' or its corresponding type declarations.
-```
-
-### Solution Required
-Install missing test dependencies:
+### Solution Implemented
+Installed missing test dependencies and updated TypeScript configuration:
 
 ```bash
 cd frontend
 npm install --save-dev vitest @testing-library/react @testing-library/jest-dom @types/node
 ```
 
-Update `tsconfig.json` to include node types:
+Updated `tsconfig.json`:
 ```json
 {
   "compilerOptions": {
@@ -28,6 +21,61 @@ Update `tsconfig.json` to include node types:
   }
 }
 ```
+
+**Status**: ✅ All TypeScript compilation errors resolved. Build succeeds.
+
+---
+
+## Bulk Operations Rollback Strategy ✅ Enhanced
+
+### Implementation
+Added comprehensive rollback mechanisms for bulk operations:
+
+#### BulkCopyCategories
+- Records all created node IDs during copy operations
+- On error, automatically soft-deletes all created nodes
+- Provides detailed error messages indicating rollback status
+
+#### BulkMoveCategories
+- Records original parent for each node before moving
+- On error, moves all nodes back to their original parents
+- Ensures data consistency even when operations fail partway
+
+**Benefits**:
+- Prevents partial operations from leaving inconsistent state
+- User data is protected with automatic rollback
+- Clear error messages indicate what was rolled back
+- "Best effort" rollback continues even if individual rollback operations fail
+
+**Implementation Details** ([category.go:507-598](backend/internal/service/category.go#L507-L598)):
+- `rollbackCreatedCategories()`: Soft-deletes nodes created during failed bulk copy
+- `rollbackMovedCategories()`: Moves nodes back to original parent during failed bulk move
+- Note: Reorder failures don't trigger rollback as nodes are already created/moved (users can manually reorder)
+
+---
+
+## Batch Delete Validation ✅ Complete
+
+### Implementation Status
+Both backend and frontend implementations are complete and integrated:
+
+#### Backend ✅
+- [bulk_check.go](backend/internal/service/bulk_check.go): `CheckCategoryDependencies()` API
+- [handler.go:518-548](backend/internal/api/handler.go#L518-L548): `POST /api/v1/categories/bulk/check` endpoint
+- Returns detailed dependency information for each node:
+  - Child node count
+  - Associated document count
+  - Warning messages for risky operations
+- Full test coverage in [bulk_check_test.go](backend/internal/service/bulk_check_test.go)
+
+#### Frontend ✅
+- [CategoryDeletePreviewModal.tsx](frontend/src/features/categories/components/CategoryDeletePreviewModal.tsx): Modal UI component
+- [useDeletePreview.ts](frontend/src/features/categories/hooks/useDeletePreview.ts): Hook for validation and state management
+- [App.tsx](frontend/src/App.tsx): Integration with main category tree UI
+- Displays warnings and relationship counts before deletion
+- Supports both soft delete and permanent purge modes
+
+---
 
 ## Document ID Filtering ✅ Resolved
 

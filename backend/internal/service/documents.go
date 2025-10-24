@@ -161,3 +161,111 @@ func filterDocumentsByID(items []ndrclient.Document, ids map[int64]struct{}) []n
 	}
 	return filtered
 }
+
+// DocumentVersion represents a version of a document.
+type DocumentVersion struct {
+	DocumentID    int64          `json:"document_id"`
+	VersionNumber int            `json:"version_number"`
+	Title         string         `json:"title"`
+	Content       map[string]any `json:"content"`
+	Metadata      map[string]any `json:"metadata"`
+	Type          *string        `json:"type"`
+	CreatedBy     string         `json:"created_by"`
+	CreatedAt     string         `json:"created_at"`
+	ChangeMessage *string        `json:"change_message"`
+}
+
+// DocumentVersionsPage wraps paginated version results.
+type DocumentVersionsPage struct {
+	Page     int               `json:"page"`
+	Size     int               `json:"size"`
+	Total    int               `json:"total"`
+	Versions []DocumentVersion `json:"versions"`
+}
+
+// DocumentVersionDiff represents differences between two versions.
+type DocumentVersionDiff struct {
+	FromVersion int            `json:"from_version"`
+	ToVersion   int            `json:"to_version"`
+	TitleDiff   *DiffDetail    `json:"title_diff,omitempty"`
+	ContentDiff map[string]any `json:"content_diff,omitempty"`
+	MetaDiff    map[string]any `json:"metadata_diff,omitempty"`
+}
+
+// DiffDetail represents the difference in a specific field.
+type DiffDetail struct {
+	Old any `json:"old"`
+	New any `json:"new"`
+}
+
+// ListDocumentVersions retrieves all versions of a document.
+func (s *Service) ListDocumentVersions(ctx context.Context, meta RequestMeta, docID int64, page, size int) (DocumentVersionsPage, error) {
+	ndrPage, err := s.ndr.ListDocumentVersions(ctx, toNDRMeta(meta), docID, page, size)
+	if err != nil {
+		return DocumentVersionsPage{}, err
+	}
+
+	versions := make([]DocumentVersion, 0, len(ndrPage.Versions))
+	for _, v := range ndrPage.Versions {
+		versions = append(versions, DocumentVersion{
+			DocumentID:    v.DocumentID,
+			VersionNumber: v.VersionNumber,
+			Title:         v.Title,
+			Content:       v.Content,
+			Metadata:      v.Metadata,
+			Type:          v.Type,
+			CreatedBy:     v.CreatedBy,
+			CreatedAt:     v.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+			ChangeMessage: v.ChangeMessage,
+		})
+	}
+
+	return DocumentVersionsPage{
+		Page:     ndrPage.Page,
+		Size:     ndrPage.Size,
+		Total:    ndrPage.Total,
+		Versions: versions,
+	}, nil
+}
+
+// GetDocumentVersion retrieves a specific version of a document.
+func (s *Service) GetDocumentVersion(ctx context.Context, meta RequestMeta, docID int64, versionNumber int) (DocumentVersion, error) {
+	v, err := s.ndr.GetDocumentVersion(ctx, toNDRMeta(meta), docID, versionNumber)
+	if err != nil {
+		return DocumentVersion{}, err
+	}
+
+	return DocumentVersion{
+		DocumentID:    v.DocumentID,
+		VersionNumber: v.VersionNumber,
+		Title:         v.Title,
+		Content:       v.Content,
+		Metadata:      v.Metadata,
+		Type:          v.Type,
+		CreatedBy:     v.CreatedBy,
+		CreatedAt:     v.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		ChangeMessage: v.ChangeMessage,
+	}, nil
+}
+
+// GetDocumentVersionDiff compares two versions of a document.
+func (s *Service) GetDocumentVersionDiff(ctx context.Context, meta RequestMeta, docID int64, fromVersion, toVersion int) (DocumentVersionDiff, error) {
+	diff, err := s.ndr.GetDocumentVersionDiff(ctx, toNDRMeta(meta), docID, fromVersion, toVersion)
+	if err != nil {
+		return DocumentVersionDiff{}, err
+	}
+
+	return DocumentVersionDiff{
+		FromVersion: diff.FromVersion,
+		ToVersion:   diff.ToVersion,
+		TitleDiff:   (*DiffDetail)(diff.TitleDiff),
+		ContentDiff: diff.ContentDiff,
+		MetaDiff:    diff.MetaDiff,
+	}, nil
+}
+
+// RestoreDocumentVersion restores a document to a specific version.
+func (s *Service) RestoreDocumentVersion(ctx context.Context, meta RequestMeta, docID int64, versionNumber int) (ndrclient.Document, error) {
+	return s.ndr.RestoreDocumentVersion(ctx, toNDRMeta(meta), docID, versionNumber)
+}
+

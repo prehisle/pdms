@@ -516,10 +516,13 @@ func (s *Service) BulkCopyCategories(ctx context.Context, meta RequestMeta, req 
 	created := make([]Category, 0, len(req.SourceIDs))
 	createdIDs := make([]int64, 0, len(req.SourceIDs))
 
+	// 复制节点，如果失败则回滚已创建的节点
 	for _, id := range req.SourceIDs {
 		copied, err := s.copyCategoryRecursive(ctx, meta, id, req.TargetParentID, cache)
 		if err != nil {
-			return nil, err
+			// 回滚：删除已创建的节点
+			s.rollbackCreatedCategories(ctx, meta, createdIDs)
+			return nil, fmt.Errorf("copy category %d failed, rolled back %d created nodes: %w", id, len(createdIDs), err)
 		}
 		created = append(created, *copied)
 		createdIDs = append(createdIDs, copied.ID)
@@ -527,15 +530,18 @@ func (s *Service) BulkCopyCategories(ctx context.Context, meta RequestMeta, req 
 
 	if req.InsertBeforeID != nil || req.InsertAfterID != nil {
 		if req.InsertBeforeID != nil && containsInt(req.SourceIDs, *req.InsertBeforeID) {
+			s.rollbackCreatedCategories(ctx, meta, createdIDs)
 			return nil, errors.New("anchor cannot be part of source_ids")
 		}
 		if req.InsertAfterID != nil && containsInt(req.SourceIDs, *req.InsertAfterID) {
+			s.rollbackCreatedCategories(ctx, meta, createdIDs)
 			return nil, errors.New("anchor cannot be part of source_ids")
 		}
 
 		siblings, err := s.fetchSiblingIDs(ctx, meta, req.TargetParentID)
 		if err != nil {
-			return nil, err
+			s.rollbackCreatedCategories(ctx, meta, createdIDs)
+			return nil, fmt.Errorf("fetch siblings failed, rolled back: %w", err)
 		}
 		siblings = removeIDs(siblings, createdIDs)
 
@@ -543,12 +549,14 @@ func (s *Service) BulkCopyCategories(ctx context.Context, meta RequestMeta, req 
 		if req.InsertBeforeID != nil {
 			idx := indexOf(siblings, *req.InsertBeforeID)
 			if idx == -1 {
+				s.rollbackCreatedCategories(ctx, meta, createdIDs)
 				return nil, fmt.Errorf("anchor id %d not found", *req.InsertBeforeID)
 			}
 			ordered = append(siblings[:idx], append(createdIDs, siblings[idx:]...)...)
 		} else if req.InsertAfterID != nil {
 			idx := indexOf(siblings, *req.InsertAfterID)
 			if idx == -1 {
+				s.rollbackCreatedCategories(ctx, meta, createdIDs)
 				return nil, fmt.Errorf("anchor id %d not found", *req.InsertAfterID)
 			}
 			anchorIdx := idx + 1
@@ -557,7 +565,9 @@ func (s *Service) BulkCopyCategories(ctx context.Context, meta RequestMeta, req 
 
 		siblingsCats, err := s.ReorderCategories(ctx, meta, CategoryReorderRequest{ParentID: req.TargetParentID, OrderedIDs: ordered})
 		if err != nil {
-			return nil, err
+			// 重排失败不回滚，节点已创建但顺序可能不符合预期
+			// 用户可以手动重新排序或删除
+			return nil, fmt.Errorf("reorder failed, %d nodes created but not in expected order: %w", len(createdIDs), err)
 		}
 		updated := make(map[int64]Category)
 		for _, cat := range siblingsCats {
@@ -577,6 +587,14 @@ func (s *Service) BulkCopyCategories(ctx context.Context, meta RequestMeta, req 
 	}
 
 	return created, nil
+}
+
+// rollbackCreatedCategories 删除批量操作中创建的节点（尽力而为，忽略错误）
+func (s *Service) rollbackCreatedCategories(ctx context.Context, meta RequestMeta, createdIDs []int64) {
+	for _, id := range createdIDs {
+		// 使用软删除进行回滚，忽略错误继续
+		_ = s.DeleteCategory(ctx, meta, id)
+	}
 }
 
 func (s *Service) copyCategoryRecursive(ctx context.Context, meta RequestMeta, sourceID int64, targetParentID *int64, cache map[int64]map[string]struct{}) (*Category, error) {
@@ -713,6 +731,12 @@ func removeIDs(list []int64, removeIDs []int64) []int64 {
 	return filtered
 }
 
+// moveRecord 记录批量移动操作中的节点原始父节点，用于回滚
+type moveRecord struct {
+	id             int64
+	originalParent *int64
+}
+
 func (s *Service) BulkMoveCategories(ctx context.Context, meta RequestMeta, req CategoryBulkMoveRequest) ([]Category, error) {
 	if len(req.SourceIDs) == 0 {
 		return nil, errors.New("source_ids is required")
@@ -721,19 +745,38 @@ func (s *Service) BulkMoveCategories(ctx context.Context, meta RequestMeta, req 
 		return nil, errors.New("insert_before_id and insert_after_id cannot both be set")
 	}
 
+	// 记录原始父节点用于回滚
+	moveRecords := make([]moveRecord, 0, len(req.SourceIDs))
+
+	// 先获取所有节点的原始父节点
+	for _, id := range req.SourceIDs {
+		node, err := s.ndr.GetNode(ctx, toNDRMeta(meta), id, ndrclient.GetNodeOptions{})
+		if err != nil {
+			return nil, fmt.Errorf("get node %d for move: %w", id, err)
+		}
+		moveRecords = append(moveRecords, moveRecord{
+			id:             id,
+			originalParent: node.ParentID,
+		})
+	}
+
+	// 执行移动操作
 	targetParentID := req.TargetParentID
 	movedSet := make(map[int64]struct{}, len(req.SourceIDs))
-	for _, id := range req.SourceIDs {
-		movedSet[id] = struct{}{}
-		_, err := s.MoveCategory(ctx, meta, id, MoveCategoryRequest{NewParentID: targetParentID, ParentSpecified: true})
+	for i, record := range moveRecords {
+		movedSet[record.id] = struct{}{}
+		_, err := s.MoveCategory(ctx, meta, record.id, MoveCategoryRequest{NewParentID: targetParentID, ParentSpecified: true})
 		if err != nil {
-			return nil, err
+			// 回滚：将已移动的节点移回原位置
+			s.rollbackMovedCategories(ctx, meta, moveRecords[:i])
+			return nil, fmt.Errorf("move category %d failed, rolled back %d moved nodes: %w", record.id, i, err)
 		}
 	}
 
 	siblings, err := s.fetchSiblingIDs(ctx, meta, targetParentID)
 	if err != nil {
-		return nil, err
+		s.rollbackMovedCategories(ctx, meta, moveRecords)
+		return nil, fmt.Errorf("fetch siblings failed, rolled back: %w", err)
 	}
 
 	ordered := make([]int64, 0, len(siblings))
@@ -747,20 +790,24 @@ func (s *Service) BulkMoveCategories(ctx context.Context, meta RequestMeta, req 
 	insert := req.SourceIDs
 	if req.InsertBeforeID != nil {
 		if _, ok := movedSet[*req.InsertBeforeID]; ok {
+			s.rollbackMovedCategories(ctx, meta, moveRecords)
 			return nil, errors.New("anchor cannot be part of source_ids")
 		}
 		idx := indexOf(ordered, *req.InsertBeforeID)
 		if idx == -1 {
+			s.rollbackMovedCategories(ctx, meta, moveRecords)
 			return nil, fmt.Errorf("anchor id %d not found among siblings", *req.InsertBeforeID)
 		}
 		anchorIndex = idx
 		ordered = append(ordered[:anchorIndex], append(insert, ordered[anchorIndex:]...)...)
 	} else if req.InsertAfterID != nil {
 		if _, ok := movedSet[*req.InsertAfterID]; ok {
+			s.rollbackMovedCategories(ctx, meta, moveRecords)
 			return nil, errors.New("anchor cannot be part of source_ids")
 		}
 		idx := indexOf(ordered, *req.InsertAfterID)
 		if idx == -1 {
+			s.rollbackMovedCategories(ctx, meta, moveRecords)
 			return nil, fmt.Errorf("anchor id %d not found among siblings", *req.InsertAfterID)
 		}
 		anchorIndex = idx + 1
@@ -771,7 +818,8 @@ func (s *Service) BulkMoveCategories(ctx context.Context, meta RequestMeta, req 
 
 	siblingsCats, err := s.ReorderCategories(ctx, meta, CategoryReorderRequest{ParentID: targetParentID, OrderedIDs: ordered})
 	if err != nil {
-		return nil, err
+		// 重排失败不回滚，节点已移动但顺序可能不符合预期
+		return nil, fmt.Errorf("reorder failed, %d nodes moved but not in expected order: %w", len(req.SourceIDs), err)
 	}
 
 	moved := make([]Category, 0, len(req.SourceIDs))
@@ -787,6 +835,17 @@ func (s *Service) BulkMoveCategories(ctx context.Context, meta RequestMeta, req 
 	})
 
 	return moved, nil
+}
+
+// rollbackMovedCategories 回滚批量移动操作（尽力而为，忽略错误）
+func (s *Service) rollbackMovedCategories(ctx context.Context, meta RequestMeta, records []moveRecord) {
+	for _, record := range records {
+		// 将节点移回原父节点，忽略错误继续
+		_, _ = s.MoveCategory(ctx, meta, record.id, MoveCategoryRequest{
+			NewParentID:     record.originalParent,
+			ParentSpecified: true,
+		})
+	}
 }
 
 func (s *Service) fetchSiblingIDs(ctx context.Context, meta RequestMeta, parentID *int64) ([]int64, error) {

@@ -194,6 +194,41 @@ func (h *Handler) DocumentRoutes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Handle version-related routes
+	if parts[1] == "versions" {
+		if len(parts) == 2 {
+			// GET /api/v1/documents/{id}/versions - list versions
+			h.listDocumentVersions(w, r, meta, id)
+			return
+		}
+
+		versionNum, err := strconv.Atoi(parts[2])
+		if err != nil {
+			respondError(w, http.StatusBadRequest, errors.New("invalid version number"))
+			return
+		}
+
+		if len(parts) == 3 {
+			// GET /api/v1/documents/{id}/versions/{version_number} - get specific version
+			h.getDocumentVersion(w, r, meta, id, versionNum)
+			return
+		}
+
+		if len(parts) == 4 {
+			switch parts[3] {
+			case "diff":
+				// GET /api/v1/documents/{id}/versions/{version_number}/diff?to={to_version}
+				h.getDocumentVersionDiff(w, r, meta, id, versionNum)
+			case "restore":
+				// POST /api/v1/documents/{id}/versions/{version_number}/restore
+				h.restoreDocumentVersion(w, r, meta, id, versionNum)
+			default:
+				respondError(w, http.StatusNotFound, errors.New("not found"))
+			}
+			return
+		}
+	}
+
 	respondError(w, http.StatusNotFound, errors.New("not found"))
 }
 
@@ -236,6 +271,87 @@ func (h *Handler) reorderDocuments(w http.ResponseWriter, r *http.Request, meta 
 		return
 	}
 	writeJSON(w, http.StatusOK, docs)
+}
+
+func (h *Handler) listDocumentVersions(w http.ResponseWriter, r *http.Request, meta service.RequestMeta, docID int64) {
+	if r.Method != http.MethodGet {
+		respondError(w, http.StatusMethodNotAllowed, errors.New("method not allowed"))
+		return
+	}
+
+	page := 1
+	size := 20
+	if pageStr := r.URL.Query().Get("page"); pageStr != "" {
+		if p, err := strconv.Atoi(pageStr); err == nil && p > 0 {
+			page = p
+		}
+	}
+	if sizeStr := r.URL.Query().Get("size"); sizeStr != "" {
+		if s, err := strconv.Atoi(sizeStr); err == nil && s > 0 {
+			size = s
+		}
+	}
+
+	versionsPage, err := h.service.ListDocumentVersions(r.Context(), meta, docID, page, size)
+	if err != nil {
+		respondError(w, http.StatusBadGateway, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, versionsPage)
+}
+
+func (h *Handler) getDocumentVersion(w http.ResponseWriter, r *http.Request, meta service.RequestMeta, docID int64, versionNum int) {
+	if r.Method != http.MethodGet {
+		respondError(w, http.StatusMethodNotAllowed, errors.New("method not allowed"))
+		return
+	}
+
+	version, err := h.service.GetDocumentVersion(r.Context(), meta, docID, versionNum)
+	if err != nil {
+		respondError(w, http.StatusBadGateway, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, version)
+}
+
+func (h *Handler) getDocumentVersionDiff(w http.ResponseWriter, r *http.Request, meta service.RequestMeta, docID int64, fromVersion int) {
+	if r.Method != http.MethodGet {
+		respondError(w, http.StatusMethodNotAllowed, errors.New("method not allowed"))
+		return
+	}
+
+	toVersionStr := r.URL.Query().Get("to")
+	if toVersionStr == "" {
+		respondError(w, http.StatusBadRequest, errors.New("to version parameter is required"))
+		return
+	}
+
+	toVersion, err := strconv.Atoi(toVersionStr)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, errors.New("invalid to version"))
+		return
+	}
+
+	diff, err := h.service.GetDocumentVersionDiff(r.Context(), meta, docID, fromVersion, toVersion)
+	if err != nil {
+		respondError(w, http.StatusBadGateway, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, diff)
+}
+
+func (h *Handler) restoreDocumentVersion(w http.ResponseWriter, r *http.Request, meta service.RequestMeta, docID int64, versionNum int) {
+	if r.Method != http.MethodPost {
+		respondError(w, http.StatusMethodNotAllowed, errors.New("method not allowed"))
+		return
+	}
+
+	doc, err := h.service.RestoreDocumentVersion(r.Context(), meta, docID, versionNum)
+	if err != nil {
+		respondError(w, http.StatusBadGateway, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, doc)
 }
 
 // NodeRoutes handles node-related sub-resources.
@@ -619,6 +735,176 @@ func headerFallback(values ...string) string {
 		}
 	}
 	return ""
+}
+
+// Materials handles collection-level operations for materials (CRUD + list).
+func (h *Handler) Materials(w http.ResponseWriter, r *http.Request) {
+	meta := h.metaFromRequest(r)
+	switch r.Method {
+	case http.MethodGet:
+		h.listMaterials(w, r, meta)
+	case http.MethodPost:
+		h.createMaterial(w, r, meta)
+	default:
+		respondError(w, http.StatusMethodNotAllowed, errors.New("method not allowed"))
+	}
+}
+
+// MaterialRoutes handles item-level operations for materials.
+func (h *Handler) MaterialRoutes(w http.ResponseWriter, r *http.Request) {
+	relPath := strings.TrimPrefix(r.URL.Path, "/api/v1/materials/")
+	if relPath == "" {
+		h.Materials(w, r)
+		return
+	}
+
+	id, err := strconv.ParseInt(relPath, 10, 64)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, errors.New("invalid material id"))
+		return
+	}
+
+	meta := h.metaFromRequest(r)
+	h.handleMaterialItem(w, r, meta, id)
+}
+
+func (h *Handler) listMaterials(w http.ResponseWriter, r *http.Request, meta service.RequestMeta) {
+	materials, total, err := h.service.ListMaterials(r.Context(), meta, cloneQuery(r.URL.Query()))
+	if err != nil {
+		respondError(w, http.StatusBadGateway, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"items": materials,
+		"total": total,
+	})
+}
+
+func (h *Handler) createMaterial(w http.ResponseWriter, r *http.Request, meta service.RequestMeta) {
+	var payload service.MaterialCreateRequest
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		respondError(w, http.StatusBadRequest, err)
+		return
+	}
+
+	material, err := h.service.CreateMaterial(r.Context(), meta, payload)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, material)
+}
+
+func (h *Handler) handleMaterialItem(w http.ResponseWriter, r *http.Request, meta service.RequestMeta, id int64) {
+	switch r.Method {
+	case http.MethodGet:
+		h.getMaterial(w, r, meta, id)
+	case http.MethodPut:
+		h.updateMaterial(w, r, meta, id)
+	case http.MethodDelete:
+		h.deleteMaterial(w, r, meta, id)
+	default:
+		respondError(w, http.StatusMethodNotAllowed, errors.New("method not allowed"))
+	}
+}
+
+func (h *Handler) getMaterial(w http.ResponseWriter, r *http.Request, meta service.RequestMeta, id int64) {
+	material, err := h.service.GetMaterial(r.Context(), meta, id)
+	if err != nil {
+		respondError(w, http.StatusNotFound, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, material)
+}
+
+func (h *Handler) updateMaterial(w http.ResponseWriter, r *http.Request, meta service.RequestMeta, id int64) {
+	var payload service.MaterialUpdateRequest
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		respondError(w, http.StatusBadRequest, err)
+		return
+	}
+
+	material, err := h.service.UpdateMaterial(r.Context(), meta, id, payload)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, material)
+}
+
+func (h *Handler) deleteMaterial(w http.ResponseWriter, r *http.Request, meta service.RequestMeta, id int64) {
+	if err := h.service.DeleteMaterial(r.Context(), meta, id); err != nil {
+		respondError(w, http.StatusBadGateway, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// Relationships handles node-document relationship operations.
+func (h *Handler) Relationships(w http.ResponseWriter, r *http.Request) {
+	meta := h.metaFromRequest(r)
+
+	// 解析查询参数
+	nodeIDStr := r.URL.Query().Get("node_id")
+	docIDStr := r.URL.Query().Get("document_id")
+
+	var nodeID, docID *int64
+	if nodeIDStr != "" {
+		id, err := strconv.ParseInt(nodeIDStr, 10, 64)
+		if err != nil {
+			respondError(w, http.StatusBadRequest, errors.New("invalid node_id"))
+			return
+		}
+		nodeID = &id
+	}
+	if docIDStr != "" {
+		id, err := strconv.ParseInt(docIDStr, 10, 64)
+		if err != nil {
+			respondError(w, http.StatusBadRequest, errors.New("invalid document_id"))
+			return
+		}
+		docID = &id
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		// 列出关系
+		rels, err := h.service.ListRelationships(r.Context(), meta, nodeID, docID)
+		if err != nil {
+			respondError(w, http.StatusBadGateway, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, rels)
+
+	case http.MethodPost:
+		// 创建关系
+		if nodeID == nil || docID == nil {
+			respondError(w, http.StatusBadRequest, errors.New("node_id and document_id required"))
+			return
+		}
+		rel, err := h.service.BindRelationship(r.Context(), meta, *nodeID, *docID)
+		if err != nil {
+			respondError(w, http.StatusBadGateway, err)
+			return
+		}
+		writeJSON(w, http.StatusCreated, rel)
+
+	case http.MethodDelete:
+		// 删除关系
+		if nodeID == nil || docID == nil {
+			respondError(w, http.StatusBadRequest, errors.New("node_id and document_id required"))
+			return
+		}
+		err := h.service.UnbindRelationship(r.Context(), meta, *nodeID, *docID)
+		if err != nil {
+			respondError(w, http.StatusBadGateway, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+
+	default:
+		respondError(w, http.StatusMethodNotAllowed, errors.New("method not allowed"))
+	}
 }
 
 func respondError(w http.ResponseWriter, status int, err error) {

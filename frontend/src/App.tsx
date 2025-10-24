@@ -4,6 +4,7 @@ import {
   Layout,
   Popconfirm,
   Space,
+  Tabs,
   Tag,
   Tooltip,
   Typography,
@@ -45,6 +46,7 @@ import type {
 } from "./features/documents/types";
 import { DocumentCreateModal } from "./features/documents/components/DocumentCreateModal";
 import { DocumentReorderModal } from "./features/documents/components/DocumentReorderModal";
+import { MaterialPanel } from "./features/materials";
 const dragDebugEnabled =
   (import.meta.env.VITE_DEBUG_DRAG ?? "").toString().toLowerCase() === "1";
 const menuDebugEnabled =
@@ -540,22 +542,38 @@ const App = () => {
           />
         </Sider>
         <Content style={{ padding: "24px" }}>
-          <Space direction="vertical" size="large" style={{ width: "100%" }}>
-            <DocumentPanel
-              filterForm={documentFilterForm}
-              documentTypes={DOCUMENT_TYPES}
-              selectedNodeId={selectedNodeId}
-              documents={documents}
-              columns={documentColumns}
-              isLoading={documentsQuery.isLoading}
-              isFetching={documentsQuery.isFetching}
-              error={documentsQuery.error}
-              onSearch={handleDocumentSearch}
-              onReset={handleDocumentReset}
-              onAddDocument={handleToolbarAddDocument}
-              onReorderDocuments={handleOpenReorderModal}
-            />
-          </Space>
+          <Tabs
+            defaultActiveKey="documents"
+            items={[
+              {
+                key: "documents",
+                label: "文档管理",
+                children: (
+                  <Space direction="vertical" size="large" style={{ width: "100%" }}>
+                    <DocumentPanel
+                      filterForm={documentFilterForm}
+                      documentTypes={DOCUMENT_TYPES}
+                      selectedNodeId={selectedNodeId}
+                      documents={documents}
+                      columns={documentColumns}
+                      isLoading={documentsQuery.isLoading}
+                      isFetching={documentsQuery.isFetching}
+                      error={documentsQuery.error}
+                      onSearch={handleDocumentSearch}
+                      onReset={handleDocumentReset}
+                      onAddDocument={handleToolbarAddDocument}
+                      onReorderDocuments={handleOpenReorderModal}
+                    />
+                  </Space>
+                ),
+              },
+              {
+                key: "materials",
+                label: "资料管理",
+                children: <MaterialPanel />,
+              },
+            ]}
+          />
         </Content>
       </Layout>
       <CategoryTrashModal

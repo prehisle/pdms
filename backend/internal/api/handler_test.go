@@ -886,6 +886,136 @@ func (f *inMemoryNDR) UpdateDocument(ctx context.Context, meta ndrclient.Request
 	return doc, nil
 }
 
+func (f *inMemoryNDR) GetDocument(ctx context.Context, meta ndrclient.RequestMeta, docID int64) (ndrclient.Document, error) {
+	doc, ok := f.documents[docID]
+	if !ok {
+		return ndrclient.Document{}, fmt.Errorf("document %d not found", docID)
+	}
+	return doc, nil
+}
+
+func (f *inMemoryNDR) DeleteDocument(ctx context.Context, meta ndrclient.RequestMeta, docID int64) error {
+	_, ok := f.documents[docID]
+	if !ok {
+		return fmt.Errorf("document %d not found", docID)
+	}
+	delete(f.documents, docID)
+	return nil
+}
+
+func (f *inMemoryNDR) RestoreDocument(ctx context.Context, meta ndrclient.RequestMeta, docID int64) (ndrclient.Document, error) {
+	doc, ok := f.documents[docID]
+	if !ok {
+		return ndrclient.Document{}, fmt.Errorf("document %d not found", docID)
+	}
+	doc.DeletedAt = nil
+	f.documents[docID] = doc
+	return doc, nil
+}
+
+func (f *inMemoryNDR) PurgeDocument(ctx context.Context, meta ndrclient.RequestMeta, docID int64) error {
+	delete(f.documents, docID)
+	return nil
+}
+
+func (f *inMemoryNDR) UnbindDocument(ctx context.Context, meta ndrclient.RequestMeta, nodeID, docID int64) error {
+	if f.bindings[nodeID] != nil {
+		delete(f.bindings[nodeID], docID)
+	}
+	return nil
+}
+
+func (f *inMemoryNDR) BindRelationship(ctx context.Context, meta ndrclient.RequestMeta, nodeID, docID int64) (ndrclient.Relationship, error) {
+	if f.bindings[nodeID] == nil {
+		f.bindings[nodeID] = make(map[int64]struct{})
+	}
+	f.bindings[nodeID][docID] = struct{}{}
+	return ndrclient.Relationship{
+		NodeID:     nodeID,
+		DocumentID: docID,
+		CreatedBy:  meta.UserID,
+	}, nil
+}
+
+func (f *inMemoryNDR) UnbindRelationship(ctx context.Context, meta ndrclient.RequestMeta, nodeID, docID int64) error {
+	if f.bindings[nodeID] != nil {
+		delete(f.bindings[nodeID], docID)
+	}
+	return nil
+}
+
+func (f *inMemoryNDR) ListRelationships(ctx context.Context, meta ndrclient.RequestMeta, nodeID, docID *int64) ([]ndrclient.Relationship, error) {
+	var rels []ndrclient.Relationship
+
+	if nodeID != nil {
+		// 查询特定节点的所有绑定
+		if bindings, ok := f.bindings[*nodeID]; ok {
+			for dID := range bindings {
+				rels = append(rels, ndrclient.Relationship{
+					NodeID:     *nodeID,
+					DocumentID: dID,
+					CreatedBy:  meta.UserID,
+				})
+			}
+		}
+	} else if docID != nil {
+		// 查询特定文档绑定的所有节点
+		for nID, bindings := range f.bindings {
+			if _, ok := bindings[*docID]; ok {
+				rels = append(rels, ndrclient.Relationship{
+					NodeID:     nID,
+					DocumentID: *docID,
+					CreatedBy:  meta.UserID,
+				})
+			}
+		}
+	} else {
+		// 返回所有关系
+		for nID, bindings := range f.bindings {
+			for dID := range bindings {
+				rels = append(rels, ndrclient.Relationship{
+					NodeID:     nID,
+					DocumentID: dID,
+					CreatedBy:  meta.UserID,
+				})
+			}
+		}
+	}
+
+	return rels, nil
+}
+
+func (f *inMemoryNDR) ListDocumentVersions(_ context.Context, _ ndrclient.RequestMeta, docID int64, page, size int) (ndrclient.DocumentVersionsPage, error) {
+	return ndrclient.DocumentVersionsPage{
+		Page:     page,
+		Size:     size,
+		Total:    0,
+		Versions: []ndrclient.DocumentVersion{},
+	}, nil
+}
+
+func (f *inMemoryNDR) GetDocumentVersion(_ context.Context, _ ndrclient.RequestMeta, docID int64, versionNumber int) (ndrclient.DocumentVersion, error) {
+	return ndrclient.DocumentVersion{
+		DocumentID:    docID,
+		VersionNumber: versionNumber,
+	}, nil
+}
+
+func (f *inMemoryNDR) GetDocumentVersionDiff(_ context.Context, _ ndrclient.RequestMeta, docID int64, fromVersion, toVersion int) (ndrclient.DocumentVersionDiff, error) {
+	return ndrclient.DocumentVersionDiff{
+		FromVersion: fromVersion,
+		ToVersion:   toVersion,
+	}, nil
+}
+
+func (f *inMemoryNDR) RestoreDocumentVersion(_ context.Context, meta ndrclient.RequestMeta, docID int64, versionNumber int) (ndrclient.Document, error) {
+	if doc, ok := f.documents[docID]; ok {
+		return doc, nil
+	}
+	return ndrclient.Document{ID: docID}, nil
+}
+
+
 func (f *inMemoryNDR) composePath(parentID *int64, slug string) string {
 	if parentID == nil {
 		return "/" + slug

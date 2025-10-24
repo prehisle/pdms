@@ -135,3 +135,47 @@ func (o *OptionalString) MarshalJSON() ([]byte, error) {
 	}
 	return json.Marshal(*o.value)
 }
+
+// Relationship represents the NDR relationship resource.
+type Relationship struct {
+	NodeID     int64  `json:"node_id"`
+	DocumentID int64  `json:"document_id"`
+	CreatedBy  string `json:"created_by"`
+}
+
+// DocumentVersion represents a version of a document.
+type DocumentVersion struct {
+	DocumentID    int64          `json:"document_id"`
+	VersionNumber int            `json:"version_number"`
+	Title         string         `json:"title"`
+	Content       map[string]any `json:"content"`
+	Metadata      map[string]any `json:"metadata"`
+	Type          *string        `json:"type"`
+	CreatedBy     string         `json:"created_by"`
+	CreatedAt     time.Time      `json:"created_at"`
+	ChangeMessage *string        `json:"change_message"`
+}
+
+// DocumentVersionsPage wraps paginated version results.
+type DocumentVersionsPage struct {
+	Page     int               `json:"page"`
+	Size     int               `json:"size"`
+	Total    int               `json:"total"`
+	Versions []DocumentVersion `json:"versions"`
+}
+
+// DocumentVersionDiff represents differences between two versions.
+type DocumentVersionDiff struct {
+	FromVersion int            `json:"from_version"`
+	ToVersion   int            `json:"to_version"`
+	TitleDiff   *DiffDetail    `json:"title_diff,omitempty"`
+	ContentDiff map[string]any `json:"content_diff,omitempty"`
+	MetaDiff    map[string]any `json:"metadata_diff,omitempty"`
+}
+
+// DiffDetail represents the difference in a specific field.
+type DiffDetail struct {
+	Old any `json:"old"`
+	New any `json:"new"`
+}
+
