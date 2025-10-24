@@ -32,6 +32,7 @@ export const DocumentEditModal: FC<DocumentEditModalProps> = ({
     onCancel={onCancel}
     onOk={onOk}
     destroyOnClose
+    width={800}
   >
     {document ? (
       <Typography.Paragraph type="secondary">文档 ID：{document.id}</Typography.Paragraph>
@@ -65,8 +66,16 @@ export const DocumentEditModal: FC<DocumentEditModalProps> = ({
           style={{ width: "100%" }}
         />
       </Form.Item>
-      <Form.Item name="content" label="备注 / 内容预览">
-        <Input.TextArea rows={4} placeholder="可选，填写内容概要" />
+      <Form.Item
+        name="content"
+        label="文档内容"
+        tooltip="文档的实际内容，支持HTML（概览）或YAML（其他类型）格式"
+      >
+        <Input.TextArea
+          rows={15}
+          placeholder="请输入文档内容..."
+          style={{ fontFamily: "monospace", fontSize: "13px" }}
+        />
       </Form.Item>
     </Form>
   </Modal>

@@ -12,6 +12,7 @@ import {
 import type { ColumnsType } from "antd/es/table";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   DeleteOutlined,
   EditOutlined,
@@ -41,6 +42,7 @@ import type { ParentKey } from "./features/categories/types";
 import { buildLookups } from "./features/categories/utils";
 import { DocumentPanel } from "./features/documents/components/DocumentPanel";
 import { DOCUMENT_TYPES } from "./features/documents/constants";
+import { getDocumentTemplate } from "./features/documents/templates";
 import type {
   DocumentFilterFormValues,
   DocumentFormValues,
@@ -56,6 +58,7 @@ const menuDebugEnabled =
 const { Sider, Content } = Layout;
 
 const App = () => {
+  const navigate = useNavigate();
   const { data, isLoading, isFetching, error, refetch } = useQuery({
     queryKey: ["categories-tree"],
     queryFn: () => getCategoryTree(),
@@ -317,18 +320,9 @@ const App = () => {
 
   const handleOpenAddDocument = useCallback(
     (nodeId: number) => {
-      const current = lookups.byId.get(nodeId);
-      if (current) {
-        setSelectionParentId(current.parent_id ?? null);
-      } else {
-        setSelectionParentId(undefined);
-      }
-      setSelectedIds([nodeId]);
-      setLastSelectedId(nodeId);
-      documentForm.resetFields();
-      setDocumentModal({ open: true, nodeId });
+      navigate(`/documents/new?nodeId=${nodeId}`);
     },
-    [documentForm, lookups, setLastSelectedId, setSelectionParentId, setSelectedIds],
+    [navigate],
   );
   const handleDocumentSearch = useCallback(
     (values: DocumentFilterFormValues) => {
@@ -349,15 +343,9 @@ const App = () => {
 
   const handleEditDocument = useCallback(
     (doc: Document) => {
-      editDocumentForm.setFieldsValue({
-        title: doc.title,
-        type: doc.type,
-        position: doc.position,
-        content: doc.content?.preview as string | undefined,
-      });
-      setEditDocumentModal({ open: true, document: doc });
+      navigate(`/documents/${doc.id}/edit`);
     },
-    [editDocumentForm],
+    [navigate],
   );
 
   const documentColumns = useMemo<ColumnsType<Document>>(
@@ -432,8 +420,17 @@ const App = () => {
         payload.position = values.position;
       }
       const contentText = values.content?.trim();
-      if (contentText) {
-        payload.content = { preview: contentText };
+      if (contentText && values.type) {
+        const template = getDocumentTemplate(values.type);
+        if (template) {
+          payload.content = {
+            format: template.format,
+            data: contentText,
+          };
+        } else {
+          // Fallback if template not found
+          payload.content = { preview: contentText };
+        }
       }
       const doc = await createDocument(payload);
       await bindDocument(nodeId, doc.id);
@@ -461,8 +458,17 @@ const App = () => {
         payload.position = values.position;
       }
       const contentText = values.content?.trim();
-      if (contentText) {
-        payload.content = { preview: contentText };
+      if (contentText && values.type) {
+        const template = getDocumentTemplate(values.type);
+        if (template) {
+          payload.content = {
+            format: template.format,
+            data: contentText,
+          };
+        } else {
+          // Fallback if template not found
+          payload.content = { preview: contentText };
+        }
       }
       return updateDocument(docId, payload);
     },

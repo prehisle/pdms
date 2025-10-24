@@ -14,4 +14,18 @@ export default defineConfig({
       },
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'monaco-editor': ['@monaco-editor/react', 'monaco-editor'],
+          'yaml-parser': ['js-yaml'],
+          'html-sanitizer': ['dompurify'],
+          'react-vendor': ['react', 'react-dom', 'react-router-dom'],
+          'antd-vendor': ['antd'],
+        },
+      },
+    },
+    chunkSizeWarningLimit: 1000,
+  },
 });
