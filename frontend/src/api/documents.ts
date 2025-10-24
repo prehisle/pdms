@@ -103,6 +103,15 @@ export async function getDocuments(params?: DocumentListParams): Promise<Documen
   return http<DocumentsPage>(`/api/v1/documents${query}`);
 }
 
+export async function getDocument(docId: number): Promise<Document> {
+  const page = await getDocuments({ id: [docId], size: 1 });
+  const doc = page.items?.[0];
+  if (!doc) {
+    throw new Error("未找到文档");
+  }
+  return doc;
+}
+
 export async function getNodeDocuments(
   nodeId: number,
   params?: DocumentListParams,

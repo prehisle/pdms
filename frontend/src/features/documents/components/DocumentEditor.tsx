@@ -11,6 +11,7 @@ import {
   Spin,
   Typography,
   Layout,
+  Result,
 } from "antd";
 import {
   SaveOutlined,
@@ -24,9 +25,10 @@ import { getDocumentTemplate } from "../templates";
 import { HTMLPreview } from "./HTMLPreview";
 import { YAMLPreview } from "./YAMLPreview";
 import {
-  createDocument,
-  updateDocument,
   bindDocument,
+  createDocument,
+  getDocument,
+  updateDocument,
   type Document,
   type DocumentCreatePayload,
   type DocumentUpdatePayload,
@@ -35,77 +37,116 @@ import {
 const { Header, Content } = Layout;
 const { Title } = Typography;
 
-interface DocumentEditorProps {}
+interface DocumentEditorProps {
+  mode?: "create" | "edit";
+  docId?: number;
+  nodeId?: number;
+  onClose?: () => void;
+}
 
-export const DocumentEditor: FC<DocumentEditorProps> = () => {
+function extractDocumentContent(content?: Record<string, unknown> | null): string {
+  if (!content) {
+    return "";
+  }
+  const maybeData = (content as { data?: unknown }).data;
+  if (typeof maybeData === "string") {
+    return maybeData;
+  }
+  const maybePreview = (content as { preview?: unknown }).preview;
+  if (typeof maybePreview === "string") {
+    return maybePreview;
+  }
+  return "";
+}
+
+export const DocumentEditor: FC<DocumentEditorProps> = ({ mode, docId: docIdProp, nodeId: nodeIdProp, onClose }) => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { docId } = useParams<{ docId: string }>();
+  const { docId: docIdParam } = useParams<{ docId: string }>();
   const queryClient = useQueryClient();
 
-  const isEditMode = Boolean(docId);
-  const nodeId = searchParams.get("nodeId");
+  const parsedDocIdFromRoute = docIdParam ? Number.parseInt(docIdParam, 10) : undefined;
+  const effectiveDocId = docIdProp ?? parsedDocIdFromRoute;
+  const resolvedMode: "create" | "edit" = mode ?? (effectiveDocId ? "edit" : "create");
+  const isEditMode = resolvedMode === "edit";
+
+  const nodeIdQuery = searchParams.get("nodeId");
+  const parsedNodeIdFromQuery = nodeIdQuery ? Number.parseInt(nodeIdQuery, 10) : undefined;
+  const effectiveNodeId = nodeIdProp ?? parsedNodeIdFromQuery;
 
   const [title, setTitle] = useState("");
   const [documentType, setDocumentType] = useState<string>("overview");
   const [position, setPosition] = useState<number | undefined>();
   const [content, setContent] = useState("");
-  const [isSaving, setIsSaving] = useState(false);
 
-  // Load existing document for edit mode
-  const { data: existingDoc, isLoading: isLoadingDoc } = useQuery({
-    queryKey: ["document", docId],
+  const closeEditor = useCallback(() => {
+    if (onClose) {
+      onClose();
+      return;
+    }
+    navigate(-1);
+  }, [navigate, onClose]);
+
+  const {
+    data: existingDoc,
+    isLoading: isLoadingDoc,
+    error: loadError,
+  } = useQuery<Document | null>({
+    queryKey: ["document-detail", effectiveDocId],
     queryFn: async () => {
-      // This would be a real API call to fetch a single document
-      // For now we'll return null as we don't have the endpoint yet
-      return null as Document | null;
+      if (!effectiveDocId) {
+        return null;
+      }
+      return getDocument(effectiveDocId);
     },
-    enabled: isEditMode && Boolean(docId),
+    enabled: isEditMode && typeof effectiveDocId === "number",
   });
 
-  // Initialize editor with template or existing content
   useEffect(() => {
-    if (isEditMode && existingDoc) {
-      // Edit mode: load existing document
-      setTitle(existingDoc.title);
-      setDocumentType(existingDoc.type || "overview");
-      setPosition(existingDoc.position);
-
-      // Extract content data
-      if (existingDoc.content) {
-        if (typeof existingDoc.content === 'object' && 'data' in existingDoc.content) {
-          setContent(existingDoc.content.data as string);
-        } else if (typeof existingDoc.content === 'object' && 'preview' in existingDoc.content) {
-          setContent(existingDoc.content.preview as string);
-        }
-      }
-    } else if (!isEditMode && documentType) {
-      // Create mode: load template
-      const template = getDocumentTemplate(documentType);
-      if (template && !content) {
-        setContent(template.data);
-      }
+    if (!isEditMode || !existingDoc) {
+      return;
     }
-  }, [isEditMode, existingDoc, documentType, content]);
+    setTitle(existingDoc.title ?? "");
+    setDocumentType(existingDoc.type || "overview");
+    setPosition(existingDoc.position);
+    setContent(extractDocumentContent(existingDoc.content));
+  }, [isEditMode, existingDoc]);
+
+  useEffect(() => {
+    if (isEditMode) {
+      return;
+    }
+    const template = getDocumentTemplate(documentType);
+    if (template) {
+      setContent(template.data);
+    } else {
+      setContent("");
+    }
+  }, [isEditMode, documentType]);
+
+  useEffect(() => {
+    if (!isEditMode || !loadError) {
+      return;
+    }
+    const errorMessage = loadError instanceof Error ? loadError.message : "文档加载失败";
+    message.error(errorMessage);
+    closeEditor();
+  }, [isEditMode, loadError, closeEditor]);
 
   const editorLanguage = useMemo(() => {
     return documentType === "overview" ? "html" : "yaml";
   }, [documentType]);
 
-  const handleTypeChange = (value: string) => {
+  const handleTypeChange = useCallback((value: string) => {
     setDocumentType(value);
-    const template = getDocumentTemplate(value);
-    if (template) {
-      setContent(template.data);
-    }
-  };
+  }, []);
 
   const createMutation = useMutation({
     mutationFn: async () => {
       if (!title.trim()) {
         throw new Error("请输入文档标题");
       }
-      if (!nodeId) {
+      if (effectiveNodeId == null) {
         throw new Error("缺少节点ID参数");
       }
 
@@ -114,22 +155,24 @@ export const DocumentEditor: FC<DocumentEditorProps> = () => {
         title: title.trim(),
         type: documentType,
         position,
-        content: template ? {
-          format: template.format,
-          data: content,
-        } : undefined,
+        content: template
+          ? {
+              format: template.format,
+              data: content,
+            }
+          : undefined,
       };
 
       const doc = await createDocument(payload);
-      await bindDocument(parseInt(nodeId), doc.id);
+      await bindDocument(effectiveNodeId, doc.id);
       return doc;
     },
-    onSuccess: () => {
+    onSuccess: async (_doc) => {
       message.success("文档创建成功");
-      if (nodeId) {
-        queryClient.invalidateQueries({ queryKey: ["node-documents", parseInt(nodeId)] });
+      if (effectiveNodeId != null) {
+        await queryClient.invalidateQueries({ queryKey: ["node-documents", effectiveNodeId] });
       }
-      navigate(-1);
+      closeEditor();
     },
     onError: (error: Error) => {
       message.error(error.message || "创建失败");
@@ -141,7 +184,7 @@ export const DocumentEditor: FC<DocumentEditorProps> = () => {
       if (!title.trim()) {
         throw new Error("请输入文档标题");
       }
-      if (!docId) {
+      if (!effectiveDocId) {
         throw new Error("文档ID不存在");
       }
 
@@ -150,18 +193,27 @@ export const DocumentEditor: FC<DocumentEditorProps> = () => {
         title: title.trim(),
         type: documentType,
         position,
-        content: template ? {
-          format: template.format,
-          data: content,
-        } : undefined,
+        content: template
+          ? {
+              format: template.format,
+              data: content,
+            }
+          : undefined,
       };
 
-      return updateDocument(parseInt(docId), payload);
+      return updateDocument(effectiveDocId, payload);
     },
-    onSuccess: () => {
+    onSuccess: async () => {
       message.success("文档更新成功");
-      queryClient.invalidateQueries({ queryKey: ["node-documents"] });
-      navigate(-1);
+      if (effectiveDocId) {
+        await queryClient.invalidateQueries({ queryKey: ["document-detail", effectiveDocId] });
+      }
+      if (effectiveNodeId != null) {
+        await queryClient.invalidateQueries({ queryKey: ["node-documents", effectiveNodeId] });
+      } else {
+        await queryClient.invalidateQueries({ queryKey: ["node-documents"] });
+      }
+      closeEditor();
     },
     onError: (error: Error) => {
       message.error(error.message || "更新失败");
@@ -169,7 +221,6 @@ export const DocumentEditor: FC<DocumentEditorProps> = () => {
   });
 
   const handleSave = useCallback(() => {
-    setIsSaving(true);
     if (isEditMode) {
       updateMutation.mutate();
     } else {
@@ -178,49 +229,61 @@ export const DocumentEditor: FC<DocumentEditorProps> = () => {
   }, [isEditMode, createMutation, updateMutation]);
 
   const handleCancel = useCallback(() => {
-    navigate(-1);
-  }, [navigate]);
+    closeEditor();
+  }, [closeEditor]);
 
-  // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Ctrl+S to save
-      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+      if ((e.ctrlKey || e.metaKey) && e.key === "s") {
         e.preventDefault();
         handleSave();
       }
-      // Esc to cancel
-      if (e.key === 'Escape') {
+      if (e.key === "Escape") {
         handleCancel();
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, [handleSave, handleCancel]);
 
-  if (isLoadingDoc) {
+  if (isEditMode && isLoadingDoc) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+      <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: "100%" }}>
         <Spin size="large" tip="加载中..." />
       </div>
     );
   }
 
+  if (isEditMode && !isLoadingDoc && !existingDoc && !loadError) {
+    return (
+      <Result
+        status="warning"
+        title="未找到文档"
+        subTitle="文档可能已被删除或暂不可用"
+        extra={
+          <Button type="primary" onClick={handleCancel}>
+            返回
+          </Button>
+        }
+      />
+    );
+  }
+
   return (
-    <Layout style={{ height: '100vh', overflow: 'hidden' }}>
+    <Layout style={{ height: "100%", overflow: "hidden" }}>
       <Header
         style={{
-          background: '#fff',
-          borderBottom: '1px solid #f0f0f0',
-          padding: '0 24px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          height: '64px',
+          background: "#fff",
+          borderBottom: "1px solid #f0f0f0",
+          padding: "0 24px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          height: "64px",
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flex: 1 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "16px", flex: 1 }}>
           <Title level={5} style={{ margin: 0 }}>
             {isEditMode ? "编辑文档" : "新建文档"}
           </Title>
@@ -229,23 +292,23 @@ export const DocumentEditor: FC<DocumentEditorProps> = () => {
             placeholder="请输入文档标题"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            style={{ width: '300px' }}
+            style={{ width: "300px" }}
           />
 
           <Select
             value={documentType}
             onChange={handleTypeChange}
             options={DOCUMENT_TYPES}
-            style={{ width: '160px' }}
-            disabled={isEditMode} // Can't change type in edit mode
+            style={{ width: "160px" }}
+            disabled={isEditMode}
           />
 
           <InputNumber
             placeholder="位置"
             value={position}
-            onChange={(val) => setPosition(val || undefined)}
+            onChange={(val) => setPosition(val ?? undefined)}
             min={1}
-            style={{ width: '100px' }}
+            style={{ width: "100px" }}
           />
         </div>
 
@@ -258,36 +321,33 @@ export const DocumentEditor: FC<DocumentEditorProps> = () => {
           >
             保存 (Ctrl+S)
           </Button>
-          <Button
-            icon={<CloseOutlined />}
-            onClick={handleCancel}
-          >
+          <Button icon={<CloseOutlined />} onClick={handleCancel}>
             取消 (Esc)
           </Button>
-          <Button
-            icon={<FullscreenExitOutlined />}
-            onClick={handleCancel}
-            type="text"
-          />
+          <Button icon={<FullscreenExitOutlined />} onClick={handleCancel} type="text" />
         </Space>
       </Header>
 
-      <Content style={{ display: 'flex', height: 'calc(100vh - 64px)' }}>
-        <div style={{
-          width: '50%',
-          borderRight: '1px solid #f0f0f0',
-          display: 'flex',
-          flexDirection: 'column',
-        }}>
-          <div style={{
-            padding: '8px 16px',
-            background: '#fafafa',
-            borderBottom: '1px solid #f0f0f0',
-            fontWeight: 500,
-          }}>
+      <Content style={{ display: "flex", height: "calc(100% - 64px)" }}>
+        <div
+          style={{
+            width: "50%",
+            borderRight: "1px solid #f0f0f0",
+            display: "flex",
+            flexDirection: "column",
+          }}
+        >
+          <div
+            style={{
+              padding: "8px 16px",
+              background: "#fafafa",
+              borderBottom: "1px solid #f0f0f0",
+              fontWeight: 500,
+            }}
+          >
             源码编辑
           </div>
-          <div style={{ flex: 1, overflow: 'hidden' }}>
+          <div style={{ flex: 1, overflow: "hidden" }}>
             <Editor
               language={editorLanguage}
               value={content}
@@ -296,8 +356,8 @@ export const DocumentEditor: FC<DocumentEditorProps> = () => {
               options={{
                 minimap: { enabled: true },
                 fontSize: 14,
-                lineNumbers: 'on',
-                wordWrap: 'on',
+                lineNumbers: "on",
+                wordWrap: "on",
                 automaticLayout: true,
                 scrollBeyondLastLine: false,
                 tabSize: 2,
@@ -307,16 +367,18 @@ export const DocumentEditor: FC<DocumentEditorProps> = () => {
           </div>
         </div>
 
-        <div style={{ width: '50%', display: 'flex', flexDirection: 'column', background: '#fff' }}>
-          <div style={{
-            padding: '8px 16px',
-            background: '#fafafa',
-            borderBottom: '1px solid #f0f0f0',
-            fontWeight: 500,
-          }}>
+        <div style={{ width: "50%", display: "flex", flexDirection: "column", background: "#fff" }}>
+          <div
+            style={{
+              padding: "8px 16px",
+              background: "#fafafa",
+              borderBottom: "1px solid #f0f0f0",
+              fontWeight: 500,
+            }}
+          >
             实时预览
           </div>
-          <div style={{ flex: 1, overflow: 'auto' }}>
+          <div style={{ flex: 1, overflow: "auto" }}>
             {documentType === "overview" ? (
               <HTMLPreview content={content} />
             ) : (
