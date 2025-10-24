@@ -17,6 +17,8 @@ import {
   SaveOutlined,
   CloseOutlined,
   FullscreenExitOutlined,
+  PlusOutlined,
+  MinusCircleOutlined,
 } from "@ant-design/icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -33,6 +35,7 @@ import {
   type DocumentCreatePayload,
   type DocumentUpdatePayload,
 } from "../../../api/documents";
+import type { MetadataValueType } from "../types";
 
 const { Header, Content } = Layout;
 const { Title } = Typography;
@@ -42,6 +45,97 @@ interface DocumentEditorProps {
   docId?: number;
   nodeId?: number;
   onClose?: () => void;
+}
+
+interface MetadataEntry {
+  id: string;
+  key: string;
+  type: MetadataValueType;
+  value: string | string[];
+}
+
+function generateMetadataEntryId() {
+  return `meta-${Math.random().toString(36).slice(2, 10)}-${Date.now().toString(36)}`;
+}
+
+function createEmptyEntry(): MetadataEntry {
+  return {
+    id: generateMetadataEntryId(),
+    key: "",
+    type: "string",
+    value: "",
+  };
+}
+
+function buildMetadataEntriesFromObject(source: Record<string, unknown>): MetadataEntry[] {
+  return Object.entries(source).map(([key, value]) => {
+    if (typeof value === "boolean") {
+      return {
+        id: generateMetadataEntryId(),
+        key,
+        type: "boolean",
+        value: value ? "true" : "false",
+      };
+    }
+    if (typeof value === "number") {
+      return {
+        id: generateMetadataEntryId(),
+        key,
+        type: "number",
+        value: value.toString(),
+      };
+    }
+    if (Array.isArray(value) && value.every((item) => typeof item === "string")) {
+      return {
+        id: generateMetadataEntryId(),
+        key,
+        type: "string[]",
+        value: value as string[],
+      };
+    }
+    return {
+      id: generateMetadataEntryId(),
+      key,
+      type: "string",
+      value: typeof value === "string" ? value : JSON.stringify(value),
+    };
+  });
+}
+
+function getDefaultValueForType(
+  type: MetadataValueType,
+  previous?: string | string[],
+): string | string[] {
+  switch (type) {
+    case "number": {
+      if (typeof previous === "string" && previous.trim() && !Number.isNaN(Number(previous))) {
+        return previous;
+      }
+      return "";
+    }
+    case "boolean": {
+      if (previous === "true" || previous === "false") {
+        return previous;
+      }
+      return "true";
+    }
+    case "string[]": {
+      if (Array.isArray(previous)) {
+        return previous;
+      }
+      if (typeof previous === "string" && previous.trim().length > 0) {
+        return [previous.trim()];
+      }
+      return [];
+    }
+    case "string":
+    default: {
+      if (typeof previous === "string") {
+        return previous;
+      }
+      return "";
+    }
+  }
 }
 
 function extractDocumentContent(content?: Record<string, unknown> | null): string {
@@ -78,6 +172,9 @@ export const DocumentEditor: FC<DocumentEditorProps> = ({ mode, docId: docIdProp
   const [documentType, setDocumentType] = useState<string>("overview");
   const [position, setPosition] = useState<number | undefined>();
   const [content, setContent] = useState("");
+  const [metadataDifficulty, setMetadataDifficulty] = useState<number | null>(null);
+  const [metadataTags, setMetadataTags] = useState<string[]>([]);
+  const [metadataEntries, setMetadataEntries] = useState<MetadataEntry[]>([]);
 
   const closeEditor = useCallback(() => {
     if (onClose) {
@@ -110,6 +207,19 @@ export const DocumentEditor: FC<DocumentEditorProps> = ({ mode, docId: docIdProp
     setDocumentType(existingDoc.type || "overview");
     setPosition(existingDoc.position);
     setContent(extractDocumentContent(existingDoc.content));
+    const metadata = (existingDoc.metadata ?? {}) as Record<string, unknown>;
+    const difficultyValue = metadata.difficulty;
+    setMetadataDifficulty(typeof difficultyValue === "number" ? difficultyValue : null);
+    const tagsValue = metadata.tags;
+    if (Array.isArray(tagsValue)) {
+      setMetadataTags(tagsValue.map((tag) => String(tag)).filter((tag) => tag.trim().length > 0));
+    } else {
+      setMetadataTags([]);
+    }
+    const restMetadata = { ...metadata };
+    delete restMetadata.difficulty;
+    delete restMetadata.tags;
+    setMetadataEntries(buildMetadataEntriesFromObject(restMetadata));
   }, [isEditMode, existingDoc]);
 
   useEffect(() => {
@@ -123,6 +233,14 @@ export const DocumentEditor: FC<DocumentEditorProps> = ({ mode, docId: docIdProp
       setContent("");
     }
   }, [isEditMode, documentType]);
+
+  useEffect(() => {
+    if (!isEditMode) {
+      setMetadataDifficulty(null);
+      setMetadataTags([]);
+      setMetadataEntries([]);
+    }
+  }, [isEditMode]);
 
   useEffect(() => {
     if (!isEditMode || !loadError) {
@@ -140,6 +258,144 @@ export const DocumentEditor: FC<DocumentEditorProps> = ({ mode, docId: docIdProp
   const handleTypeChange = useCallback((value: string) => {
     setDocumentType(value);
   }, []);
+
+  const buildMetadataPayload = useCallback((): Record<string, any> => {
+    const payload: Record<string, any> = {};
+    if (metadataDifficulty != null) {
+      payload.difficulty = metadataDifficulty;
+    }
+    if (metadataTags.length > 0) {
+      const trimmedTags = Array.from(
+        new Set(metadataTags.map((tag) => tag.trim()).filter((tag) => tag.length > 0)),
+      );
+      if (trimmedTags.length > 0) {
+        payload.tags = trimmedTags;
+      }
+    }
+    metadataEntries.forEach((entry) => {
+      const key = entry.key.trim();
+      if (!key || key === "difficulty" || key === "tags") {
+        return;
+      }
+      switch (entry.type) {
+        case "string": {
+          const value = (entry.value as string).trim();
+          if (value.length > 0) {
+            payload[key] = value;
+          }
+          break;
+        }
+        case "number": {
+          const raw = (entry.value as string).trim();
+          if (!raw) {
+            break;
+          }
+          const numeric = Number(raw);
+          if (Number.isNaN(numeric)) {
+            throw new Error(`元数据字段“${key}”的值必须是数字`);
+          }
+          payload[key] = numeric;
+          break;
+        }
+        case "boolean": {
+          const boolValue = entry.value as string;
+          if (boolValue === "true" || boolValue === "false") {
+            payload[key] = boolValue === "true";
+          } else {
+            throw new Error(`元数据字段“${key}”的布尔值只能为 true 或 false`);
+          }
+          break;
+        }
+        case "string[]": {
+          const items = Array.isArray(entry.value) ? entry.value : [];
+          const normalized = Array.from(
+            new Set(items.map((item) => item.trim()).filter((item) => item.length > 0)),
+          );
+          if (normalized.length > 0) {
+            payload[key] = normalized;
+          }
+          break;
+        }
+        default:
+          break;
+      }
+    });
+    return payload;
+  }, [metadataDifficulty, metadataEntries, metadataTags]);
+
+  const renderMetadataValueControl = useCallback(
+    (entry: MetadataEntry) => {
+      switch (entry.type) {
+        case "string":
+          return (
+            <Input
+              placeholder="值"
+              value={typeof entry.value === "string" ? entry.value : ""}
+              onChange={(event) =>
+                setMetadataEntries((prev) =>
+                  prev.map((item) =>
+                    item.id === entry.id ? { ...item, value: event.target.value } : item,
+                  ),
+                )
+              }
+              style={{ minWidth: 200 }}
+            />
+          );
+        case "number":
+          return (
+            <Input
+              placeholder="数值"
+              value={typeof entry.value === "string" ? entry.value : ""}
+              onChange={(event) =>
+                setMetadataEntries((prev) =>
+                  prev.map((item) =>
+                    item.id === entry.id ? { ...item, value: event.target.value } : item,
+                  ),
+                )
+              }
+              style={{ minWidth: 160 }}
+              inputMode="decimal"
+            />
+          );
+        case "boolean":
+          return (
+            <Select
+              value={entry.value as string}
+              options={[
+                { value: "true", label: "true" },
+                { value: "false", label: "false" },
+              ]}
+              onChange={(value: string) =>
+                setMetadataEntries((prev) =>
+                  prev.map((item) => (item.id === entry.id ? { ...item, value } : item)),
+                )
+              }
+              style={{ width: 120 }}
+            />
+          );
+        case "string[]":
+          return (
+            <Select
+              mode="tags"
+              allowClear
+              placeholder="输入多个值"
+              value={Array.isArray(entry.value) ? entry.value : []}
+              onChange={(values: string[]) =>
+                setMetadataEntries((prev) =>
+                  prev.map((item) =>
+                    item.id === entry.id ? { ...item, value: values } : item,
+                  ),
+                )
+              }
+              style={{ minWidth: 220 }}
+            />
+          );
+        default:
+          return null;
+      }
+    },
+    [setMetadataEntries],
+  );
 
   const createMutation = useMutation({
     mutationFn: async () => {
@@ -162,6 +418,10 @@ export const DocumentEditor: FC<DocumentEditorProps> = ({ mode, docId: docIdProp
             }
           : undefined,
       };
+      const metadataPayload = buildMetadataPayload();
+      if (Object.keys(metadataPayload).length > 0) {
+        payload.metadata = metadataPayload;
+      }
 
       const doc = await createDocument(payload);
       await bindDocument(effectiveNodeId, doc.id);
@@ -199,6 +459,7 @@ export const DocumentEditor: FC<DocumentEditorProps> = ({ mode, docId: docIdProp
               data: content,
             }
           : undefined,
+        metadata: buildMetadataPayload(),
       };
 
       return updateDocument(effectiveDocId, payload);
@@ -314,6 +575,28 @@ export const DocumentEditor: FC<DocumentEditorProps> = ({ mode, docId: docIdProp
             min={1}
             style={{ width: "100px" }}
           />
+
+          <InputNumber
+            placeholder="难度 1-5"
+            value={metadataDifficulty ?? undefined}
+            onChange={(val) => setMetadataDifficulty(val ?? null)}
+            min={1}
+            max={5}
+            style={{ width: "120px" }}
+          />
+
+          <Select
+            mode="tags"
+            allowClear
+            placeholder="标签"
+            value={metadataTags}
+            onChange={(values) =>
+              setMetadataTags(
+                Array.from(new Set(values.map((val) => val.trim()).filter((val) => val.length > 0))),
+              )
+            }
+            style={{ minWidth: "220px" }}
+          />
         </div>
 
         <Space>
@@ -350,6 +633,93 @@ export const DocumentEditor: FC<DocumentEditorProps> = ({ mode, docId: docIdProp
             }}
           >
             源码编辑
+          </div>
+          <div
+            style={{
+              padding: "12px 16px",
+              borderBottom: "1px solid #f0f0f0",
+            }}
+          >
+            <Space direction="vertical" style={{ width: "100%" }} size="middle">
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <Typography.Text strong>额外元数据</Typography.Text>
+                <Button
+                  type="dashed"
+                  icon={<PlusOutlined />}
+                  onClick={() => setMetadataEntries((prev) => [...prev, createEmptyEntry()])}
+                >
+                  添加字段
+                </Button>
+              </div>
+              <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
+                可为文档增加自定义键值对，支持字符串、数字、布尔值和字符串数组类型。
+              </Typography.Paragraph>
+              {metadataEntries.length === 0 ? (
+                <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
+                  尚未添加额外元数据。
+                </Typography.Paragraph>
+              ) : (
+                <Space direction="vertical" size="middle" style={{ width: "100%" }}>
+                  {metadataEntries.map((entry) => (
+                    <Space
+                      key={entry.id}
+                      wrap
+                      align="start"
+                      style={{
+                        width: "100%",
+                        padding: "12px",
+                        border: "1px solid #f0f0f0",
+                        borderRadius: 6,
+                        background: "#fafafa",
+                      }}
+                    >
+                      <Input
+                        placeholder="字段名"
+                        value={entry.key}
+                        onChange={(event) =>
+                          setMetadataEntries((prev) =>
+                            prev.map((item) =>
+                              item.id === entry.id ? { ...item, key: event.target.value } : item,
+                            ),
+                          )
+                        }
+                        style={{ minWidth: 160 }}
+                      />
+                      <Select
+                        value={entry.type}
+                        options={[
+                          { value: "string", label: "字符串" },
+                          { value: "number", label: "数字" },
+                          { value: "boolean", label: "布尔" },
+                          { value: "string[]", label: "字符串数组" },
+                        ]}
+                        onChange={(value: MetadataValueType) =>
+                          setMetadataEntries((prev) =>
+                            prev.map((item) =>
+                              item.id === entry.id
+                                ? {
+                                    ...item,
+                                    type: value,
+                                    value: getDefaultValueForType(value, item.value),
+                                  }
+                                : item,
+                            ),
+                          )
+                        }
+                        style={{ width: 140 }}
+                      />
+                      {renderMetadataValueControl(entry)}
+                      <Button
+                        icon={<MinusCircleOutlined />}
+                        onClick={() =>
+                          setMetadataEntries((prev) => prev.filter((item) => item.id !== entry.id))
+                        }
+                      />
+                    </Space>
+                  ))}
+                </Space>
+              )}
+            </Space>
           </div>
           <div style={{ flex: 1, overflow: "hidden" }}>
             <Editor

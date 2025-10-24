@@ -49,7 +49,11 @@ import type { ParentKey } from "./features/categories/types";
 import { buildLookups } from "./features/categories/utils";
 import { DocumentPanel } from "./features/documents/components/DocumentPanel";
 import { DOCUMENT_TYPES } from "./features/documents/constants";
-import type { DocumentFilterFormValues } from "./features/documents/types";
+import type {
+  DocumentFilterFormValues,
+  MetadataFilterFormValue,
+  MetadataValueType,
+} from "./features/documents/types";
 import { DocumentHistoryDrawer } from "./features/documents/components/DocumentHistoryDrawer";
 import { DocumentTrashDrawer } from "./features/documents/components/DocumentTrashDrawer";
 import { DocumentReorderModal } from "./features/documents/components/DocumentReorderModal";
@@ -163,6 +167,12 @@ const App = () => {
         if (!Number.isNaN(numericId)) {
           params.id = [numericId];
         }
+      }
+      const metadataQuery = buildMetadataQuery(
+        sanitizeMetadataFilters(documentFilters.metadataFilters),
+      );
+      if (metadataQuery && Object.keys(metadataQuery).length > 0) {
+        params.metadata = metadataQuery;
       }
       params.size = 100;
       params.include_descendants = includeDescendants;
@@ -365,6 +375,12 @@ const App = () => {
         docId: values.docId?.trim() || undefined,
         query: values.query?.trim() || undefined,
       };
+      const sanitizedMetadata = sanitizeMetadataFilters(values.metadataFilters);
+      if (sanitizedMetadata) {
+        trimmed.metadataFilters = sanitizedMetadata;
+      } else {
+        delete trimmed.metadataFilters;
+      }
       setDocumentFilters(trimmed);
     },
     [],
@@ -879,6 +895,105 @@ const App = () => {
 };
 
 export default App;
+
+interface SanitizedMetadataFilter extends MetadataFilterFormValue {
+  key: string;
+  type: MetadataValueType;
+  value: string | string[];
+}
+
+function sanitizeMetadataFilters(
+  filters?: MetadataFilterFormValue[],
+): SanitizedMetadataFilter[] | undefined {
+  if (!filters || filters.length === 0) {
+    return undefined;
+  }
+  const sanitized: SanitizedMetadataFilter[] = [];
+  filters.forEach((filter) => {
+    const key = filter.key?.trim();
+    if (!key) {
+      return;
+    }
+    const type: MetadataValueType = filter.type ?? "string";
+    switch (type) {
+      case "string": {
+        const value = typeof filter.value === "string" ? filter.value.trim() : "";
+        if (value) {
+          sanitized.push({ key, type, value });
+        }
+        break;
+      }
+      case "number": {
+        const value = typeof filter.value === "string" ? filter.value.trim() : "";
+        if (value && !Number.isNaN(Number(value))) {
+          sanitized.push({ key, type, value });
+        }
+        break;
+      }
+      case "boolean": {
+        const raw = typeof filter.value === "string" ? filter.value : "";
+        if (raw === "true" || raw === "false") {
+          sanitized.push({ key, type, value: raw });
+        }
+        break;
+      }
+      case "string[]": {
+        const raw = Array.isArray(filter.value) ? filter.value : [];
+        const value = Array.from(
+          new Set(raw.map((item) => item.trim()).filter((item) => item.length > 0)),
+        );
+        if (value.length > 0) {
+          sanitized.push({ key, type, value });
+        }
+        break;
+      }
+      default:
+        break;
+    }
+  });
+  return sanitized.length > 0 ? sanitized : undefined;
+}
+
+function buildMetadataQuery(
+  filters?: SanitizedMetadataFilter[],
+): Record<string, string | number | boolean | string[]> | undefined {
+  if (!filters || filters.length === 0) {
+    return undefined;
+  }
+  const result: Record<string, string | number | boolean | string[]> = {};
+  filters.forEach(({ key, type = "string", value }) => {
+    switch (type) {
+      case "string":
+        if (typeof value === "string" && value.length > 0) {
+          result[key] = value;
+        }
+        break;
+      case "number":
+        if (typeof value === "string" && value.length > 0) {
+          const numeric = Number(value);
+          if (!Number.isNaN(numeric)) {
+            result[key] = numeric;
+          }
+        }
+        break;
+      case "boolean":
+        if (value === "true") {
+          result[key] = true;
+        } else if (value === "false") {
+          result[key] = false;
+        }
+        break;
+      case "string[]":
+        if (Array.isArray(value) && value.length > 0) {
+          result[key] = value;
+        }
+        break;
+      default:
+        break;
+    }
+  });
+  return Object.keys(result).length > 0 ? result : undefined;
+}
 
 function buildTrashColumns(
   restoreLoading: boolean,

@@ -2,6 +2,7 @@ export interface DocumentFilterFormValues {
   docId?: string;
   query?: string;
   type?: string;
+  metadataFilters?: MetadataFilterFormValue[];
 }
 
 export interface DocumentFormValues {
@@ -9,6 +10,14 @@ export interface DocumentFormValues {
   type: string;
   position?: number;
   content?: string;
+}
+
+export type MetadataValueType = "string" | "number" | "boolean" | "string[]";
+
+export interface MetadataFilterFormValue {
+  key?: string;
+  type?: MetadataValueType;
+  value?: string | string[];
 }
 
 export interface DictationContent {

@@ -1,6 +1,16 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { Document } from '../../../api/documents';
-import type { DocumentFilterFormValues } from '../types';
+import type {
+  DocumentFilterFormValues,
+  MetadataFilterFormValue,
+  MetadataValueType,
+} from '../types';
+
+interface SanitizedMetadataFilter extends MetadataFilterFormValue {
+  key: string;
+  type: MetadataValueType;
+  value: string | string[];
+}
 
 // Mock the getNodeDocuments function
 const mockGetNodeDocuments = vi.fn();
@@ -25,6 +35,11 @@ async function simulateDocumentQuery(
       params.id = [numericId];
     }
   }
+  const metadataFilters = sanitizeMetadataFilters(documentFilters.metadataFilters);
+  const metadataQuery = buildMetadataQuery(metadataFilters);
+  if (metadataQuery && Object.keys(metadataQuery).length > 0) {
+    params.metadata = metadataQuery;
+  }
   params.size = 100;
   params.include_descendants = includeDescendants;
 
@@ -45,7 +60,7 @@ describe('Document Query Logic', () => {
       updated_by: 'user1',
       created_at: '2024-01-01T00:00:00Z',
       updated_at: '2024-01-01T00:00:00Z',
-      metadata: {},
+      metadata: { difficulty: 3, tags: ['grammar', 'reading'], source: 'internal' },
     },
     {
       id: 2,
@@ -56,7 +71,7 @@ describe('Document Query Logic', () => {
       updated_by: 'user1',
       created_at: '2024-01-01T00:00:00Z',
       updated_at: '2024-01-01T00:00:00Z',
-      metadata: {},
+      metadata: { difficulty: 2, tags: ['listening'] },
     },
     {
       id: 123,
@@ -67,7 +82,7 @@ describe('Document Query Logic', () => {
       updated_by: 'user1',
       created_at: '2024-01-01T00:00:00Z',
       updated_at: '2024-01-01T00:00:00Z',
-      metadata: {},
+      metadata: { difficulty: 5 },
     },
   ];
 
@@ -83,6 +98,23 @@ describe('Document Query Logic', () => {
       // Server-side filtering by type if provided
       if (params.type) {
         filteredDocs = filteredDocs.filter(doc => doc.type === params.type);
+      }
+
+      if (params.metadata) {
+        const metadataEntries = Object.entries(params.metadata);
+        filteredDocs = filteredDocs.filter((doc) =>
+          metadataEntries.every(([metadataKey, expectedValue]) => {
+            const value = (doc.metadata ?? {})[metadataKey];
+            if (Array.isArray(expectedValue)) {
+              if (!Array.isArray(value)) {
+                return false;
+              }
+              const normalizedValue = value.map(String);
+              return expectedValue.every((item) => normalizedValue.includes(String(item)));
+            }
+            return value === expectedValue;
+          }),
+        );
       }
 
       return Promise.resolve(filteredDocs);
@@ -167,6 +199,9 @@ describe('Document Query Logic', () => {
       docId: '1',
       query: 'search term',
       type: 'overview',
+      metadataFilters: [
+        { key: 'difficulty', type: 'number', value: '3' },
+      ],
     };
 
     const result = await simulateDocumentQuery(100, filters, false);
@@ -176,6 +211,7 @@ describe('Document Query Logic', () => {
       query: 'search term',
       type: 'overview',
       id: [1],
+      metadata: { difficulty: 3 },
       size: 100,
       include_descendants: false,
     });
@@ -198,4 +234,135 @@ describe('Document Query Logic', () => {
       include_descendants: true,
     });
   });
+
+  it('should filter by metadata tags', async () => {
+    const filters: DocumentFilterFormValues = {
+      metadataFilters: [
+        { key: 'tags', type: 'string', value: 'grammar' },
+      ],
+    };
+
+    const result = await simulateDocumentQuery(100, filters, true);
+
+    expect(mockGetNodeDocuments).toHaveBeenCalledWith(100, {
+      metadata: { tags: 'grammar' },
+      size: 100,
+      include_descendants: true,
+    });
+
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe(1);
+  });
+
+  it('should filter by metadata tags array', async () => {
+    const filters: DocumentFilterFormValues = {
+      metadataFilters: [
+        { key: 'tags', type: 'string[]', value: ['grammar'] },
+      ],
+    };
+
+    const result = await simulateDocumentQuery(100, filters, true);
+
+    expect(mockGetNodeDocuments).toHaveBeenCalledWith(100, {
+      metadata: { tags: ['grammar'] },
+      size: 100,
+      include_descendants: true,
+    });
+
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe(1);
+  });
 });
+
+function sanitizeMetadataFilters(
+  filters?: MetadataFilterFormValue[],
+): SanitizedMetadataFilter[] | undefined {
+  if (!filters || filters.length === 0) {
+    return undefined;
+  }
+  const sanitized: SanitizedMetadataFilter[] = [];
+  filters.forEach((filter) => {
+    const key = filter.key?.trim();
+    if (!key) {
+      return;
+    }
+    const type: MetadataValueType = filter.type ?? 'string';
+    switch (type) {
+      case 'string': {
+        const value = typeof filter.value === 'string' ? filter.value.trim() : '';
+        if (value) {
+          sanitized.push({ key, type, value });
+        }
+        break;
+      }
+      case 'number': {
+        const value = typeof filter.value === 'string' ? filter.value.trim() : '';
+        if (value && !Number.isNaN(Number(value))) {
+          sanitized.push({ key, type, value });
+        }
+        break;
+      }
+      case 'boolean': {
+        const raw = typeof filter.value === 'string' ? filter.value : '';
+        if (raw === 'true' || raw === 'false') {
+          sanitized.push({ key, type, value: raw });
+        }
+        break;
+      }
+      case 'string[]': {
+        const raw = Array.isArray(filter.value) ? filter.value : [];
+        const value = Array.from(
+          new Set(raw.map((item) => item.trim()).filter((item) => item.length > 0)),
+        );
+        if (value.length > 0) {
+          sanitized.push({ key, type, value });
+        }
+        break;
+      }
+      default:
+        break;
+    }
+  });
+  return sanitized.length > 0 ? sanitized : undefined;
+}
+
+function buildMetadataQuery(
+  filters?: SanitizedMetadataFilter[],
+): Record<string, string | number | boolean | string[]> | undefined {
+  if (!filters || filters.length === 0) {
+    return undefined;
+  }
+  const result: Record<string, string | number | boolean | string[]> = {};
+  filters.forEach(({ key, type = 'string', value }) => {
+    switch (type) {
+      case 'string':
+        if (typeof value === 'string' && value.length > 0) {
+          result[key] = value;
+        }
+        break;
+      case 'number':
+        if (typeof value === 'string' && value.length > 0) {
+          const numeric = Number(value);
+          if (!Number.isNaN(numeric)) {
+            result[key] = numeric;
+          }
+        }
+        break;
+      case 'boolean':
+        if (value === 'true') {
+          result[key] = true;
+        } else if (value === 'false') {
+          result[key] = false;
+        }
+        break;
+      case 'string[]':
+        if (Array.isArray(value) && value.length > 0) {
+          result[key] = value;
+        }
+        break;
+      default:
+        break;
+    }
+  });
+  return Object.keys(result).length > 0 ? result : undefined;
+}
