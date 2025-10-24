@@ -55,6 +55,23 @@ func (s *Service) ListNodeDocuments(ctx context.Context, meta RequestMeta, nodeI
 
 // CreateDocument creates a new document upstream.
 func (s *Service) CreateDocument(ctx context.Context, meta RequestMeta, payload DocumentCreateRequest) (ndrclient.Document, error) {
+	// Validate document type if provided
+	if payload.Type != nil {
+		if !IsValidDocumentType(*payload.Type) {
+			return ndrclient.Document{}, fmt.Errorf("invalid document type: %s. Valid types: %v", *payload.Type, ValidDocumentTypes())
+		}
+
+		// Validate content structure
+		if err := ValidateDocumentContent(payload.Content, *payload.Type); err != nil {
+			return ndrclient.Document{}, fmt.Errorf("invalid content: %w", err)
+		}
+	}
+
+	// Validate metadata
+	if err := ValidateDocumentMetadata(payload.Metadata); err != nil {
+		return ndrclient.Document{}, fmt.Errorf("invalid metadata: %w", err)
+	}
+
 	body := ndrclient.DocumentCreate{
 		Title:    payload.Title,
 		Metadata: payload.Metadata,
@@ -83,6 +100,27 @@ type DocumentUpdateRequest struct {
 
 // UpdateDocument updates an existing document upstream.
 func (s *Service) UpdateDocument(ctx context.Context, meta RequestMeta, docID int64, payload DocumentUpdateRequest) (ndrclient.Document, error) {
+	// Validate document type if provided
+	if payload.Type != nil {
+		if !IsValidDocumentType(*payload.Type) {
+			return ndrclient.Document{}, fmt.Errorf("invalid document type: %s. Valid types: %v", *payload.Type, ValidDocumentTypes())
+		}
+
+		// Validate content structure if both type and content are provided
+		if payload.Content != nil {
+			if err := ValidateDocumentContent(payload.Content, *payload.Type); err != nil {
+				return ndrclient.Document{}, fmt.Errorf("invalid content: %w", err)
+			}
+		}
+	}
+
+	// Validate metadata if provided
+	if payload.Metadata != nil {
+		if err := ValidateDocumentMetadata(payload.Metadata); err != nil {
+			return ndrclient.Document{}, fmt.Errorf("invalid metadata: %w", err)
+		}
+	}
+
 	body := ndrclient.DocumentUpdate{
 		Title:    payload.Title,
 		Content:  payload.Content,

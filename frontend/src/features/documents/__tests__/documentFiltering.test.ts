@@ -6,7 +6,7 @@ const mockDocuments: Document[] = [
   {
     id: 1,
     title: 'Document A',
-    type: 'markdown',
+    type: 'overview',
     position: 1,
     created_by: 'user1',
     updated_by: 'user1',
@@ -17,7 +17,7 @@ const mockDocuments: Document[] = [
   {
     id: 2,
     title: 'Document B',
-    type: 'html',
+    type: 'dictation',
     position: 2,
     created_by: 'user1',
     updated_by: 'user1',
@@ -28,7 +28,7 @@ const mockDocuments: Document[] = [
   {
     id: 123,
     title: 'Special Document',
-    type: 'markdown',
+    type: 'overview',
     position: 3,
     created_by: 'user1',
     updated_by: 'user1',

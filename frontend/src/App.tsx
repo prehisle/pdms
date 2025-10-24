@@ -4,7 +4,6 @@ import {
   Layout,
   Popconfirm,
   Space,
-  Tabs,
   Tag,
   Tooltip,
   Typography,
@@ -22,10 +21,12 @@ import { Category, getCategoryTree } from "./api/categories";
 import {
   Document,
   DocumentCreatePayload,
+  DocumentUpdatePayload,
   DocumentListParams,
   DocumentReorderPayload,
   bindDocument,
   createDocument,
+  updateDocument,
   getNodeDocuments,
   reorderDocuments,
 } from "./api/documents";
@@ -45,8 +46,8 @@ import type {
   DocumentFormValues,
 } from "./features/documents/types";
 import { DocumentCreateModal } from "./features/documents/components/DocumentCreateModal";
+import { DocumentEditModal } from "./features/documents/components/DocumentEditModal";
 import { DocumentReorderModal } from "./features/documents/components/DocumentReorderModal";
-import { MaterialPanel } from "./features/materials";
 const dragDebugEnabled =
   (import.meta.env.VITE_DEBUG_DRAG ?? "").toString().toLowerCase() === "1";
 const menuDebugEnabled =
@@ -74,11 +75,15 @@ const App = () => {
   const [documentModal, setDocumentModal] = useState<{ open: boolean; nodeId: number | null }>(
     { open: false, nodeId: null },
   );
+  const [editDocumentModal, setEditDocumentModal] = useState<{ open: boolean; document: Document | null }>(
+    { open: false, document: null },
+  );
   const [reorderModal, setReorderModal] = useState(false);
   const [documentFilters, setDocumentFilters] = useState<DocumentFilterFormValues>({});
   const [includeDescendants, setIncludeDescendants] = useState(true);
   const [documentFilterForm] = Form.useForm<DocumentFilterFormValues>();
   const [documentForm] = Form.useForm<DocumentFormValues>();
+  const [editDocumentForm] = Form.useForm<DocumentFormValues>();
   const {
     trashQuery,
     trashItems,
@@ -343,10 +348,16 @@ const App = () => {
   }, [documentFilterForm]);
 
   const handleEditDocument = useCallback(
-    (_doc: Document) => {
-      messageApi.info("文档编辑功能即将上线");
+    (doc: Document) => {
+      editDocumentForm.setFieldsValue({
+        title: doc.title,
+        type: doc.type,
+        position: doc.position,
+        content: doc.content?.preview as string | undefined,
+      });
+      setEditDocumentModal({ open: true, document: doc });
     },
-    [messageApi],
+    [editDocumentForm],
   );
 
   const documentColumns = useMemo<ColumnsType<Document>>(
@@ -440,6 +451,35 @@ const App = () => {
     },
   });
 
+  const documentUpdateMutation = useMutation({
+    mutationFn: async ({ docId, values }: { docId: number; values: DocumentFormValues }) => {
+      const payload: DocumentUpdatePayload = {
+        title: values.title.trim(),
+        type: values.type,
+      };
+      if (values.position !== undefined) {
+        payload.position = values.position;
+      }
+      const contentText = values.content?.trim();
+      if (contentText) {
+        payload.content = { preview: contentText };
+      }
+      return updateDocument(docId, payload);
+    },
+    onSuccess: async () => {
+      messageApi.success("文档更新成功");
+      setEditDocumentModal({ open: false, document: null });
+      editDocumentForm.resetFields();
+      if (selectedNodeId != null) {
+        await queryClient.invalidateQueries({ queryKey: ["node-documents", selectedNodeId] });
+      }
+    },
+    onError: (err: unknown) => {
+      const msg = err instanceof Error ? err.message : "文档更新失败";
+      messageApi.error(msg);
+    },
+  });
+
   const handleDocumentModalCancel = useCallback(() => {
     setDocumentModal({ open: false, nodeId: null });
     documentForm.resetFields();
@@ -457,6 +497,24 @@ const App = () => {
       })
       .catch(() => undefined);
   }, [documentForm, documentModal.nodeId, documentCreateMutation, messageApi]);
+
+  const handleEditDocumentModalCancel = useCallback(() => {
+    setEditDocumentModal({ open: false, document: null });
+    editDocumentForm.resetFields();
+  }, [editDocumentForm]);
+
+  const handleEditDocumentModalOk = useCallback(() => {
+    editDocumentForm
+      .validateFields()
+      .then((values) => {
+        if (!editDocumentModal.document) {
+          messageApi.error("文档数据不存在");
+          return;
+        }
+        documentUpdateMutation.mutate({ docId: editDocumentModal.document.id, values });
+      })
+      .catch(() => undefined);
+  }, [editDocumentForm, editDocumentModal.document, documentUpdateMutation, messageApi]);
 
   const handleToolbarAddDocument = useCallback(() => {
     if (selectedNodeId == null) {
@@ -542,38 +600,22 @@ const App = () => {
           />
         </Sider>
         <Content style={{ padding: "24px" }}>
-          <Tabs
-            defaultActiveKey="documents"
-            items={[
-              {
-                key: "documents",
-                label: "文档管理",
-                children: (
-                  <Space direction="vertical" size="large" style={{ width: "100%" }}>
-                    <DocumentPanel
-                      filterForm={documentFilterForm}
-                      documentTypes={DOCUMENT_TYPES}
-                      selectedNodeId={selectedNodeId}
-                      documents={documents}
-                      columns={documentColumns}
-                      isLoading={documentsQuery.isLoading}
-                      isFetching={documentsQuery.isFetching}
-                      error={documentsQuery.error}
-                      onSearch={handleDocumentSearch}
-                      onReset={handleDocumentReset}
-                      onAddDocument={handleToolbarAddDocument}
-                      onReorderDocuments={handleOpenReorderModal}
-                    />
-                  </Space>
-                ),
-              },
-              {
-                key: "materials",
-                label: "资料管理",
-                children: <MaterialPanel />,
-              },
-            ]}
-          />
+          <Space direction="vertical" size="large" style={{ width: "100%" }}>
+            <DocumentPanel
+              filterForm={documentFilterForm}
+              documentTypes={DOCUMENT_TYPES}
+              selectedNodeId={selectedNodeId}
+              documents={documents}
+              columns={documentColumns}
+              isLoading={documentsQuery.isLoading}
+              isFetching={documentsQuery.isFetching}
+              error={documentsQuery.error}
+              onSearch={handleDocumentSearch}
+              onReset={handleDocumentReset}
+              onAddDocument={handleToolbarAddDocument}
+              onReorderDocuments={handleOpenReorderModal}
+            />
+          </Space>
         </Content>
       </Layout>
       <CategoryTrashModal
@@ -605,6 +647,15 @@ const App = () => {
         documentTypes={DOCUMENT_TYPES}
         onCancel={handleDocumentModalCancel}
         onOk={handleDocumentModalOk}
+      />
+      <DocumentEditModal
+        open={editDocumentModal.open}
+        confirmLoading={documentUpdateMutation.isPending}
+        document={editDocumentModal.document}
+        form={editDocumentForm}
+        documentTypes={DOCUMENT_TYPES}
+        onCancel={handleEditDocumentModalCancel}
+        onOk={handleEditDocumentModalOk}
       />
       <DocumentReorderModal
         open={reorderModal}

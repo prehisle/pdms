@@ -1,5 +1,30 @@
 import { buildQuery, http } from "./http";
 
+// Document types
+export const DOCUMENT_TYPES = {
+  OVERVIEW: "overview",
+  DICTATION: "dictation",
+  COMPREHENSIVE_CHOICE: "comprehensive_choice",
+  CASE_ANALYSIS: "case_analysis",
+  ESSAY: "essay",
+} as const;
+
+export type DocumentType = typeof DOCUMENT_TYPES[keyof typeof DOCUMENT_TYPES];
+
+// Content formats
+export const CONTENT_FORMATS = {
+  HTML: "html",
+  YAML: "yaml",
+} as const;
+
+export type ContentFormat = typeof CONTENT_FORMATS[keyof typeof CONTENT_FORMATS];
+
+// Document content structure
+export interface DocumentContent {
+  format: ContentFormat;
+  data: string;
+}
+
 export interface Document {
   id: number;
   title: string;
@@ -13,6 +38,7 @@ export interface Document {
   deleted_at?: string | null;
   metadata: Record<string, unknown>;
 }
+
 
 export interface DocumentCreatePayload {
   title: string;

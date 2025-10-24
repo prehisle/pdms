@@ -40,9 +40,9 @@ describe('documents API', () => {
       const mockDocument: Document = {
         id: 1,
         title: 'Test Document',
-        type: 'markdown',
+        type: 'overview',
         position: 5,
-        content: { text: 'Test content' },
+        content: { format: 'html', data: '<p>Test content</p>' },
         created_by: 'user1',
         updated_by: 'user1',
         created_at: '2024-01-01T00:00:00Z',
@@ -54,9 +54,9 @@ describe('documents API', () => {
 
       const payload: DocumentCreatePayload = {
         title: 'Test Document',
-        type: 'markdown',
+        type: 'overview',
         position: 5,
-        content: { text: 'Test content' },
+        content: { format: 'html', data: '<p>Test content</p>' },
       };
 
       const result = await createDocument(payload);
@@ -101,7 +101,7 @@ describe('documents API', () => {
       const mockDocument: Document = {
         id: 1,
         title: 'Updated Document',
-        type: 'html',
+        type: 'dictation',
         position: 3,
         created_by: 'user1',
         updated_by: 'user1',
@@ -114,7 +114,7 @@ describe('documents API', () => {
 
       const payload: DocumentUpdatePayload = {
         title: 'Updated Document',
-        type: 'html',
+        type: 'dictation',
         position: 3,
       };
 
@@ -134,7 +134,7 @@ describe('documents API', () => {
         {
           id: 2,
           title: 'Document B',
-          type: 'markdown',
+          type: 'overview',
           position: 1,
           created_by: 'user1',
           updated_by: 'user1',
@@ -145,7 +145,7 @@ describe('documents API', () => {
         {
           id: 1,
           title: 'Document A',
-          type: 'markdown',
+          type: 'overview',
           position: 2,
           created_by: 'user1',
           updated_by: 'user1',
@@ -177,8 +177,8 @@ describe('documents API', () => {
       const mockDocuments: Document[] = [
         {
           id: 1,
-          title: 'Markdown Doc',
-          type: 'markdown',
+          title: 'Overview Doc',
+          type: 'overview',
           position: 1,
           created_by: 'user1',
           updated_by: 'user1',
@@ -191,11 +191,11 @@ describe('documents API', () => {
       mockHttp.mockResolvedValue(mockDocuments);
 
       const result = await getNodeDocuments(100, {
-        type: 'markdown',
+        type: 'overview',
         include_descendants: true,
       });
 
-      expect(mockHttp).toHaveBeenCalledWith('/api/v1/nodes/100/subtree-documents?type=markdown&include_descendants=true');
+      expect(mockHttp).toHaveBeenCalledWith('/api/v1/nodes/100/subtree-documents?type=overview&include_descendants=true');
       expect(result).toEqual(mockDocuments);
     });
 
@@ -204,7 +204,7 @@ describe('documents API', () => {
         {
           id: 2,
           title: 'Search Result',
-          type: 'html',
+          type: 'dictation',
           position: 1,
           created_by: 'user1',
           updated_by: 'user1',
@@ -230,7 +230,7 @@ describe('documents API', () => {
         {
           id: 123,
           title: 'Specific Document',
-          type: 'markdown',
+          type: 'overview',
           position: 1,
           created_by: 'user1',
           updated_by: 'user1',

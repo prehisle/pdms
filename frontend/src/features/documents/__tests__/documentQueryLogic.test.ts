@@ -39,7 +39,7 @@ describe('Document Query Logic', () => {
     {
       id: 1,
       title: 'First Document',
-      type: 'markdown',
+      type: 'overview',
       position: 2,
       created_by: 'user1',
       updated_by: 'user1',
@@ -50,7 +50,7 @@ describe('Document Query Logic', () => {
     {
       id: 2,
       title: 'Second Document',
-      type: 'html',
+      type: 'dictation',
       position: 1,
       created_by: 'user1',
       updated_by: 'user1',
@@ -61,7 +61,7 @@ describe('Document Query Logic', () => {
     {
       id: 123,
       title: 'Special Document',
-      type: 'markdown',
+      type: 'overview',
       position: 3,
       created_by: 'user1',
       updated_by: 'user1',
@@ -96,14 +96,14 @@ describe('Document Query Logic', () => {
   it('should call API with id parameter for server-side filtering', async () => {
     const filters: DocumentFilterFormValues = {
       docId: '123',
-      type: 'markdown',
+      type: 'overview',
     };
 
     const result = await simulateDocumentQuery(100, filters, true);
 
     // Check that API was called with id parameter
     expect(mockGetNodeDocuments).toHaveBeenCalledWith(100, {
-      type: 'markdown',
+      type: 'overview',
       id: [123],
       size: 100,
       include_descendants: true,
@@ -117,12 +117,12 @@ describe('Document Query Logic', () => {
 
   it('should return documents sorted by position when no ID filter', async () => {
     const filters: DocumentFilterFormValues = {
-      type: 'markdown',
+      type: 'overview',
     };
 
     const result = await simulateDocumentQuery(100, filters, true);
 
-    expect(result).toHaveLength(2); // Two markdown docs
+    expect(result).toHaveLength(2); // Two overview docs
     expect(result[0].position).toBe(2); // First doc by position
     expect(result[1].position).toBe(3); // Second doc by position
   });
@@ -166,7 +166,7 @@ describe('Document Query Logic', () => {
     const filters: DocumentFilterFormValues = {
       docId: '1',
       query: 'search term',
-      type: 'markdown',
+      type: 'overview',
     };
 
     const result = await simulateDocumentQuery(100, filters, false);
@@ -174,7 +174,7 @@ describe('Document Query Logic', () => {
     // API should be called with query, type, and id parameters
     expect(mockGetNodeDocuments).toHaveBeenCalledWith(100, {
       query: 'search term',
-      type: 'markdown',
+      type: 'overview',
       id: [1],
       size: 100,
       include_descendants: false,
