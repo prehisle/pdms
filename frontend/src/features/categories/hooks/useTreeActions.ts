@@ -29,6 +29,7 @@ export function useTreeActions(messageApi: MessageApiLike) {
 
   const invalidateTrash = useCallback(async () => {
     await queryClient.invalidateQueries({ queryKey: ["categories-trash"] });
+    await queryClient.refetchQueries({ queryKey: ["categories-trash"], type: "all" });
   }, [queryClient]);
 
   const createMutation = useMutation({

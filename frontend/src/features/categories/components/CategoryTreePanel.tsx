@@ -117,6 +117,10 @@ export function CategoryTreePanel({
     [effectiveCategories, searchValue],
   );
   const treeData = filteredTree.nodes;
+  const defaultExpandedKeys = useMemo(
+    () => getDefaultExpandedKeys(effectiveCategories, 3),
+    [effectiveCategories],
+  );
 
   useEffect(() => {
     if (searchValue.trim()) {
@@ -128,12 +132,10 @@ export function CategoryTreePanel({
   useEffect(() => {
     if (!searchValue.trim() && effectiveCategories.length > 0) {
       setExpandedKeys((prev) =>
-        prev.length === 0
-          ? effectiveCategories.map((node) => node.id.toString())
-          : prev,
+        prev.length === 0 ? defaultExpandedKeys : prev,
       );
     }
-  }, [effectiveCategories, searchValue]);
+  }, [effectiveCategories, searchValue, defaultExpandedKeys]);
 
   useEffect(() => {
     if (selectedIds.length > 0) {
@@ -731,4 +733,24 @@ export function CategoryTreePanel({
       />
     </div>
   );
+}
+
+function getDefaultExpandedKeys(nodes: Category[], maxDepth: number): string[] {
+  if (!Array.isArray(nodes) || nodes.length === 0 || maxDepth <= 0) {
+    return [];
+  }
+  const collected = new Set<string>();
+  const traverse = (items: Category[] | undefined, depth: number) => {
+    if (!items || depth >= maxDepth) {
+      return;
+    }
+    items.forEach((item) => {
+      collected.add(item.id.toString());
+      if (item.children && item.children.length > 0) {
+        traverse(item.children, depth + 1);
+      }
+    });
+  };
+  traverse(nodes, 0);
+  return Array.from(collected);
 }

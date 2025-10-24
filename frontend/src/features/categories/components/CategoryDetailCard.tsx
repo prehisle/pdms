@@ -22,6 +22,8 @@ export function CategoryDetailCard({ category }: CategoryDetailCardProps) {
           <Typography.Text>{category.name}</Typography.Text>
           {category.deleted_at ? <Tag color="red">已删除</Tag> : null}
         </Space>
+        <Typography.Text strong>节点 ID</Typography.Text>
+        <Typography.Text code>{category.id}</Typography.Text>
         <Typography.Text strong>路径</Typography.Text>
         <Typography.Text code>{category.path}</Typography.Text>
         <Typography.Text strong>父级 ID</Typography.Text>
