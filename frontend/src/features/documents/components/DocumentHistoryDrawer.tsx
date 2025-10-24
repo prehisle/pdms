@@ -43,25 +43,35 @@ export const DocumentHistoryDrawer: FC<DocumentHistoryDrawerProps> = ({
 }) => {
   const [selectedVersion, setSelectedVersion] = useState<DocumentVersion | null>(null);
 
+  const versionList = useMemo(() => {
+    if (!data) return [] as DocumentVersion[];
+    if (Array.isArray(data.versions) && data.versions.length > 0) {
+      return data.versions;
+    }
+    if (Array.isArray(data.items) && data.items.length > 0) {
+      return data.items;
+    }
+    return [] as DocumentVersion[];
+  }, [data]);
+
   useEffect(() => {
     if (!open) {
       setSelectedVersion(null);
       return;
     }
-    const versions = data?.versions ?? [];
-    if (versions.length === 0) {
+    if (versionList.length === 0) {
       setSelectedVersion(null);
       return;
     }
     if (selectedVersion) {
-      const match = versions.find((v) => v.version_number === selectedVersion.version_number);
+      const match = versionList.find((v) => v.version_number === selectedVersion.version_number);
       if (match) {
         setSelectedVersion(match);
         return;
       }
     }
-    setSelectedVersion(versions[0]);
-  }, [open, data, selectedVersion]);
+    setSelectedVersion(versionList[0]);
+  }, [open, versionList, selectedVersion]);
 
   const previewContent = useMemo(() => {
     if (!selectedVersion || !selectedVersion.content) {
@@ -101,7 +111,7 @@ export const DocumentHistoryDrawer: FC<DocumentHistoryDrawerProps> = ({
     },
   ];
 
-  const tableData = data?.versions ?? [];
+  const tableData = versionList;
   const selectedVersionNumber = selectedVersion?.version_number;
 
   return (

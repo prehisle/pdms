@@ -45,23 +45,25 @@ type fakeNDR struct {
 		ID   int64
 		Body ndrclient.DocumentUpdate
 	}
-	createDocResp  ndrclient.Document
-	updateDocResp  ndrclient.Document
-	createDocErr   error
-	updateDocErr   error
-	docsListResp   ndrclient.DocumentsPage
-	nodeDocsResp   []ndrclient.Document
-	docsListErr    error
-	nodeDocsErr    error
-	deleteDocErr   error
-	restoreDocErr  error
-	restoreDocResp ndrclient.Document
-	purgeDocErr    error
-	getDocResp     ndrclient.Document
-	getDocErr      error
-	deletedDocIDs  []int64
-	restoredDocIDs []int64
-	purgedDocIDs   []int64
+	createDocResp   ndrclient.Document
+	updateDocResp   ndrclient.Document
+	createDocErr    error
+	updateDocErr    error
+	docsListResp    ndrclient.DocumentsPage
+	nodeDocsResp    []ndrclient.Document
+	docsListErr     error
+	nodeDocsErr     error
+	docVersionsResp ndrclient.DocumentVersionsPage
+	docVersionsErr  error
+	deleteDocErr    error
+	restoreDocErr   error
+	restoreDocResp  ndrclient.Document
+	purgeDocErr     error
+	getDocResp      ndrclient.Document
+	getDocErr       error
+	deletedDocIDs   []int64
+	restoredDocIDs  []int64
+	purgedDocIDs    []int64
 }
 
 func newFakeNDR() *fakeNDR {
@@ -227,12 +229,15 @@ func (f *fakeNDR) ListRelationships(_ context.Context, meta ndrclient.RequestMet
 }
 
 func (f *fakeNDR) ListDocumentVersions(_ context.Context, _ ndrclient.RequestMeta, docID int64, page, size int) (ndrclient.DocumentVersionsPage, error) {
-	return ndrclient.DocumentVersionsPage{
-		Page:     page,
-		Size:     size,
-		Total:    0,
-		Versions: []ndrclient.DocumentVersion{},
-	}, nil
+	if f.docVersionsResp.Page == 0 && f.docVersionsResp.Total == 0 && len(f.docVersionsResp.Versions) == 0 && len(f.docVersionsResp.Items) == 0 {
+		return ndrclient.DocumentVersionsPage{
+			Page:     page,
+			Size:     size,
+			Total:    0,
+			Versions: []ndrclient.DocumentVersion{},
+		}, nil
+	}
+	return f.docVersionsResp, f.docVersionsErr
 }
 
 func (f *fakeNDR) GetDocumentVersion(_ context.Context, _ ndrclient.RequestMeta, docID int64, versionNumber int) (ndrclient.DocumentVersion, error) {

@@ -247,9 +247,13 @@ export const DocumentEditor: FC<DocumentEditorProps> = ({ mode, docId: docIdProp
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [handleSave, handleCancel]);
 
+  const isEmbedded = typeof onClose === "function";
+  const containerHeight = isEmbedded ? "100%" : "100vh";
+  const contentHeight = isEmbedded ? "calc(100% - 64px)" : "calc(100vh - 64px)";
+
   if (isEditMode && isLoadingDoc) {
     return (
-      <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: "100%" }}>
+      <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: containerHeight }}>
         <Spin size="large" tip="加载中..." />
       </div>
     );
@@ -271,7 +275,7 @@ export const DocumentEditor: FC<DocumentEditorProps> = ({ mode, docId: docIdProp
   }
 
   return (
-    <Layout style={{ height: "100%", overflow: "hidden" }}>
+    <Layout style={{ height: containerHeight, overflow: "hidden" }}>
       <Header
         style={{
           background: "#fff",
@@ -328,7 +332,7 @@ export const DocumentEditor: FC<DocumentEditorProps> = ({ mode, docId: docIdProp
         </Space>
       </Header>
 
-      <Content style={{ display: "flex", height: "calc(100% - 64px)" }}>
+      <Content style={{ display: "flex", height: contentHeight }}>
         <div
           style={{
             width: "50%",

@@ -24,14 +24,11 @@ import {
 import { Category, getCategoryTree } from "./api/categories";
 import {
   Document,
-  DocumentCreatePayload,
   DocumentListParams,
   DocumentReorderPayload,
   DocumentTrashParams,
   DocumentTrashPage,
   DocumentVersionsPage,
-  bindDocument,
-  createDocument,
   deleteDocument,
   getDeletedDocuments,
   getDocumentVersions,
@@ -52,12 +49,7 @@ import type { ParentKey } from "./features/categories/types";
 import { buildLookups } from "./features/categories/utils";
 import { DocumentPanel } from "./features/documents/components/DocumentPanel";
 import { DOCUMENT_TYPES } from "./features/documents/constants";
-import { getDocumentTemplate } from "./features/documents/templates";
-import type {
-  DocumentFilterFormValues,
-  DocumentFormValues,
-} from "./features/documents/types";
-import { DocumentCreateModal } from "./features/documents/components/DocumentCreateModal";
+import type { DocumentFilterFormValues } from "./features/documents/types";
 import { DocumentHistoryDrawer } from "./features/documents/components/DocumentHistoryDrawer";
 import { DocumentTrashDrawer } from "./features/documents/components/DocumentTrashDrawer";
 import { DocumentReorderModal } from "./features/documents/components/DocumentReorderModal";
@@ -98,14 +90,12 @@ const App = () => {
   }>({ open: false, parentId: null });
   const [showRenameModal, setShowRenameModal] = useState(false);
   const [categoryForm] = Form.useForm<{ name: string }>();
-  const [documentModal, setDocumentModal] = useState<{ open: boolean; nodeId: number | null }>(
-    { open: false, nodeId: null },
-  );
   const [documentEditorState, setDocumentEditorState] = useState<{
     open: boolean;
     docId: number | null;
     nodeId: number | null;
-  }>({ open: false, docId: null, nodeId: null });
+    mode: "create" | "edit";
+  }>({ open: false, docId: null, nodeId: null, mode: "edit" });
   const [documentTrashOpen, setDocumentTrashOpen] = useState(false);
   const [documentTrashParams, setDocumentTrashParams] = useState<DocumentTrashParams>({
     page: 1,
@@ -121,7 +111,6 @@ const App = () => {
   const [documentFilters, setDocumentFilters] = useState<DocumentFilterFormValues>({});
   const [includeDescendants, setIncludeDescendants] = useState(true);
   const [documentFilterForm] = Form.useForm<DocumentFilterFormValues>();
-  const [documentForm] = Form.useForm<DocumentFormValues>();
   const {
     trashQuery,
     trashItems,
@@ -316,15 +305,6 @@ const App = () => {
     setDocumentFilters({});
   }, [selectedNodeId, documentFilterForm]);
 
-  useEffect(() => {
-    if (documentModal.open && DOCUMENT_TYPES.length > 0) {
-      const currentType = documentForm.getFieldValue("type");
-      if (!currentType) {
-        documentForm.setFieldsValue({ type: DOCUMENT_TYPES[0].value });
-      }
-    }
-  }, [documentForm, documentModal.open]);
-
   const handleConfirmDelete = useCallback(() => {
     if (!deletePreview.visible || deletePreview.ids.length === 0) {
       return;
@@ -375,12 +355,9 @@ const App = () => {
     setDeletePreviewLoading,
   ]);
 
-  const handleOpenAddDocument = useCallback(
-    (nodeId: number) => {
-      navigate(`/documents/new?nodeId=${nodeId}`);
-    },
-    [navigate],
-  );
+  const handleOpenAddDocument = useCallback((nodeId: number) => {
+    setDocumentEditorState({ open: true, docId: null, nodeId, mode: "create" });
+  }, []);
   const handleDocumentSearch = useCallback(
     (values: DocumentFilterFormValues) => {
       const trimmed: DocumentFilterFormValues = {
@@ -440,6 +417,7 @@ const App = () => {
         open: true,
         docId: doc.id,
         nodeId: selectedNodeId,
+        mode: "edit",
       });
     },
     [selectedNodeId],
@@ -448,43 +426,6 @@ const App = () => {
 
   // documentColumns will be defined later after mutations and callbacks
 
-  const documentCreateMutation = useMutation({
-    mutationFn: async ({ nodeId, values }: { nodeId: number; values: DocumentFormValues }) => {
-      const payload: DocumentCreatePayload = {
-        title: values.title.trim(),
-        type: values.type,
-      };
-      if (values.position !== undefined) {
-        payload.position = values.position;
-      }
-      const contentText = values.content?.trim();
-      if (contentText && values.type) {
-        const template = getDocumentTemplate(values.type);
-        if (template) {
-          payload.content = {
-            format: template.format,
-            data: contentText,
-          };
-        } else {
-          // Fallback if template not found
-          payload.content = { preview: contentText };
-        }
-      }
-      const doc = await createDocument(payload);
-      await bindDocument(nodeId, doc.id);
-      return doc;
-    },
-    onSuccess: async (_doc, { nodeId }) => {
-      messageApi.success("文档创建成功");
-      setDocumentModal({ open: false, nodeId: null });
-      documentForm.resetFields();
-      await queryClient.invalidateQueries({ queryKey: ["node-documents", nodeId] });
-    },
-    onError: (err: unknown) => {
-      const msg = err instanceof Error ? err.message : "文档创建失败";
-      messageApi.error(msg);
-    },
-  });
 
   const deleteDocumentMutation = useMutation<void, Error, number>({
     mutationFn: async (docId) => {
@@ -497,7 +438,7 @@ const App = () => {
       // 若当前编辑抽屉打开且删除的文档即为当前编辑文档，则关闭
       setDocumentEditorState((prev) => {
         if (prev.open && prev.docId === docId) {
-          return { open: false, docId: null, nodeId: null };
+          return { open: false, docId: null, nodeId: null, mode: "edit" };
         }
         return prev;
       });
@@ -549,26 +490,8 @@ const App = () => {
     },
   });
 
-  const handleDocumentModalCancel = useCallback(() => {
-    setDocumentModal({ open: false, nodeId: null });
-    documentForm.resetFields();
-  }, [documentForm]);
-
-  const handleDocumentModalOk = useCallback(() => {
-    documentForm
-      .validateFields()
-      .then((values) => {
-        if (!documentModal.nodeId) {
-          messageApi.error("请选择要绑定的目录节点");
-          return;
-        }
-        documentCreateMutation.mutate({ nodeId: documentModal.nodeId, values });
-      })
-      .catch(() => undefined);
-  }, [documentForm, documentModal.nodeId, documentCreateMutation, messageApi]);
-
   const handleCloseDocumentEditor = useCallback(() => {
-    setDocumentEditorState({ open: false, docId: null, nodeId: null });
+    setDocumentEditorState({ open: false, docId: null, nodeId: null, mode: "edit" });
   }, []);
 
   const handleToolbarAddDocument = useCallback(() => {
@@ -636,6 +559,13 @@ const App = () => {
         render: (value: string | undefined) => (
           <Typography.Text>{value || "-"}</Typography.Text>
         ),
+      },
+      {
+        title: "版本",
+        dataIndex: "version_number",
+        key: "version_number",
+        width: 100,
+        render: (value: number | undefined | null) => <Typography.Text>{value ?? "-"}</Typography.Text>,
       },
       {
         title: "位置",
@@ -809,15 +739,6 @@ const App = () => {
         isMutating={isTrashProcessing}
         onClearSelection={() => setSelectedRowKeys([])}
       />
-      <DocumentCreateModal
-        open={documentModal.open}
-        confirmLoading={documentCreateMutation.isPending}
-        nodeId={documentModal.nodeId}
-        form={documentForm}
-        documentTypes={DOCUMENT_TYPES}
-        onCancel={handleDocumentModalCancel}
-        onOk={handleDocumentModalOk}
-      />
       <Drawer
         open={documentEditorState.open}
         width="100%"
@@ -827,12 +748,13 @@ const App = () => {
         onClose={handleCloseDocumentEditor}
         styles={{ body: { padding: 0, height: "100%", display: "flex" } }}
       >
-        {documentEditorState.open && documentEditorState.docId != null ? (
+        {documentEditorState.open &&
+        (documentEditorState.mode === "create" || documentEditorState.docId != null) ? (
           <div style={{ flex: 1, minWidth: 0, minHeight: 0 }}>
             <Suspense fallback={<DocumentEditorFallback />}>
               <DocumentEditorLazy
-                mode="edit"
-                docId={documentEditorState.docId}
+                mode={documentEditorState.mode}
+                docId={documentEditorState.mode === "edit" ? documentEditorState.docId ?? undefined : undefined}
                 nodeId={documentEditorState.nodeId ?? undefined}
                 onClose={handleCloseDocumentEditor}
               />

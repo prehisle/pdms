@@ -69,6 +69,7 @@ type GetNodeOptions struct {
 type Document struct {
 	ID        int64          `json:"id"`
 	Title     string         `json:"title"`
+	Version   *int           `json:"version_number,omitempty"`
 	Content   map[string]any `json:"content"`
 	Type      *string        `json:"type"`
 	Position  int            `json:"position"`
@@ -161,7 +162,8 @@ type DocumentVersionsPage struct {
 	Page     int               `json:"page"`
 	Size     int               `json:"size"`
 	Total    int               `json:"total"`
-	Versions []DocumentVersion `json:"versions"`
+	Versions []DocumentVersion `json:"versions,omitempty"`
+	Items    []DocumentVersion `json:"items,omitempty"`
 }
 
 // DocumentVersionDiff represents differences between two versions.
@@ -178,4 +180,3 @@ type DiffDetail struct {
 	Old any `json:"old"`
 	New any `json:"new"`
 }
-

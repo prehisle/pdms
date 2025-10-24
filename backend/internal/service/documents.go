@@ -288,8 +288,13 @@ func (s *Service) ListDocumentVersions(ctx context.Context, meta RequestMeta, do
 		return DocumentVersionsPage{}, err
 	}
 
-	versions := make([]DocumentVersion, 0, len(ndrPage.Versions))
-	for _, v := range ndrPage.Versions {
+	source := ndrPage.Versions
+	if len(source) == 0 && len(ndrPage.Items) > 0 {
+		source = ndrPage.Items
+	}
+
+	versions := make([]DocumentVersion, 0, len(source))
+	for _, v := range source {
 		versions = append(versions, DocumentVersion{
 			DocumentID:    v.DocumentID,
 			VersionNumber: v.VersionNumber,

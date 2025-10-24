@@ -223,6 +223,35 @@ func TestListDeletedDocuments(t *testing.T) {
 	}
 }
 
+func TestListDocumentVersionsUsesItemsFallback(t *testing.T) {
+	fake := newFakeNDR()
+	fake.docVersionsResp = ndrclient.DocumentVersionsPage{
+		Page:  1,
+		Size:  2,
+		Total: 2,
+		Items: []ndrclient.DocumentVersion{
+			{DocumentID: 10, VersionNumber: 1, Title: "v1"},
+			{DocumentID: 10, VersionNumber: 2, Title: "v2"},
+		},
+	}
+
+	svc := NewService(cache.NewNoop(), fake)
+
+	page, err := svc.ListDocumentVersions(context.Background(), RequestMeta{}, 10, 1, 2)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if page.Total != 2 {
+		t.Fatalf("expected total 2, got %d", page.Total)
+	}
+	if len(page.Versions) != 2 {
+		t.Fatalf("expected 2 versions, got %d", len(page.Versions))
+	}
+	if page.Versions[1].VersionNumber != 2 {
+		t.Fatalf("expected version number 2, got %d", page.Versions[1].VersionNumber)
+	}
+}
+
 func sampleDocument(id int64, title string, docType string, position int, created, updated time.Time) ndrclient.Document {
 	var typePtr *string
 	if docType != "" {

@@ -28,6 +28,7 @@ export interface DocumentContent {
 export interface Document {
   id: number;
   title: string;
+  version_number?: number | null;
   type?: string;
   position: number;
   content?: Record<string, unknown>;
@@ -109,7 +110,8 @@ export interface DocumentVersionsPage {
   page: number;
   size: number;
   total: number;
-  versions: DocumentVersion[];
+  versions?: DocumentVersion[];
+  items?: DocumentVersion[];
 }
 
 function buildDocumentQuery(params?: DocumentListParams): string {
