@@ -4,7 +4,7 @@
 
 ### 后端重构
 1. ✅ 创建新的文档类型系统 (`document_types.go`)
-   - 定义5种文档类型：overview, dictation, comprehensive_choice, security_analysis, essay
+   - 定义5种文档类型：overview, dictation, comprehensive_choice, case_analysis, essay
    - 定义内容格式：HTML 和 YAML
    - 实现完整的验证逻辑
 
@@ -34,46 +34,22 @@
    - 移除 MaterialPanel
    - 恢复简单的文档管理界面
 
-## ⚠️ 需要修复的测试
+## ✅ 测试状态
 
-### 后端测试失败 (2个)
-1. `TestDocumentCreationWithTypeAndPosition` - 使用了旧类型 "markdown"
-   - 修复：改为使用 "overview" 类型
-   - 添加正确的 content 结构：`{"format": "html", "data": "..."}`
+所有后端测试已通过，包括：
+- API 处理器测试（`internal/api/*_test.go`）
+- 服务层测试（`internal/service/*_test.go`）
+- NDR 客户端测试（`internal/ndrclient/*_test.go`）
 
-2. `TestDocumentUpdateWithTypeAndPosition` - 使用了旧类型 "html"
-   - 修复：改为使用 "overview" 类型
-   - 添加正确的 content 结构
-
-### 服务层测试失败 (2个)
-1. `TestCreateDocument` - 使用了旧类型 "markdown"
-2. `TestUpdateDocument` - 使用了旧类型 "html"
+所有测试已更新为使用新的文档类型系统（overview, dictation, comprehensive_choice, case_analysis, essay）。
 
 ## 📋 待办任务
-
-### 1. 修复测试 (紧急)
-```bash
-# 文件需要修改：
-- backend/internal/api/handler_test.go (行 1185, 1280, 1298, 1322, 1340)
-- backend/internal/service/documents_test.go
-```
-
-修改示例：
-```go
-// 旧代码
-docType := "markdown"
-payload := `{"title":"Test","type":"markdown","content":{"text":"Hello"}}`
-
-// 新代码
-docType := "overview"
-payload := `{"title":"Test","type":"overview","content":{"format":"html","data":"<p>Hello</p>"},"metadata":{"difficulty":3}}`
-```
 
 ### 2. 前端表单组件扩展 (已规划，未实现)
 由于时间限制，DocumentForm 组件尚未扩展以支持新的文档类型。需要：
 - 根据文档类型动态渲染表单字段
 - HTML 编辑器（for overview）
-- YAML 编辑器（for dictation, comprehensive_choice, security_analysis, essay）
+- YAML 编辑器（for dictation, comprehensive_choice, case_analysis, essay）
 - 元数据编辑（difficulty, tags等）
 
 ### 3. 文档预览组件 (已规划，未实现)
@@ -81,18 +57,9 @@ payload := `{"title":"Test","type":"overview","content":{"format":"html","data":
 
 ## 🎯 下一步行动
 
-1. **立即**: 修复4个失败的测试
-   ```bash
-   cd /home/yjxt/codes/ydms/backend
-   # 编辑 handler_test.go 和 documents_test.go
-   # 将所有 "markdown" 改为 "overview"
-   # 将所有 "html" 改为合适的类型
-   # 添加正确的 content 结构 {"format": "html/yaml", "data": "..."}
-   go test ./...
-   ```
-
-2. **后续**: 实现前端表单和预览组件
-3. **最终**: 更新进度文档
+1. **实现前端表单组件**: 扩展 DocumentForm 以支持不同文档类型的动态表单渲染
+2. **实现前端预览组件**: 扩展 DocumentPreview 以正确显示不同格式的内容
+3. **用户体验优化**: 完善文档类型切换和编辑体验
 
 ## 📊 代码统计
 
