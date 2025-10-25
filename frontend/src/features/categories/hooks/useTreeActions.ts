@@ -12,6 +12,7 @@ import {
   type CategoryCreatePayload,
   type CategoryUpdatePayload,
   type CategoryBulkIDsPayload,
+  type Category,
 } from "../../../api/categories";
 
 interface MessageApiLike {
@@ -91,8 +92,14 @@ export function useTreeActions(messageApi: MessageApiLike) {
 
   const restoreMutation = useMutation({
     mutationFn: (id: number) => restoreCategory(id),
-    onSuccess: async () => {
+    onSuccess: async (restoredCategory) => {
       messageApi.success("目录已恢复");
+      queryClient.setQueryData<Category[]>(["categories-trash"], (prev) => {
+        if (!prev) {
+          return prev;
+        }
+        return prev.filter((item) => item.id !== restoredCategory.id);
+      });
       await Promise.all([invalidateTree(), invalidateTrash()]);
     },
     onError: (err: unknown) => {
@@ -103,8 +110,14 @@ export function useTreeActions(messageApi: MessageApiLike) {
 
   const purgeMutation = useMutation({
     mutationFn: (id: number) => purgeCategory(id),
-    onSuccess: async () => {
+    onSuccess: async (_, id) => {
       messageApi.success("目录已彻底删除");
+      queryClient.setQueryData<Category[]>(["categories-trash"], (prev) => {
+        if (!prev) {
+          return prev;
+        }
+        return prev.filter((item) => item.id !== id);
+      });
       await invalidateTrash();
     },
     onError: (err: unknown) => {
