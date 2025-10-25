@@ -1,15 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { Document } from '../../../api/documents';
+import type { Document, MetadataOperator } from '../../../api/documents';
 import type {
   DocumentFilterFormValues,
   MetadataFilterFormValue,
-  MetadataValueType,
 } from '../types';
 
-interface SanitizedMetadataFilter extends MetadataFilterFormValue {
+interface SanitizedMetadataFilter {
   key: string;
-  type: MetadataValueType;
-  value: string | string[];
+  operator: MetadataOperator;
+  values: string[];
 }
 
 // Mock the getNodeDocuments function
@@ -36,9 +35,8 @@ async function simulateDocumentQuery(
     }
   }
   const metadataFilters = sanitizeMetadataFilters(documentFilters.metadataFilters);
-  const metadataQuery = buildMetadataQuery(metadataFilters);
-  if (metadataQuery && Object.keys(metadataQuery).length > 0) {
-    params.metadata = metadataQuery;
+  if (metadataFilters) {
+    params.metadataClauses = metadataFilters;
   }
   params.size = 100;
   params.include_descendants = includeDescendants;
@@ -100,19 +98,40 @@ describe('Document Query Logic', () => {
         filteredDocs = filteredDocs.filter(doc => doc.type === params.type);
       }
 
-      if (params.metadata) {
-        const metadataEntries = Object.entries(params.metadata);
+      if (params.metadataClauses) {
         filteredDocs = filteredDocs.filter((doc) =>
-          metadataEntries.every(([metadataKey, expectedValue]) => {
-            const value = (doc.metadata ?? {})[metadataKey];
-            if (Array.isArray(expectedValue)) {
-              if (!Array.isArray(value)) {
-                return false;
+          params.metadataClauses.every((clause: SanitizedMetadataFilter) => {
+            const value = (doc.metadata ?? {})[clause.key];
+            switch (clause.operator) {
+              case 'eq':
+                return clause.values.some((candidate) => String(value) === candidate);
+              case 'like': {
+                const needle = normalizeLikeValue(clause.values[0]).replace(/%/g, '');
+                return typeof value === 'string' && value.includes(needle);
               }
-              const normalizedValue = value.map(String);
-              return expectedValue.every((item) => normalizedValue.includes(String(item)));
+              case 'in':
+              case 'any':
+                return clause.values.some((candidate) => String(value).includes(candidate));
+              case 'all': {
+                if (!Array.isArray(value)) return false;
+                const normalized = value.map(String);
+                return clause.values.every((candidate) => normalized.includes(candidate));
+              }
+              case 'gt':
+              case 'gte':
+              case 'lt':
+              case 'lte': {
+                const numeric = Number(value);
+                const target = Number(clause.values[0]);
+                if (Number.isNaN(numeric) || Number.isNaN(target)) return false;
+                if (clause.operator === 'gt') return numeric > target;
+                if (clause.operator === 'gte') return numeric >= target;
+                if (clause.operator === 'lt') return numeric < target;
+                return numeric <= target;
+              }
+              default:
+                return true;
             }
-            return value === expectedValue;
           }),
         );
       }
@@ -200,7 +219,7 @@ describe('Document Query Logic', () => {
       query: 'search term',
       type: 'overview',
       metadataFilters: [
-        { key: 'difficulty', type: 'number', value: '3' },
+        { key: 'difficulty', operator: 'eq', value: '3' },
       ],
     };
 
@@ -211,7 +230,7 @@ describe('Document Query Logic', () => {
       query: 'search term',
       type: 'overview',
       id: [1],
-      metadata: { difficulty: 3 },
+      metadataClauses: [{ key: 'difficulty', operator: 'eq', values: ['3'] }],
       size: 100,
       include_descendants: false,
     });
@@ -238,14 +257,14 @@ describe('Document Query Logic', () => {
   it('should filter by metadata tags', async () => {
     const filters: DocumentFilterFormValues = {
       metadataFilters: [
-        { key: 'tags', type: 'string', value: 'grammar' },
+        { key: 'tags', operator: 'like', value: 'grammar' },
       ],
     };
 
     const result = await simulateDocumentQuery(100, filters, true);
 
     expect(mockGetNodeDocuments).toHaveBeenCalledWith(100, {
-      metadata: { tags: 'grammar' },
+      metadataClauses: [{ key: 'tags', operator: 'like', values: ['grammar'] }],
       size: 100,
       include_descendants: true,
     });
@@ -257,14 +276,14 @@ describe('Document Query Logic', () => {
   it('should filter by metadata tags array', async () => {
     const filters: DocumentFilterFormValues = {
       metadataFilters: [
-        { key: 'tags', type: 'string[]', value: ['grammar'] },
+        { key: 'tags', operator: 'all', value: ['grammar'] },
       ],
     };
 
     const result = await simulateDocumentQuery(100, filters, true);
 
     expect(mockGetNodeDocuments).toHaveBeenCalledWith(100, {
-      metadata: { tags: ['grammar'] },
+      metadataClauses: [{ key: 'tags', operator: 'all', values: ['grammar'] }],
       size: 100,
       include_descendants: true,
     });
@@ -286,36 +305,35 @@ function sanitizeMetadataFilters(
     if (!key) {
       return;
     }
-    const type: MetadataValueType = filter.type ?? 'string';
-    switch (type) {
-      case 'string': {
+    const operator: MetadataOperator = filter.operator ?? 'eq';
+    switch (operator) {
+      case 'eq':
+      case 'like': {
         const value = typeof filter.value === 'string' ? filter.value.trim() : '';
         if (value) {
-          sanitized.push({ key, type, value });
+          sanitized.push({ key, operator, values: [value] });
         }
         break;
       }
-      case 'number': {
-        const value = typeof filter.value === 'string' ? filter.value.trim() : '';
-        if (value && !Number.isNaN(Number(value))) {
-          sanitized.push({ key, type, value });
-        }
-        break;
-      }
-      case 'boolean': {
-        const raw = typeof filter.value === 'string' ? filter.value : '';
-        if (raw === 'true' || raw === 'false') {
-          sanitized.push({ key, type, value: raw });
-        }
-        break;
-      }
-      case 'string[]': {
+      case 'in':
+      case 'any':
+      case 'all': {
         const raw = Array.isArray(filter.value) ? filter.value : [];
-        const value = Array.from(
+        const values = Array.from(
           new Set(raw.map((item) => item.trim()).filter((item) => item.length > 0)),
         );
-        if (value.length > 0) {
-          sanitized.push({ key, type, value });
+        if (values.length > 0) {
+          sanitized.push({ key, operator, values });
+        }
+        break;
+      }
+      case 'gt':
+      case 'gte':
+      case 'lt':
+      case 'lte': {
+        const value = typeof filter.value === 'string' ? filter.value.trim() : '';
+        if (value && !Number.isNaN(Number(value))) {
+          sanitized.push({ key, operator, values: [value] });
         }
         break;
       }
@@ -328,41 +346,68 @@ function sanitizeMetadataFilters(
 
 function buildMetadataQuery(
   filters?: SanitizedMetadataFilter[],
-): Record<string, string | number | boolean | string[]> | undefined {
+): Record<string, string | string[]> | undefined {
   if (!filters || filters.length === 0) {
     return undefined;
   }
-  const result: Record<string, string | number | boolean | string[]> = {};
-  filters.forEach(({ key, type = 'string', value }) => {
-    switch (type) {
-      case 'string':
-        if (typeof value === 'string' && value.length > 0) {
-          result[key] = value;
-        }
+  const result: Record<string, string | string[]> = {};
+  filters.forEach(({ key, operator, values }) => {
+    const base = `metadata.${key}`;
+    switch (operator) {
+      case 'eq': {
+        appendValue(result, base, values);
         break;
-      case 'number':
-        if (typeof value === 'string' && value.length > 0) {
-          const numeric = Number(value);
-          if (!Number.isNaN(numeric)) {
-            result[key] = numeric;
-          }
-        }
+      }
+      case 'like': {
+        appendValue(result, `${base}[like]`, [normalizeLikeValue(values[0])]);
         break;
-      case 'boolean':
-        if (value === 'true') {
-          result[key] = true;
-        } else if (value === 'false') {
-          result[key] = false;
-        }
+      }
+      case 'in': {
+        appendValue(result, `${base}[in]`, [values.join(',')]);
         break;
-      case 'string[]':
-        if (Array.isArray(value) && value.length > 0) {
-          result[key] = value;
-        }
+      }
+      case 'any': {
+        appendValue(result, `${base}[any]`, [values.join(',')]);
         break;
+      }
+      case 'all': {
+        appendValue(result, `${base}[all]`, values);
+        break;
+      }
+      case 'gt':
+      case 'gte':
+      case 'lt':
+      case 'lte': {
+        appendValue(result, `${base}[${operator}]`, [values[0]]);
+        break;
+      }
       default:
         break;
     }
   });
   return Object.keys(result).length > 0 ? result : undefined;
+}
+
+function appendValue(target: Record<string, string | string[]>, key: string, values: string[]) {
+  if (values.length === 0) {
+    return;
+  }
+  const nextValue = values.length === 1 ? values[0] : values;
+  if (Object.prototype.hasOwnProperty.call(target, key)) {
+    const existing = target[key];
+    if (Array.isArray(existing)) {
+      target[key] = existing.concat(values);
+    } else {
+      target[key] = [existing, ...values];
+    }
+  } else {
+    target[key] = nextValue;
+  }
+}
+
+function normalizeLikeValue(value: string): string {
+  if (value.includes('%') || value.includes('_')) {
+    return value;
+  }
+  return `%${value}%`;
 }

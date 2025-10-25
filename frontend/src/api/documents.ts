@@ -11,6 +11,23 @@ export const DOCUMENT_TYPES = {
 
 export type DocumentType = typeof DOCUMENT_TYPES[keyof typeof DOCUMENT_TYPES];
 
+export type MetadataOperator =
+  | "eq"
+  | "like"
+  | "in"
+  | "gt"
+  | "gte"
+  | "lt"
+  | "lte"
+  | "any"
+  | "all";
+
+export interface MetadataFilterClause {
+  key: string;
+  operator: MetadataOperator;
+  values: string[];
+}
+
 // Content formats
 export const CONTENT_FORMATS = {
   HTML: "html",
@@ -72,8 +89,7 @@ export interface DocumentListParams {
   id?: number[];
   include_deleted?: boolean;
   include_descendants?: boolean;
-  metadata?: Record<string, string | number | boolean | Array<string | number | boolean>>;
-  tags?: string[];
+  metadataClauses?: MetadataFilterClause[];
 }
 
 export interface DocumentReorderPayload {
@@ -117,19 +133,100 @@ export interface DocumentVersionsPage {
 function buildDocumentQuery(params?: DocumentListParams): string {
   if (!params) return "";
   const flatParams: Record<string, unknown> = {};
-  const { metadata, tags, ...rest } = params;
+  const { metadataClauses, ...rest } = params;
   Object.assign(flatParams, rest);
 
-  if (tags && tags.length > 0) {
-    flatParams.tags = tags;
-  }
-
-  if (metadata) {
-    Object.entries(metadata).forEach(([key, value]) => {
-      flatParams[`metadata.${key}`] = value;
+  if (metadataClauses && metadataClauses.length > 0) {
+    const metadataParams = buildMetadataQueryParams(metadataClauses);
+    Object.entries(metadataParams).forEach(([key, value]) => {
+      if (flatParams[key]) {
+        const prev = flatParams[key];
+        if (Array.isArray(prev)) {
+          flatParams[key] = Array.isArray(value) ? [...prev, ...value] : [...prev, value];
+        } else {
+          flatParams[key] = Array.isArray(value) ? [prev, ...value] : [prev, value];
+        }
+      } else {
+        flatParams[key] = value;
+      }
     });
   }
   return buildQuery(flatParams);
+}
+
+function buildMetadataQueryParams(
+  clauses: MetadataFilterClause[],
+): Record<string, string | string[]> {
+  const output: Record<string, string | string[]> = {};
+
+  clauses.forEach((clause) => {
+    const base = `metadata.${clause.key}`;
+    let key = base;
+    let values = clause.values;
+
+    switch (clause.operator) {
+      case "eq":
+        key = base;
+        break;
+      case "like":
+        key = `${base}[like]`;
+        values = [normalizeLikeValue(values[0])];
+        break;
+      case "in":
+        key = `${base}[in]`;
+        values = [values.join(",")];
+        break;
+      case "any":
+        key = `${base}[any]`;
+        values = [values.join(",")];
+        break;
+      case "all":
+        key = `${base}[all]`;
+        appendValue(output, key, values);
+        return;
+      case "gt":
+      case "gte":
+      case "lt":
+      case "lte":
+        key = `${base}[${clause.operator}]`;
+        values = [values[0]];
+        break;
+      default:
+        key = base;
+    }
+
+    appendValue(output, key, values);
+  });
+
+  return output;
+}
+
+function appendValue(
+  target: Record<string, string | string[]>,
+  key: string,
+  values: string[],
+) {
+  if (values.length === 0) {
+    return;
+  }
+  const nextValue = values.length === 1 ? values[0] : values;
+  if (Object.prototype.hasOwnProperty.call(target, key)) {
+    const existing = target[key];
+    if (Array.isArray(existing)) {
+      target[key] = existing.concat(values);
+    } else {
+      target[key] = [existing, ...values];
+    }
+  } else {
+    target[key] = nextValue;
+  }
+}
+
+function normalizeLikeValue(input: string): string {
+  if (input.includes("%") || input.includes("_")) {
+    return input;
+  }
+  return `%${input}%`;
 }
 
 export async function getDocuments(params?: DocumentListParams): Promise<DocumentsPage> {

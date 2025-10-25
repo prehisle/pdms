@@ -101,6 +101,7 @@
           "documents"
         ],
         "summary": "List Documents",
+        "description": "支持动态 `metadata.<field>[operator]=value` 查询参数，用于元数据筛选：\n\n- 等值（默认）：`metadata.stage=draft`，重复参数按 OR 组合；\n- IN：`metadata.stage[in]=draft,final`（也可重复参数）；\n- 模糊：`metadata.title[like]=设计`，若未包含 `%` 自动按 `%值%` 处理；\n- 范围：`metadata.price[gt]=10` / `[gte]` / `[lt]` / `[lte]`，值必须是数字；\n- 数组包含：`metadata.tags[any]=alpha`（包含任一值）、`metadata.tags[all]=alpha&metadata.tags[all]=beta`（同时包含所有值）。\n\n更多示例见 `docs/当前进度与待办.md` 的 “Metadata 过滤语法速查”。",
         "operationId": "list_documents_api_v1_documents_get",
         "parameters": [
           {
@@ -2155,6 +2156,7 @@
           "nodes"
         ],
         "summary": "Get Subtree Documents",
+        "description": "支持动态 `metadata.<field>[operator]=value` 查询参数，用于元数据筛选：\n\n- 等值（默认）：`metadata.stage=draft`，重复参数按 OR 组合；\n- IN：`metadata.stage[in]=draft,final`（也可重复参数）；\n- 模糊：`metadata.title[like]=设计`，若未包含 `%` 自动按 `%值%` 处理；\n- 范围：`metadata.price[gt]=10` / `[gte]` / `[lt]` / `[lte]`，值必须是数字；\n- 数组包含：`metadata.tags[any]=alpha`（包含任一值）、`metadata.tags[all]=alpha&metadata.tags[all]=beta`（同时包含所有值）。\n\n更多示例见 `docs/当前进度与待办.md` 的 “Metadata 过滤语法速查”。\n\n另外，可通过 `include_descendants` 控制仅当前节点或整棵子树。",
         "operationId": "get_subtree_documents_api_v1_nodes__id__subtree_documents_get",
         "parameters": [
           {

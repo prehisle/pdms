@@ -16,7 +16,7 @@ export type MetadataValueType = "string" | "number" | "boolean" | "string[]";
 
 export interface MetadataFilterFormValue {
   key?: string;
-  type?: MetadataValueType;
+  operator?: MetadataOperator;
   value?: string | string[];
 }
 
@@ -105,3 +105,4 @@ export interface EssayDocumentYaml {
   time_limit?: number;
   tags?: string[];
 }
+import type { MetadataOperator } from "../../api/documents";

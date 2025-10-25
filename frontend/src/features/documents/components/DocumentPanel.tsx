@@ -24,8 +24,8 @@ import {
   MinusCircleOutlined,
 } from "@ant-design/icons";
 
-import type { Document } from "../../../api/documents";
-import type { DocumentFilterFormValues, MetadataFilterFormValue, MetadataValueType } from "../types";
+import type { Document, MetadataOperator } from "../../../api/documents";
+import type { DocumentFilterFormValues, MetadataFilterFormValue } from "../types";
 
 interface DocumentPanelProps {
   filterForm: FormInstance<DocumentFilterFormValues>;
@@ -158,11 +158,16 @@ export const DocumentPanel: FC<DocumentPanelProps> = ({
   </Space>
 );
 
-const metadataFilterTypeOptions = [
-  { value: "string", label: "字符串" },
-  { value: "number", label: "数字" },
-  { value: "boolean", label: "布尔" },
-  { value: "string[]", label: "字符串数组" },
+const metadataOperatorOptions: { value: MetadataOperator; label: string }[] = [
+  { value: "eq", label: "等于" },
+  { value: "like", label: "模糊包含" },
+  { value: "in", label: "集合 (IN)" },
+  { value: "gt", label: "大于" },
+  { value: "gte", label: "大于等于" },
+  { value: "lt", label: "小于" },
+  { value: "lte", label: "小于等于" },
+  { value: "any", label: "数组含任一" },
+  { value: "all", label: "数组含全部" },
 ];
 
 const MetadataFiltersField: FC<{
@@ -179,7 +184,7 @@ const MetadataFiltersField: FC<{
             <Button
               type="dashed"
               icon={<PlusOutlined />}
-              onClick={() => add({ type: "string", value: "" })}
+              onClick={() => add({ operator: "eq", value: "" })}
             >
               添加条件
             </Button>
@@ -195,7 +200,7 @@ const MetadataFiltersField: FC<{
               {fields.map((field) => {
                 const index = typeof field.name === "number" ? field.name : Number(field.name);
                 const currentFilter: MetadataFilterFormValue = metadataFilters?.[index] ?? {};
-                const currentType: MetadataValueType = currentFilter?.type ?? "string";
+                const currentOperator: MetadataOperator = currentFilter?.operator ?? "eq";
                 return (
                   <Space
                     key={field.key}
@@ -220,16 +225,16 @@ const MetadataFiltersField: FC<{
                     </Form.Item>
                     <Form.Item
                       {...field}
-                      name={[field.name, "type"]}
-                      fieldKey={[field.fieldKey ?? field.name, "type"]}
-                      initialValue="string"
+                      name={[field.name, "operator"]}
+                      fieldKey={[field.fieldKey ?? field.name, "operator"]}
+                      initialValue="eq"
                       style={{ marginBottom: 0 }}
                     >
                       <Select
                         style={{ width: 140 }}
-                        options={metadataFilterTypeOptions}
-                        onChange={(value: MetadataValueType) =>
-                          handleFilterTypeChange(filterForm, field.name, value)
+                        options={metadataOperatorOptions}
+                        onChange={(value: MetadataOperator) =>
+                          handleOperatorChange(filterForm, field.name, value)
                         }
                       />
                     </Form.Item>
@@ -239,7 +244,7 @@ const MetadataFiltersField: FC<{
                       fieldKey={[field.fieldKey ?? field.name, "value"]}
                       style={{ marginBottom: 0 }}
                     >
-                      {renderMetadataFilterValueInput(currentType)}
+                      {renderMetadataFilterValueInput(currentOperator)}
                     </Form.Item>
                     <Button
                       icon={<MinusCircleOutlined />}
@@ -256,32 +261,30 @@ const MetadataFiltersField: FC<{
   </Form.List>
 );
 
-function handleFilterTypeChange(
+function handleOperatorChange(
   form: FormInstance<DocumentFilterFormValues>,
   index: number,
-  nextType: MetadataValueType,
+  nextOperator: MetadataOperator,
 ) {
   const currentFilters: MetadataFilterFormValue[] = form.getFieldValue("metadataFilters") ?? [];
   const nextFilters = [...currentFilters];
   const previous = nextFilters[index]?.value;
   nextFilters[index] = {
     ...(nextFilters[index] ?? {}),
-    type: nextType,
-    value: getDefaultFilterValueForType(nextType, previous),
+    operator: nextOperator,
+    value: getDefaultValueForOperator(nextOperator, previous),
   };
   form.setFieldsValue({ metadataFilters: nextFilters });
 }
 
-function getDefaultFilterValueForType(
-  type: MetadataValueType,
+function getDefaultValueForOperator(
+  operator: MetadataOperator,
   previous?: string | string[],
 ): string | string[] {
-  switch (type) {
-    case "number":
-      return typeof previous === "string" ? previous : "";
-    case "boolean":
-      return previous === "false" ? "false" : "true";
-    case "string[]":
+  switch (operator) {
+    case "in":
+    case "any":
+    case "all":
       if (Array.isArray(previous)) {
         return previous;
       }
@@ -289,29 +292,32 @@ function getDefaultFilterValueForType(
         return [previous.trim()];
       }
       return [];
-    case "string":
+    case "gt":
+    case "gte":
+    case "lt":
+    case "lte":
+      return typeof previous === "string" ? previous : "";
+    case "like":
+    case "eq":
     default:
       return typeof previous === "string" ? previous : "";
   }
 }
 
-function renderMetadataFilterValueInput(type: MetadataValueType) {
-  switch (type) {
-    case "number":
+function renderMetadataFilterValueInput(operator: MetadataOperator) {
+  switch (operator) {
+    case "in":
+    case "any":
+    case "all":
+      return <Select mode="tags" style={{ minWidth: 220 }} allowClear placeholder="多个值" />;
+    case "gt":
+    case "gte":
+    case "lt":
+    case "lte":
       return <Input placeholder="数值" allowClear style={{ width: 160 }} inputMode="decimal" />;
-    case "boolean":
-      return (
-        <Select
-          style={{ width: 140 }}
-          options={[
-            { value: "true", label: "true" },
-            { value: "false", label: "false" },
-          ]}
-        />
-      );
-    case "string[]":
-      return <Select mode="tags" style={{ minWidth: 220 }} allowClear placeholder="输入多个值" />;
-    case "string":
+    case "like":
+      return <Input placeholder="模糊匹配值" allowClear style={{ width: 200 }} />;
+    case "eq":
     default:
       return <Input placeholder="值" allowClear style={{ width: 200 }} />;
   }

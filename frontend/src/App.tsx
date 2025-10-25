@@ -52,8 +52,8 @@ import { DOCUMENT_TYPES } from "./features/documents/constants";
 import type {
   DocumentFilterFormValues,
   MetadataFilterFormValue,
-  MetadataValueType,
 } from "./features/documents/types";
+import type { MetadataOperator } from "./api/documents";
 import { DocumentHistoryDrawer } from "./features/documents/components/DocumentHistoryDrawer";
 import { DocumentTrashDrawer } from "./features/documents/components/DocumentTrashDrawer";
 import { DocumentReorderModal } from "./features/documents/components/DocumentReorderModal";
@@ -168,11 +168,9 @@ const App = () => {
           params.id = [numericId];
         }
       }
-      const metadataQuery = buildMetadataQuery(
-        sanitizeMetadataFilters(documentFilters.metadataFilters),
-      );
-      if (metadataQuery && Object.keys(metadataQuery).length > 0) {
-        params.metadata = metadataQuery;
+      const metadataClauses = sanitizeMetadataFilters(documentFilters.metadataFilters);
+      if (metadataClauses) {
+        params.metadataClauses = metadataClauses;
       }
       params.size = 100;
       params.include_descendants = includeDescendants;
@@ -896,10 +894,10 @@ const App = () => {
 
 export default App;
 
-interface SanitizedMetadataFilter extends MetadataFilterFormValue {
+interface SanitizedMetadataFilter {
   key: string;
-  type: MetadataValueType;
-  value: string | string[];
+  operator: MetadataOperator;
+  values: string[];
 }
 
 function sanitizeMetadataFilters(
@@ -914,36 +912,35 @@ function sanitizeMetadataFilters(
     if (!key) {
       return;
     }
-    const type: MetadataValueType = filter.type ?? "string";
-    switch (type) {
-      case "string": {
+    const operator: MetadataOperator = filter.operator ?? "eq";
+    switch (operator) {
+      case "eq":
+      case "like": {
         const value = typeof filter.value === "string" ? filter.value.trim() : "";
         if (value) {
-          sanitized.push({ key, type, value });
+          sanitized.push({ key, operator, values: [value] });
         }
         break;
       }
-      case "number": {
-        const value = typeof filter.value === "string" ? filter.value.trim() : "";
-        if (value && !Number.isNaN(Number(value))) {
-          sanitized.push({ key, type, value });
-        }
-        break;
-      }
-      case "boolean": {
-        const raw = typeof filter.value === "string" ? filter.value : "";
-        if (raw === "true" || raw === "false") {
-          sanitized.push({ key, type, value: raw });
-        }
-        break;
-      }
-      case "string[]": {
+      case "in":
+      case "any":
+      case "all": {
         const raw = Array.isArray(filter.value) ? filter.value : [];
-        const value = Array.from(
+        const values = Array.from(
           new Set(raw.map((item) => item.trim()).filter((item) => item.length > 0)),
         );
-        if (value.length > 0) {
-          sanitized.push({ key, type, value });
+        if (values.length > 0) {
+          sanitized.push({ key, operator, values });
+        }
+        break;
+      }
+      case "gt":
+      case "gte":
+      case "lt":
+      case "lte": {
+        const value = typeof filter.value === "string" ? filter.value.trim() : "";
+        if (value && !Number.isNaN(Number(value))) {
+          sanitized.push({ key, operator, values: [value] });
         }
         break;
       }
@@ -952,47 +949,6 @@ function sanitizeMetadataFilters(
     }
   });
   return sanitized.length > 0 ? sanitized : undefined;
-}
-
-function buildMetadataQuery(
-  filters?: SanitizedMetadataFilter[],
-): Record<string, string | number | boolean | string[]> | undefined {
-  if (!filters || filters.length === 0) {
-    return undefined;
-  }
-  const result: Record<string, string | number | boolean | string[]> = {};
-  filters.forEach(({ key, type = "string", value }) => {
-    switch (type) {
-      case "string":
-        if (typeof value === "string" && value.length > 0) {
-          result[key] = value;
-        }
-        break;
-      case "number":
-        if (typeof value === "string" && value.length > 0) {
-          const numeric = Number(value);
-          if (!Number.isNaN(numeric)) {
-            result[key] = numeric;
-          }
-        }
-        break;
-      case "boolean":
-        if (value === "true") {
-          result[key] = true;
-        } else if (value === "false") {
-          result[key] = false;
-        }
-        break;
-      case "string[]":
-        if (Array.isArray(value) && value.length > 0) {
-          result[key] = value;
-        }
-        break;
-      default:
-        break;
-    }
-  });
-  return Object.keys(result).length > 0 ? result : undefined;
 }
 
 function buildTrashColumns(
