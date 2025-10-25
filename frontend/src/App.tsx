@@ -25,6 +25,7 @@ import { Category, getCategoryTree } from "./api/categories";
 import {
   Document,
   DocumentListParams,
+  MetadataFilterClause,
   DocumentReorderPayload,
   DocumentTrashParams,
   DocumentTrashPage,
@@ -168,9 +169,19 @@ const App = () => {
           params.id = [numericId];
         }
       }
-      const metadataClauses = sanitizeMetadataFilters(documentFilters.metadataFilters);
-      if (metadataClauses) {
-        params.metadataClauses = metadataClauses;
+      const metadataFilters = sanitizeMetadataFilters(documentFilters.metadataFilters);
+      const tagClauses = buildTagClauses(documentFilters.tags);
+      const combinedClauses: MetadataFilterClause[] = [];
+      if (metadataFilters) {
+        combinedClauses.push(
+          ...metadataFilters.map(({ key, operator, values }) => ({ key, operator, values })),
+        );
+      }
+      if (tagClauses) {
+        combinedClauses.push(...tagClauses);
+      }
+      if (combinedClauses.length > 0) {
+        params.metadataClauses = combinedClauses;
       }
       params.size = 100;
       params.include_descendants = includeDescendants;
@@ -373,6 +384,15 @@ const App = () => {
         docId: values.docId?.trim() || undefined,
         query: values.query?.trim() || undefined,
       };
+      const sanitizedTags =
+        values.tags
+          ?.map((tag) => tag.trim())
+          .filter((tag) => tag.length > 0) ?? [];
+      if (sanitizedTags.length > 0) {
+        trimmed.tags = sanitizedTags;
+      } else {
+        delete trimmed.tags;
+      }
       const sanitizedMetadata = sanitizeMetadataFilters(values.metadataFilters);
       if (sanitizedMetadata) {
         trimmed.metadataFilters = sanitizedMetadata;
@@ -894,7 +914,7 @@ const App = () => {
 
 export default App;
 
-interface SanitizedMetadataFilter {
+interface SanitizedMetadataFilter extends MetadataFilterFormValue {
   key: string;
   operator: MetadataOperator;
   values: string[];
@@ -913,10 +933,16 @@ function sanitizeMetadataFilters(
       return;
     }
     const operator: MetadataOperator = filter.operator ?? "eq";
+    const existingValues = Array.isArray((filter as SanitizedMetadataFilter).values)
+      ? (filter as SanitizedMetadataFilter).values
+      : undefined;
     switch (operator) {
       case "eq":
       case "like": {
-        const value = typeof filter.value === "string" ? filter.value.trim() : "";
+        let value = typeof filter.value === "string" ? filter.value.trim() : "";
+        if (!value && existingValues && existingValues.length > 0) {
+          value = existingValues[0]?.trim() ?? "";
+        }
         if (value) {
           sanitized.push({ key, operator, values: [value] });
         }
@@ -925,7 +951,10 @@ function sanitizeMetadataFilters(
       case "in":
       case "any":
       case "all": {
-        const raw = Array.isArray(filter.value) ? filter.value : [];
+        const rawSource = Array.isArray(filter.value) ? filter.value : existingValues ?? [];
+        const raw = rawSource.map((item) =>
+          typeof item === "string" ? item : String(item ?? ""),
+        );
         const values = Array.from(
           new Set(raw.map((item) => item.trim()).filter((item) => item.length > 0)),
         );
@@ -938,7 +967,10 @@ function sanitizeMetadataFilters(
       case "gte":
       case "lt":
       case "lte": {
-        const value = typeof filter.value === "string" ? filter.value.trim() : "";
+        let value = typeof filter.value === "string" ? filter.value.trim() : "";
+        if (!value && existingValues && existingValues.length > 0) {
+          value = existingValues[0]?.trim() ?? "";
+        }
         if (value && !Number.isNaN(Number(value))) {
           sanitized.push({ key, operator, values: [value] });
         }
@@ -949,6 +981,22 @@ function sanitizeMetadataFilters(
     }
   });
   return sanitized.length > 0 ? sanitized : undefined;
+}
+
+function buildTagClauses(tags?: string[]): MetadataFilterClause[] | undefined {
+  if (!tags || tags.length === 0) {
+    return undefined;
+  }
+  const normalized = Array.from(
+    new Set(tags.map((tag) => tag.trim()).filter((tag) => tag.length > 0)),
+  );
+  if (normalized.length === 0) {
+    return undefined;
+  }
+  if (normalized.length === 1) {
+    return [{ key: "tags", operator: "any", values: normalized }];
+  }
+  return [{ key: "tags", operator: "all", values: normalized }];
 }
 
 function buildTrashColumns(

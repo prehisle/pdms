@@ -1,11 +1,11 @@
-import { describe, expect, it, vi } from 'vitest';
-import type { Document, MetadataOperator } from '../../../api/documents';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+import type { Document, MetadataOperator, MetadataFilterClause } from '../../../api/documents';
 import type {
   DocumentFilterFormValues,
   MetadataFilterFormValue,
 } from '../types';
 
-interface SanitizedMetadataFilter {
+interface SanitizedMetadataFilter extends MetadataFilterFormValue {
   key: string;
   operator: MetadataOperator;
   values: string[];
@@ -35,8 +35,18 @@ async function simulateDocumentQuery(
     }
   }
   const metadataFilters = sanitizeMetadataFilters(documentFilters.metadataFilters);
+  const tagClauses = buildTagClauses(documentFilters.tags);
+  const combinedClauses: MetadataFilterClause[] = [];
   if (metadataFilters) {
-    params.metadataClauses = metadataFilters;
+    combinedClauses.push(
+      ...metadataFilters.map(({ key, operator, values }) => ({ key, operator, values })),
+    );
+  }
+  if (tagClauses) {
+    combinedClauses.push(...tagClauses);
+  }
+  if (combinedClauses.length > 0) {
+    params.metadataClauses = combinedClauses;
   }
   params.size = 100;
   params.include_descendants = includeDescendants;
@@ -254,17 +264,15 @@ describe('Document Query Logic', () => {
     });
   });
 
-  it('should filter by metadata tags', async () => {
+  it('should filter by tags field with single tag', async () => {
     const filters: DocumentFilterFormValues = {
-      metadataFilters: [
-        { key: 'tags', operator: 'like', value: 'grammar' },
-      ],
+      tags: ['grammar'],
     };
 
     const result = await simulateDocumentQuery(100, filters, true);
 
     expect(mockGetNodeDocuments).toHaveBeenCalledWith(100, {
-      metadataClauses: [{ key: 'tags', operator: 'like', values: ['grammar'] }],
+      metadataClauses: [{ key: 'tags', operator: 'any', values: ['grammar'] }],
       size: 100,
       include_descendants: true,
     });
@@ -273,17 +281,15 @@ describe('Document Query Logic', () => {
     expect(result[0].id).toBe(1);
   });
 
-  it('should filter by metadata tags array', async () => {
+  it('should filter by tags field requiring all matches', async () => {
     const filters: DocumentFilterFormValues = {
-      metadataFilters: [
-        { key: 'tags', operator: 'all', value: ['grammar'] },
-      ],
+      tags: ['grammar', 'reading'],
     };
 
     const result = await simulateDocumentQuery(100, filters, true);
 
     expect(mockGetNodeDocuments).toHaveBeenCalledWith(100, {
-      metadataClauses: [{ key: 'tags', operator: 'all', values: ['grammar'] }],
+      metadataClauses: [{ key: 'tags', operator: 'all', values: ['grammar', 'reading'] }],
       size: 100,
       include_descendants: true,
     });
@@ -306,10 +312,16 @@ function sanitizeMetadataFilters(
       return;
     }
     const operator: MetadataOperator = filter.operator ?? 'eq';
+    const existingValues = Array.isArray((filter as SanitizedMetadataFilter).values)
+      ? (filter as SanitizedMetadataFilter).values
+      : undefined;
     switch (operator) {
       case 'eq':
       case 'like': {
-        const value = typeof filter.value === 'string' ? filter.value.trim() : '';
+        let value = typeof filter.value === 'string' ? filter.value.trim() : '';
+        if (!value && existingValues && existingValues.length > 0) {
+          value = existingValues[0]?.trim() ?? '';
+        }
         if (value) {
           sanitized.push({ key, operator, values: [value] });
         }
@@ -318,7 +330,10 @@ function sanitizeMetadataFilters(
       case 'in':
       case 'any':
       case 'all': {
-        const raw = Array.isArray(filter.value) ? filter.value : [];
+        const rawSource = Array.isArray(filter.value) ? filter.value : existingValues ?? [];
+        const raw = rawSource.map((item) =>
+          typeof item === 'string' ? item : String(item ?? ''),
+        );
         const values = Array.from(
           new Set(raw.map((item) => item.trim()).filter((item) => item.length > 0)),
         );
@@ -331,7 +346,10 @@ function sanitizeMetadataFilters(
       case 'gte':
       case 'lt':
       case 'lte': {
-        const value = typeof filter.value === 'string' ? filter.value.trim() : '';
+        let value = typeof filter.value === 'string' ? filter.value.trim() : '';
+        if (!value && existingValues && existingValues.length > 0) {
+          value = existingValues[0]?.trim() ?? '';
+        }
         if (value && !Number.isNaN(Number(value))) {
           sanitized.push({ key, operator, values: [value] });
         }
@@ -342,6 +360,22 @@ function sanitizeMetadataFilters(
     }
   });
   return sanitized.length > 0 ? sanitized : undefined;
+}
+
+function buildTagClauses(tags?: string[]): MetadataFilterClause[] | undefined {
+  if (!tags || tags.length === 0) {
+    return undefined;
+  }
+  const normalized = Array.from(
+    new Set(tags.map((tag) => tag.trim()).filter((tag) => tag.length > 0)),
+  );
+  if (normalized.length === 0) {
+    return undefined;
+  }
+  if (normalized.length === 1) {
+    return [{ key: 'tags', operator: 'any', values: normalized }];
+  }
+  return [{ key: 'tags', operator: 'all', values: normalized }];
 }
 
 function buildMetadataQuery(

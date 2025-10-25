@@ -90,6 +90,14 @@ export const DocumentPanel: FC<DocumentPanelProps> = ({
             options={documentTypes}
           />
         </Form.Item>
+        <Form.Item name="tags" label="标签">
+          <Select
+            mode="tags"
+            allowClear
+            style={{ minWidth: 200 }}
+            placeholder="输入或选择标签"
+          />
+        </Form.Item>
         <Form.Item style={{ width: "100%", marginBottom: 0 }}>
           <MetadataFiltersField filterForm={filterForm} onReset={onReset} />
         </Form.Item>

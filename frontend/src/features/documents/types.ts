@@ -1,9 +1,4 @@
-export interface DocumentFilterFormValues {
-  docId?: string;
-  query?: string;
-  type?: string;
-  metadataFilters?: MetadataFilterFormValue[];
-}
+import type { MetadataOperator } from "../../api/documents";
 
 export interface DocumentFormValues {
   title: string;
@@ -18,6 +13,14 @@ export interface MetadataFilterFormValue {
   key?: string;
   operator?: MetadataOperator;
   value?: string | string[];
+}
+
+export interface DocumentFilterFormValues {
+  docId?: string;
+  query?: string;
+  type?: string;
+  tags?: string[];
+  metadataFilters?: MetadataFilterFormValue[];
 }
 
 export interface DictationContent {
@@ -105,4 +108,3 @@ export interface EssayDocumentYaml {
   time_limit?: number;
   tags?: string[];
 }
-import type { MetadataOperator } from "../../api/documents";
