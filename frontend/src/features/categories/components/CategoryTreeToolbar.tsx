@@ -21,6 +21,7 @@ interface CategoryTreeToolbarProps {
   createLoading: boolean;
   trashIsFetching: boolean;
   selectedNodeId: number | null;
+  canCreate?: boolean; // 是否可以创建根目录
 }
 
 export const CategoryTreeToolbar: FC<CategoryTreeToolbarProps> = ({
@@ -36,6 +37,7 @@ export const CategoryTreeToolbar: FC<CategoryTreeToolbarProps> = ({
   createLoading,
   trashIsFetching,
   selectedNodeId,
+  canCreate = true,
 }) => (
   <div
     style={{
@@ -64,19 +66,21 @@ export const CategoryTreeToolbar: FC<CategoryTreeToolbarProps> = ({
         aria-label="刷新目录"
       />
     </Tooltip>
-    <Tooltip title="新建根目录">
-      <span style={{ display: "inline-flex" }}>
-        <Button
-          icon={<FolderAddOutlined />}
-          type="primary"
-          shape="circle"
-          onClick={onCreateRoot}
-          loading={createLoading}
-          disabled={createLoading}
-          aria-label="新建根目录"
-        />
-      </span>
-    </Tooltip>
+    {canCreate && (
+      <Tooltip title="新建根目录">
+        <span style={{ display: "inline-flex" }}>
+          <Button
+            icon={<FolderAddOutlined />}
+            type="primary"
+            shape="circle"
+            onClick={onCreateRoot}
+            loading={createLoading}
+            disabled={createLoading}
+            aria-label="新建根目录"
+          />
+        </span>
+      </Tooltip>
+    )}
     <Tooltip title="打开回收站">
       <span style={{ display: "inline-flex" }}>
         <Button

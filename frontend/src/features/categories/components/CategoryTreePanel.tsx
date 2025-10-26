@@ -46,6 +46,8 @@ export interface CategoryTreePanelProps {
   messageApi: MessageInstance;
   dragDebugEnabled: boolean;
   menuDebugEnabled: boolean;
+  canManageCategories?: boolean; // 是否有权限管理分类（创建、编辑、删除）
+  canCreateRoot?: boolean; // 是否可以创建根节点
   onSelectionChange: (payload: {
     selectedIds: number[];
     selectionParentId: ParentKey | undefined;
@@ -79,6 +81,8 @@ export function CategoryTreePanel({
   messageApi,
   dragDebugEnabled,
   menuDebugEnabled,
+  canManageCategories = true,
+  canCreateRoot = true,
   onSelectionChange,
   onRequestCreate,
   onRequestRename,
@@ -361,7 +365,7 @@ export function CategoryTreePanel({
     ];
 
     if (resolvedSelectionAvailable) {
-      if (resolvedSelectionIds.length === 1) {
+      if (canManageCategories && resolvedSelectionIds.length === 1) {
         const targetId = resolvedSelectionIds[0];
         items.push(
           {
@@ -386,47 +390,49 @@ export function CategoryTreePanel({
           },
         );
       }
-      items.push(
-        {
-          key: "copy-selection",
-          icon: <CopyOutlined />,
-          label: "复制所选",
-          disabled: !contextCanCopy,
-          onClick: () => {
-            closeContextMenu("action:copy-selection");
-            handleCopySelection({
-              ids: resolvedSelectionIds,
-              parentId: resolvedSelectionParent ?? null,
-            });
-          },
+      items.push({
+        key: "copy-selection",
+        icon: <CopyOutlined />,
+        label: "复制所选",
+        disabled: !contextCanCopy,
+        onClick: () => {
+          closeContextMenu("action:copy-selection");
+          handleCopySelection({
+            ids: resolvedSelectionIds,
+            parentId: resolvedSelectionParent ?? null,
+          });
         },
-        {
-          key: "cut-selection",
-          icon: <ScissorOutlined />,
-          label: "剪切所选",
-          disabled: !contextCanCopy,
-          onClick: () => {
-            closeContextMenu("action:cut-selection");
-            handleCutSelection({
-              ids: resolvedSelectionIds,
-              parentId: resolvedSelectionParent ?? null,
-            });
+      });
+      if (canManageCategories) {
+        items.push(
+          {
+            key: "cut-selection",
+            icon: <ScissorOutlined />,
+            label: "剪切所选",
+            disabled: !contextCanCopy,
+            onClick: () => {
+              closeContextMenu("action:cut-selection");
+              handleCutSelection({
+                ids: resolvedSelectionIds,
+                parentId: resolvedSelectionParent ?? null,
+              });
+            },
           },
-        },
-        {
-          key: "delete-node",
-          icon: <DeleteOutlined />,
-          label: "删除目录",
-          disabled: resolvedSelectionIds.length === 0 || isMutating,
-          onClick: () => {
-            closeContextMenu("action:delete-node");
-            handleDeleteSelection(resolvedSelectionIds);
+          {
+            key: "delete-node",
+            icon: <DeleteOutlined />,
+            label: "删除目录",
+            disabled: resolvedSelectionIds.length === 0 || isMutating,
+            onClick: () => {
+              closeContextMenu("action:delete-node");
+              handleDeleteSelection(resolvedSelectionIds);
+            },
           },
-        },
-      );
+        );
+      }
     }
 
-    if (clipboard) {
+    if (clipboard && canManageCategories) {
       items.push({ type: "divider" });
       items.push(
         {
@@ -500,6 +506,7 @@ export function CategoryTreePanel({
 
     return items;
   }, [
+    canManageCategories,
     clipboard,
     clipboardSourceSet,
     clearClipboard,
@@ -663,6 +670,7 @@ export function CategoryTreePanel({
         createLoading={createLoading}
         trashIsFetching={trashIsFetching}
         selectedNodeId={selectedNodeId}
+        canCreate={canCreateRoot}
       />
       {clipboard ? (
         <Tag color={clipboard.mode === "cut" ? "orange" : "blue"} style={{ marginBottom: 16 }}>

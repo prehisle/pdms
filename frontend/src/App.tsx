@@ -1,6 +1,8 @@
 import {
+  Avatar,
   Button,
   Drawer,
+  Dropdown,
   Form,
   Layout,
   Popconfirm,
@@ -11,6 +13,7 @@ import {
   Typography,
   message,
 } from "antd";
+import type { MenuProps } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
@@ -19,9 +22,16 @@ import {
   DeleteOutlined,
   EditOutlined,
   HistoryOutlined,
+  KeyOutlined,
+  LogoutOutlined,
   RollbackOutlined,
+  TeamOutlined,
+  UserOutlined,
 } from "@ant-design/icons";
 import { Category, getCategoryTree } from "./api/categories";
+import { useAuth } from "./contexts/AuthContext";
+import { ChangePasswordModal } from "./features/auth";
+import { UserManagementDrawer } from "./features/users/UserManagementDrawer";
 import {
   Document,
   DocumentListParams,
@@ -75,10 +85,11 @@ const DocumentEditorFallback = () => (
   </div>
 );
 
-const { Sider, Content } = Layout;
+const { Header, Sider, Content } = Layout;
 
 const App = () => {
   const navigate = useNavigate();
+  const { user, logout } = useAuth();
   const { data, isLoading, isFetching, error, refetch } = useQuery({
     queryKey: ["categories-tree"],
     queryFn: () => getCategoryTree(),
@@ -89,6 +100,8 @@ const App = () => {
   const [lastSelectedId, setLastSelectedId] = useState<number | null>(null);
   const [messageApi, contextHolder] = message.useMessage();
   const [trashModalOpen, setTrashModalOpen] = useState(false);
+  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
+  const [userManagementOpen, setUserManagementOpen] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState<{
     open: boolean;
     parentId: number | null;
@@ -631,26 +644,28 @@ const App = () => {
                   aria-label="编辑文档"
                 />
               </Tooltip>
-              <Popconfirm
-                title="确认将该文档移入回收站？"
-                okText="移入"
-                cancelText="取消"
-                onConfirm={() => handleSoftDeleteDocument(record)}
-                disabled={deleteDocumentMutation.isPending && !deleting}
-              >
-                <Tooltip title="移入回收站">
-                  <span style={{ display: "inline-flex" }}>
-                    <Button
-                      icon={<DeleteOutlined />}
-                      type="text"
-                      danger
-                      shape="circle"
-                      loading={deleteDocumentMutation.isPending && deleting}
-                      aria-label="移入回收站"
-                    />
-                  </span>
-                </Tooltip>
-              </Popconfirm>
+              {user?.role !== "proofreader" && (
+                <Popconfirm
+                  title="确认将该文档移入回收站？"
+                  okText="移入"
+                  cancelText="取消"
+                  onConfirm={() => handleSoftDeleteDocument(record)}
+                  disabled={deleteDocumentMutation.isPending && !deleting}
+                >
+                  <Tooltip title="移入回收站">
+                    <span style={{ display: "inline-flex" }}>
+                      <Button
+                        icon={<DeleteOutlined />}
+                        type="text"
+                        danger
+                        shape="circle"
+                        loading={deleteDocumentMutation.isPending && deleting}
+                        aria-label="移入回收站"
+                      />
+                    </span>
+                  </Tooltip>
+                </Popconfirm>
+              )}
               <Tooltip title="历史版本">
                 <Button
                   icon={<HistoryOutlined />}
@@ -666,6 +681,7 @@ const App = () => {
       },
     ],
     [
+      user,
       deleteDocumentMutation.isPending,
       deletingDocId,
       handleEditDocument,
@@ -691,9 +707,93 @@ const App = () => {
     });
   }, [documentReorderMutation, selectedNodeId]);
 
+  // 用户下拉菜单
+  const getRoleLabel = (role: string) => {
+    switch (role) {
+      case "super_admin":
+        return "超级管理员";
+      case "course_admin":
+        return "课程管理员";
+      case "proofreader":
+        return "校对员";
+      default:
+        return role;
+    }
+  };
+
+  const canManageUsers = user?.role === "super_admin";
+
+  const userMenuItems: MenuProps["items"] = [
+    {
+      key: "user-info",
+      label: (
+        <div>
+          <div style={{ fontWeight: 500 }}>{user?.display_name || user?.username}</div>
+          <div style={{ fontSize: "12px", color: "#999" }}>{getRoleLabel(user?.role || "")}</div>
+        </div>
+      ),
+      disabled: true,
+    },
+    { type: "divider" },
+    ...(canManageUsers
+      ? [
+          {
+            key: "user-management",
+            label: "用户管理",
+            icon: <TeamOutlined />,
+            onClick: () => {
+              setUserManagementOpen(true);
+            },
+          },
+        ]
+      : []),
+    {
+      key: "change-password",
+      label: "修改密码",
+      icon: <KeyOutlined />,
+      onClick: () => {
+        setChangePasswordOpen(true);
+      },
+    },
+    {
+      key: "logout",
+      label: "退出登录",
+      icon: <LogoutOutlined />,
+      onClick: async () => {
+        try {
+          await logout();
+          message.success("已退出登录");
+          navigate("/login");
+        } catch (error) {
+          message.error("退出登录失败");
+        }
+      },
+    },
+  ];
+
   return (
     <Layout style={{ minHeight: "100vh" }}>
       {contextHolder}
+      <Header
+        style={{
+          background: "#fff",
+          padding: "0 24px",
+          borderBottom: "1px solid #f0f0f0",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+        }}
+      >
+        <div style={{ fontSize: "18px", fontWeight: 600 }}>
+          YDMS 题库管理系统
+        </div>
+        <Dropdown menu={{ items: userMenuItems }} placement="bottomRight">
+          <Space style={{ cursor: "pointer" }}>
+            <Avatar icon={<UserOutlined />} size="small" />
+            <span>{user?.display_name || user?.username}</span>
+          </Space>
+        </Dropdown>
+      </Header>
       <Layout>
         <Sider
           width={360}
@@ -720,6 +820,8 @@ const App = () => {
             messageApi={messageApi}
             dragDebugEnabled={dragDebugEnabled}
             menuDebugEnabled={menuDebugEnabled}
+            canManageCategories={user?.role !== "proofreader"}
+            canCreateRoot={user?.role === "super_admin"}
             onSelectionChange={handleSelectionChange}
             onRequestCreate={handleRequestCreate}
             onRequestRename={handleRequestRename}
@@ -743,6 +845,7 @@ const App = () => {
               isLoading={documentsQuery.isLoading}
               isFetching={documentsQuery.isFetching}
               error={documentsQuery.error}
+              canCreateDocument={user?.role !== "proofreader"}
               onSearch={handleDocumentSearch}
               onReset={handleDocumentReset}
               onAddDocument={handleToolbarAddDocument}
@@ -907,6 +1010,14 @@ const App = () => {
             })
             .catch(() => undefined);
         }}
+      />
+      <ChangePasswordModal
+        open={changePasswordOpen}
+        onClose={() => setChangePasswordOpen(false)}
+      />
+      <UserManagementDrawer
+        open={userManagementOpen}
+        onClose={() => setUserManagementOpen(false)}
       />
     </Layout>
   );

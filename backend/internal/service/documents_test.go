@@ -14,7 +14,7 @@ func TestCreateDocument(t *testing.T) {
 	fake := newFakeNDR()
 	now := time.Now().UTC()
 	fake.createDocResp = sampleDocument(1, "Test Doc", "overview", 1, now, now)
-	svc := NewService(cache.NewNoop(), fake)
+	svc := NewService(cache.NewNoop(), fake, nil)
 
 	docType := "overview"
 	position := 1
@@ -43,7 +43,7 @@ func TestCreateDocumentWithoutType(t *testing.T) {
 	fake := newFakeNDR()
 	now := time.Now().UTC()
 	fake.createDocResp = sampleDocument(2, "Plain Doc", "", 1, now, now)
-	svc := NewService(cache.NewNoop(), fake)
+	svc := NewService(cache.NewNoop(), fake, nil)
 
 	doc, err := svc.CreateDocument(context.Background(), RequestMeta{}, DocumentCreateRequest{
 		Title:   "Plain Doc",
@@ -64,7 +64,7 @@ func TestUpdateDocument(t *testing.T) {
 	fake := newFakeNDR()
 	now := time.Now().UTC()
 	fake.updateDocResp = sampleDocument(3, "Updated Doc", "dictation", 2, now, now)
-	svc := NewService(cache.NewNoop(), fake)
+	svc := NewService(cache.NewNoop(), fake, nil)
 
 	newTitle := "Updated Doc"
 	newType := "dictation"
@@ -98,7 +98,7 @@ func TestReorderDocuments(t *testing.T) {
 	doc1 := sampleDocument(10, "Doc A", "overview", 1, now, now)
 	fake.updateDocResp = doc1 // This will be reused for all updates
 
-	svc := NewService(cache.NewNoop(), fake)
+	svc := NewService(cache.NewNoop(), fake, nil)
 
 	docs, err := svc.ReorderDocuments(context.Background(), RequestMeta{}, DocumentReorderRequest{
 		NodeID:     100,
@@ -128,7 +128,7 @@ func TestReorderDocuments(t *testing.T) {
 
 func TestReorderDocumentsEmptyOrderedIDs(t *testing.T) {
 	fake := newFakeNDR()
-	svc := NewService(cache.NewNoop(), fake)
+	svc := NewService(cache.NewNoop(), fake, nil)
 
 	_, err := svc.ReorderDocuments(context.Background(), RequestMeta{}, DocumentReorderRequest{
 		NodeID:     100,
@@ -144,7 +144,7 @@ func TestReorderDocumentsEmptyOrderedIDs(t *testing.T) {
 
 func TestDeleteDocument(t *testing.T) {
 	fake := newFakeNDR()
-	svc := NewService(cache.NewNoop(), fake)
+	svc := NewService(cache.NewNoop(), fake, nil)
 
 	if err := svc.DeleteDocument(context.Background(), RequestMeta{}, 42); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -157,7 +157,7 @@ func TestDeleteDocument(t *testing.T) {
 func TestRestoreDocument(t *testing.T) {
 	fake := newFakeNDR()
 	fake.restoreDocResp = ndrclient.Document{ID: 7, Title: "Restored"}
-	svc := NewService(cache.NewNoop(), fake)
+	svc := NewService(cache.NewNoop(), fake, nil)
 
 	doc, err := svc.RestoreDocument(context.Background(), RequestMeta{}, 7)
 	if err != nil {
@@ -173,7 +173,7 @@ func TestRestoreDocument(t *testing.T) {
 
 func TestPurgeDocument(t *testing.T) {
 	fake := newFakeNDR()
-	svc := NewService(cache.NewNoop(), fake)
+	svc := NewService(cache.NewNoop(), fake, nil)
 
 	if err := svc.PurgeDocument(context.Background(), RequestMeta{}, 55); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -209,7 +209,7 @@ func TestListDeletedDocuments(t *testing.T) {
 		},
 	}
 
-	svc := NewService(cache.NewNoop(), fake)
+	svc := NewService(cache.NewNoop(), fake, nil)
 
 	page, err := svc.ListDeletedDocuments(context.Background(), RequestMeta{}, url.Values{})
 	if err != nil {
@@ -235,7 +235,7 @@ func TestListDocumentVersionsUsesItemsFallback(t *testing.T) {
 		},
 	}
 
-	svc := NewService(cache.NewNoop(), fake)
+	svc := NewService(cache.NewNoop(), fake, nil)
 
 	page, err := svc.ListDocumentVersions(context.Background(), RequestMeta{}, 10, 1, 2)
 	if err != nil {

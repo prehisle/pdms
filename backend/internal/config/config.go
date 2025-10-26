@@ -12,6 +12,8 @@ type Config struct {
 	NDR      NDRConfig
 	Auth     AuthConfig
 	Debug    DebugConfig
+	DB       DBConfig
+	JWT      JWTConfig
 }
 
 // NDRConfig stores settings for the upstream NDR service.
@@ -31,6 +33,22 @@ type AuthConfig struct {
 	AdminKey      string
 }
 
+// DBConfig stores database connection settings.
+type DBConfig struct {
+	Host     string
+	Port     int
+	User     string
+	Password string
+	DBName   string
+	SSLMode  string
+}
+
+// JWTConfig stores JWT authentication settings.
+type JWTConfig struct {
+	Secret string
+	Expiry string // e.g., "24h", "7d"
+}
+
 // Load builds a Config object from environment variables, providing sane defaults.
 func Load() Config {
 	return Config{
@@ -45,6 +63,18 @@ func Load() Config {
 		},
 		Debug: DebugConfig{
 			Traffic: parseEnvBool("YDMS_DEBUG_TRAFFIC", false),
+		},
+		DB: DBConfig{
+			Host:     firstNonEmpty(os.Getenv("YDMS_DB_HOST"), "localhost"),
+			Port:     parseEnvInt("YDMS_DB_PORT", 5432),
+			User:     firstNonEmpty(os.Getenv("YDMS_DB_USER"), "postgres"),
+			Password: firstNonEmpty(os.Getenv("YDMS_DB_PASSWORD"), ""),
+			DBName:   firstNonEmpty(os.Getenv("YDMS_DB_NAME"), "ydms"),
+			SSLMode:  firstNonEmpty(os.Getenv("YDMS_DB_SSLMODE"), "disable"),
+		},
+		JWT: JWTConfig{
+			Secret: firstNonEmpty(os.Getenv("YDMS_JWT_SECRET"), "change-me-in-production"),
+			Expiry: firstNonEmpty(os.Getenv("YDMS_JWT_EXPIRY"), "24h"),
 		},
 	}
 }

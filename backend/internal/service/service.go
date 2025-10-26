@@ -14,16 +14,19 @@ import (
 
 // Service encapsulates business logic and integrations.
 type Service struct {
-	cache cache.Provider
-	ndr   ndrclient.Client
+	cache       cache.Provider
+	ndr         ndrclient.Client
+	userService *UserService // 用于查询用户权限
 }
 
 // RequestMeta propagates authentication info to downstream services.
 type RequestMeta struct {
-	APIKey    string
-	UserID    string
-	RequestID string
-	AdminKey  string
+	APIKey        string
+	UserID        string
+	RequestID     string
+	AdminKey      string
+	UserRole      string // 用户角色
+	UserIDNumeric uint   // 用户 ID (数字)
 }
 
 func toNDRMeta(meta RequestMeta) ndrclient.RequestMeta {
@@ -36,10 +39,11 @@ func toNDRMeta(meta RequestMeta) ndrclient.RequestMeta {
 }
 
 // NewService wires dependencies together.
-func NewService(cache cache.Provider, ndr ndrclient.Client) *Service {
+func NewService(cache cache.Provider, ndr ndrclient.Client, userService *UserService) *Service {
 	return &Service{
-		cache: cache,
-		ndr:   ndr,
+		cache:       cache,
+		ndr:         ndr,
+		userService: userService,
 	}
 }
 

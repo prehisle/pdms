@@ -3,18 +3,22 @@ package api
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
 
+	"github.com/yjxt/ydms/backend/internal/auth"
+	"github.com/yjxt/ydms/backend/internal/database"
 	"github.com/yjxt/ydms/backend/internal/service"
 )
 
 // Handler exposes HTTP handlers that delegate to the service layer.
 type Handler struct {
-	service  *service.Service
-	defaults HeaderDefaults
+	service           *service.Service
+	permissionService *service.PermissionService
+	defaults          HeaderDefaults
 }
 
 type HeaderDefaults struct {
@@ -24,8 +28,12 @@ type HeaderDefaults struct {
 }
 
 // NewHandler returns a Handler wiring dependencies.
-func NewHandler(service *service.Service, defaults HeaderDefaults) *Handler {
-	return &Handler{service: service, defaults: defaults}
+func NewHandler(svc *service.Service, permSvc *service.PermissionService, defaults HeaderDefaults) *Handler {
+	return &Handler{
+		service:           svc,
+		permissionService: permSvc,
+		defaults:          defaults,
+	}
 }
 
 // Health reports basic liveness.
@@ -147,6 +155,17 @@ func (h *Handler) Documents(w http.ResponseWriter, r *http.Request) {
 		}
 		writeJSON(w, http.StatusOK, page)
 	case http.MethodPost:
+		// 权限检查：校对员不能创建文档
+		user, err := h.getCurrentUser(r)
+		if err != nil {
+			respondError(w, http.StatusUnauthorized, err)
+			return
+		}
+		if user.Role == "proofreader" {
+			respondError(w, http.StatusForbidden, errors.New("proofreaders cannot create documents"))
+			return
+		}
+
 		var payload service.DocumentCreateRequest
 		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 			respondError(w, http.StatusBadRequest, err)
@@ -284,6 +303,17 @@ func (h *Handler) getDocument(w http.ResponseWriter, r *http.Request, meta servi
 }
 
 func (h *Handler) deleteDocument(w http.ResponseWriter, r *http.Request, meta service.RequestMeta, id int64) {
+	// 权限检查：校对员不能删除文档
+	user, err := h.getCurrentUser(r)
+	if err != nil {
+		respondError(w, http.StatusUnauthorized, err)
+		return
+	}
+	if user.Role == "proofreader" {
+		respondError(w, http.StatusForbidden, errors.New("proofreaders cannot delete documents"))
+		return
+	}
+
 	if err := h.service.DeleteDocument(r.Context(), meta, id); err != nil {
 		respondError(w, http.StatusBadGateway, err)
 		return
@@ -500,6 +530,17 @@ func (h *Handler) handleCategoryItem(w http.ResponseWriter, r *http.Request, met
 }
 
 func (h *Handler) createCategory(w http.ResponseWriter, r *http.Request, meta service.RequestMeta) {
+	// 权限检查：校对员不能创建分类（节点）
+	user, err := h.getCurrentUser(r)
+	if err != nil {
+		respondError(w, http.StatusUnauthorized, err)
+		return
+	}
+	if user.Role == "proofreader" {
+		respondError(w, http.StatusForbidden, errors.New("proofreaders cannot create categories"))
+		return
+	}
+
 	var payload service.CategoryCreateRequest
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		respondError(w, http.StatusBadRequest, err)
@@ -524,6 +565,17 @@ func (h *Handler) getCategory(w http.ResponseWriter, r *http.Request, meta servi
 }
 
 func (h *Handler) updateCategory(w http.ResponseWriter, r *http.Request, meta service.RequestMeta, id int64) {
+	// 权限检查：校对员不能编辑分类（节点）
+	user, err := h.getCurrentUser(r)
+	if err != nil {
+		respondError(w, http.StatusUnauthorized, err)
+		return
+	}
+	if user.Role == "proofreader" {
+		respondError(w, http.StatusForbidden, errors.New("proofreaders cannot edit categories"))
+		return
+	}
+
 	var payload service.CategoryUpdateRequest
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		respondError(w, http.StatusBadRequest, err)
@@ -538,6 +590,17 @@ func (h *Handler) updateCategory(w http.ResponseWriter, r *http.Request, meta se
 }
 
 func (h *Handler) deleteCategory(w http.ResponseWriter, r *http.Request, meta service.RequestMeta, id int64) {
+	// 权限检查：校对员不能删除分类（节点）
+	user, err := h.getCurrentUser(r)
+	if err != nil {
+		respondError(w, http.StatusUnauthorized, err)
+		return
+	}
+	if user.Role == "proofreader" {
+		respondError(w, http.StatusForbidden, errors.New("proofreaders cannot delete categories"))
+		return
+	}
+
 	if err := h.service.DeleteCategory(r.Context(), meta, id); err != nil {
 		respondError(w, http.StatusBadGateway, err)
 		return
@@ -794,12 +857,21 @@ func (h *Handler) metaFromRequest(r *http.Request) service.RequestMeta {
 		userID = h.defaults.UserID
 	}
 	requestID := r.Header.Get("x-request-id")
-	return service.RequestMeta{
+
+	meta := service.RequestMeta{
 		APIKey:    apiKey,
 		UserID:    userID,
 		RequestID: requestID,
 		AdminKey:  headerFallback(r.Header.Get("x-admin-key"), h.defaults.AdminKey),
 	}
+
+	// 尝试从 context 获取认证用户信息（由 JWT 中间件设置）
+	if user, ok := r.Context().Value(auth.UserContextKey).(*database.User); ok {
+		meta.UserRole = user.Role
+		meta.UserIDNumeric = user.ID
+	}
+
+	return meta
 }
 
 func headerFallback(values ...string) string {
@@ -819,4 +891,34 @@ func writeJSON(w http.ResponseWriter, status int, payload any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(payload)
+}
+
+// getCurrentUser 从 context 中获取当前用户
+func (h *Handler) getCurrentUser(r *http.Request) (*database.User, error) {
+	user, ok := r.Context().Value(auth.UserContextKey).(*database.User)
+	if !ok || user == nil {
+		return nil, errors.New("user not found in context")
+	}
+	return user, nil
+}
+
+// getDocumentNodeID 获取文档关联的节点 ID（通过查询文档的绑定关系）
+func (h *Handler) getDocumentNodeID(r *http.Request, meta service.RequestMeta, docID int64) (int64, error) {
+	// 获取文档详情
+	doc, err := h.service.GetDocument(r.Context(), meta, docID)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get document: %w", err)
+	}
+
+	// 如果文档有 node_id 绑定关系，返回该 ID
+	// 注意：NDR 文档可能没有绑定节点，此时返回错误
+	// TODO: 这里需要根据实际的 NDR API 响应结构来获取 node_id
+	// 暂时假设文档结构中有 NodeID 字段
+	if doc.ID == 0 {
+		return 0, errors.New("document not bound to any node")
+	}
+
+	// 暂时返回 0，实际应该从 doc 中提取 node_id
+	// 这需要根据 NDR API 的实际响应来实现
+	return 0, errors.New("node_id extraction not implemented")
 }

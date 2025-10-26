@@ -22,6 +22,7 @@ import (
 	"github.com/yjxt/ydms/backend/internal/api"
 	"github.com/yjxt/ydms/backend/internal/cache"
 	"github.com/yjxt/ydms/backend/internal/config"
+	"github.com/yjxt/ydms/backend/internal/database"
 	"github.com/yjxt/ydms/backend/internal/ndrclient"
 	"github.com/yjxt/ydms/backend/internal/service"
 )
@@ -48,21 +49,69 @@ func runServer() error {
 	loadDotEnv()
 
 	cfg := config.Load()
-	log.Printf("config loaded: ndr_base=%s default_user=%s admin_key_set=%t debug_traffic=%t", cfg.NDR.BaseURL, cfg.Auth.DefaultUserID, cfg.Auth.AdminKey != "not_set", cfg.Debug.Traffic)
+	log.Printf("config loaded: ndr_base=%s default_user=%s db=%s:%d/%s",
+		cfg.NDR.BaseURL, cfg.Auth.DefaultUserID, cfg.DB.Host, cfg.DB.Port, cfg.DB.DBName)
 
+	// 连接数据库
+	db, err := database.Connect(database.Config{
+		Host:     cfg.DB.Host,
+		Port:     cfg.DB.Port,
+		User:     cfg.DB.User,
+		Password: cfg.DB.Password,
+		DBName:   cfg.DB.DBName,
+		SSLMode:  cfg.DB.SSLMode,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to connect to database: %w", err)
+	}
+
+	// 运行数据库迁移
+	if err := database.AutoMigrate(db); err != nil {
+		return fmt.Errorf("failed to migrate database: %w", err)
+	}
+
+	// 解析 JWT 过期时间
+	jwtExpiry, err := time.ParseDuration(cfg.JWT.Expiry)
+	if err != nil {
+		log.Printf("warning: invalid JWT expiry duration '%s', using default 24h", cfg.JWT.Expiry)
+		jwtExpiry = 24 * time.Hour
+	}
+
+	// 创建服务
 	cacheProvider := cache.NewNoop()
 	ndr := ndrclient.NewClient(ndrclient.NDRConfig{
 		BaseURL: cfg.NDR.BaseURL,
 		APIKey:  cfg.NDR.APIKey,
 		Debug:   cfg.Debug.Traffic,
 	})
-	svc := service.NewService(cacheProvider, ndr)
-	handler := api.NewHandler(svc, api.HeaderDefaults{
+
+	// 创建认证相关服务
+	initService := service.NewInitService(db)
+	userService := service.NewUserService(db)
+	svc := service.NewService(cacheProvider, ndr, userService)
+	courseService := service.NewCourseService(db, ndr, userService)
+	permissionService := service.NewPermissionService(db, userService, ndr)
+
+	// 创建 handlers
+	handler := api.NewHandler(svc, permissionService, api.HeaderDefaults{
 		APIKey:   cfg.NDR.APIKey,
 		UserID:   cfg.Auth.DefaultUserID,
 		AdminKey: cfg.Auth.AdminKey,
 	})
-	router := api.NewRouter(handler)
+	initHandler := api.NewInitHandler(initService)
+	authHandler := api.NewAuthHandler(userService, cfg.JWT.Secret, jwtExpiry)
+	userHandler := api.NewUserHandler(userService)
+	courseHandler := api.NewCourseHandler(courseService)
+
+	// 创建路由器（使用新的配置方式）
+	router := api.NewRouterWithConfig(api.RouterConfig{
+		Handler:       handler,
+		InitHandler:   initHandler,
+		AuthHandler:   authHandler,
+		UserHandler:   userHandler,
+		CourseHandler: courseHandler,
+		JWTSecret:     cfg.JWT.Secret,
+	})
 
 	server := &http.Server{
 		Addr:              cfg.HTTPAddress(),

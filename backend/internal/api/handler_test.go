@@ -12,15 +12,30 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yjxt/ydms/backend/internal/auth"
 	"github.com/yjxt/ydms/backend/internal/cache"
+	"github.com/yjxt/ydms/backend/internal/database"
 	"github.com/yjxt/ydms/backend/internal/ndrclient"
 	"github.com/yjxt/ydms/backend/internal/service"
 )
 
+// withTestUser 添加测试用户到请求上下文
+func withTestUser(req *http.Request, user *database.User) *http.Request {
+	if user == nil {
+		user = &database.User{
+			ID:       1,
+			Username: "test-user",
+			Role:     "super_admin",
+		}
+	}
+	ctx := context.WithValue(req.Context(), auth.UserContextKey, user)
+	return req.WithContext(ctx)
+}
+
 func TestCategoriesEndpoints(t *testing.T) {
 	ndr := newInMemoryNDR()
-	svc := service.NewService(cache.NewNoop(), ndr)
-	handler := NewHandler(svc, HeaderDefaults{
+	svc := service.NewService(cache.NewNoop(), ndr, nil)
+	handler := NewHandler(svc, nil, HeaderDefaults{
 		APIKey:   "test-key",
 		UserID:   "tester",
 		AdminKey: "admin",
@@ -68,6 +83,7 @@ func TestCategoriesEndpoints(t *testing.T) {
 	}
 
 	deleteReq := httptest.NewRequest(http.MethodDelete, fmt.Sprintf("/api/v1/categories/%d", child.ID), nil)
+	deleteReq = withTestUser(deleteReq, nil) // 添加测试用户
 	deleteRec := httptest.NewRecorder()
 	router.ServeHTTP(deleteRec, deleteReq)
 	if deleteRec.Code != http.StatusNoContent {
@@ -117,6 +133,7 @@ func TestCategoriesEndpoints(t *testing.T) {
 	}
 
 	deleteAgainReq := httptest.NewRequest(http.MethodDelete, fmt.Sprintf("/api/v1/categories/%d", child.ID), nil)
+	deleteAgainReq = withTestUser(deleteAgainReq, nil) // 添加测试用户
 	deleteAgainRec := httptest.NewRecorder()
 	router.ServeHTTP(deleteAgainRec, deleteAgainReq)
 	if deleteAgainRec.Code != http.StatusNoContent {
@@ -147,8 +164,8 @@ func TestCategoriesEndpoints(t *testing.T) {
 
 func TestBulkCheckCategories(t *testing.T) {
 	ndr := newInMemoryNDR()
-	svc := service.NewService(cache.NewNoop(), ndr)
-	handler := NewHandler(svc, HeaderDefaults{})
+	svc := service.NewService(cache.NewNoop(), ndr, nil)
+	handler := NewHandler(svc, nil, HeaderDefaults{})
 	router := NewRouter(handler)
 
 	root := createCategory(t, router, `{"name":"Root"}`)
@@ -189,8 +206,8 @@ func TestBulkCheckCategories(t *testing.T) {
 
 func TestBulkCopyCategoriesEndpoint(t *testing.T) {
 	ndr := newInMemoryNDR()
-	svc := service.NewService(cache.NewNoop(), ndr)
-	handler := NewHandler(svc, HeaderDefaults{})
+	svc := service.NewService(cache.NewNoop(), ndr, nil)
+	handler := NewHandler(svc, nil, HeaderDefaults{})
 	router := NewRouter(handler)
 
 	existing := createCategory(t, router, `{"name":"Topic"}`)
@@ -249,8 +266,8 @@ func TestBulkCopyCategoriesEndpoint(t *testing.T) {
 
 func TestBulkMoveCategoriesEndpoint(t *testing.T) {
 	ndr := newInMemoryNDR()
-	svc := service.NewService(cache.NewNoop(), ndr)
-	handler := NewHandler(svc, HeaderDefaults{})
+	svc := service.NewService(cache.NewNoop(), ndr, nil)
+	handler := NewHandler(svc, nil, HeaderDefaults{})
 	router := NewRouter(handler)
 
 	sourceParent := createCategory(t, router, `{"name":"Source"}`)
@@ -316,11 +333,12 @@ func TestBulkMoveCategoriesEndpoint(t *testing.T) {
 
 func TestCategoriesEndpoints_InvalidJSON(t *testing.T) {
 	ndr := newInMemoryNDR()
-	svc := service.NewService(cache.NewNoop(), ndr)
-	handler := NewHandler(svc, HeaderDefaults{})
+	svc := service.NewService(cache.NewNoop(), ndr, nil)
+	handler := NewHandler(svc, nil, HeaderDefaults{})
 	router := NewRouter(handler)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/categories", strings.NewReader("{"))
+	req = withTestUser(req, nil) // 添加测试用户
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 
@@ -332,8 +350,8 @@ func TestCategoriesEndpoints_InvalidJSON(t *testing.T) {
 
 func TestCategoriesEndpoints_InvalidCategoryID(t *testing.T) {
 	ndr := newInMemoryNDR()
-	svc := service.NewService(cache.NewNoop(), ndr)
-	handler := NewHandler(svc, HeaderDefaults{})
+	svc := service.NewService(cache.NewNoop(), ndr, nil)
+	handler := NewHandler(svc, nil, HeaderDefaults{})
 	router := NewRouter(handler)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/categories/not-a-number", nil)
@@ -347,8 +365,8 @@ func TestCategoriesEndpoints_InvalidCategoryID(t *testing.T) {
 
 func TestCategoriesEndpoints_MethodNotAllowed(t *testing.T) {
 	ndr := newInMemoryNDR()
-	svc := service.NewService(cache.NewNoop(), ndr)
-	handler := NewHandler(svc, HeaderDefaults{})
+	svc := service.NewService(cache.NewNoop(), ndr, nil)
+	handler := NewHandler(svc, nil, HeaderDefaults{})
 	router := NewRouter(handler)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/categories", nil)
@@ -362,8 +380,8 @@ func TestCategoriesEndpoints_MethodNotAllowed(t *testing.T) {
 
 func TestCategoryRepositionEndpoint(t *testing.T) {
 	ndr := newInMemoryNDR()
-	svc := service.NewService(cache.NewNoop(), ndr)
-	handler := NewHandler(svc, HeaderDefaults{})
+	svc := service.NewService(cache.NewNoop(), ndr, nil)
+	handler := NewHandler(svc, nil, HeaderDefaults{})
 	router := NewRouter(handler)
 
 	root := createCategory(t, router, `{"name":"Root"}`)
@@ -417,8 +435,8 @@ func TestCategoryRepositionEndpoint(t *testing.T) {
 
 func TestCategoryBulkEndpoints(t *testing.T) {
 	ndr := newInMemoryNDR()
-	svc := service.NewService(cache.NewNoop(), ndr)
-	handler := NewHandler(svc, HeaderDefaults{})
+	svc := service.NewService(cache.NewNoop(), ndr, nil)
+	handler := NewHandler(svc, nil, HeaderDefaults{})
 	router := NewRouter(handler)
 
 	root := createCategory(t, router, `{"name":"BulkRoot"}`)
@@ -426,12 +444,14 @@ func TestCategoryBulkEndpoints(t *testing.T) {
 	childB := createCategory(t, router, fmt.Sprintf(`{"name":"B","parent_id":%d}`, root.ID))
 
 	deleteReqA := httptest.NewRequest(http.MethodDelete, fmt.Sprintf("/api/v1/categories/%d", childA.ID), nil)
+	deleteReqA = withTestUser(deleteReqA, nil) // 添加测试用户
 	deleteRecA := httptest.NewRecorder()
 	router.ServeHTTP(deleteRecA, deleteReqA)
 	if deleteRecA.Code != http.StatusNoContent {
 		t.Fatalf("expected 204 for delete A, got %d", deleteRecA.Code)
 	}
 	deleteReqB := httptest.NewRequest(http.MethodDelete, fmt.Sprintf("/api/v1/categories/%d", childB.ID), nil)
+	deleteReqB = withTestUser(deleteReqB, nil) // 添加测试用户
 	deleteRecB := httptest.NewRecorder()
 	router.ServeHTTP(deleteRecB, deleteReqB)
 	if deleteRecB.Code != http.StatusNoContent {
@@ -496,8 +516,8 @@ func TestCategoryBulkEndpoints(t *testing.T) {
 
 func TestBulkDeleteCategoriesEndpoint(t *testing.T) {
 	ndr := newInMemoryNDR()
-	svc := service.NewService(cache.NewNoop(), ndr)
-	handler := NewHandler(svc, HeaderDefaults{})
+	svc := service.NewService(cache.NewNoop(), ndr, nil)
+	handler := NewHandler(svc, nil, HeaderDefaults{})
 	router := NewRouter(handler)
 
 	root := createCategory(t, router, `{"name":"Root"}`)
@@ -552,6 +572,7 @@ func TestBulkDeleteCategoriesEndpoint(t *testing.T) {
 func createCategory(t *testing.T, router http.Handler, payload string) service.Category {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/categories", strings.NewReader(payload))
+	req = withTestUser(req, nil) // 添加默认测试用户
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
@@ -1080,8 +1101,8 @@ func (f *inMemoryNDR) tick() time.Time {
 
 func TestListDocumentsIDFilter(t *testing.T) {
 	ndr := newInMemoryNDR()
-	svc := service.NewService(cache.NewNoop(), ndr)
-	handler := NewHandler(svc, HeaderDefaults{})
+	svc := service.NewService(cache.NewNoop(), ndr, nil)
+	handler := NewHandler(svc, nil, HeaderDefaults{})
 	router := NewRouter(handler)
 
 	docA, err := ndr.CreateDocument(context.Background(), ndrclient.RequestMeta{}, ndrclient.DocumentCreate{Title: "Doc A"})
@@ -1133,8 +1154,8 @@ func TestListDocumentsIDFilter(t *testing.T) {
 
 func TestListNodeDocumentsIDFilter(t *testing.T) {
 	ndr := newInMemoryNDR()
-	svc := service.NewService(cache.NewNoop(), ndr)
-	handler := NewHandler(svc, HeaderDefaults{})
+	svc := service.NewService(cache.NewNoop(), ndr, nil)
+	handler := NewHandler(svc, nil, HeaderDefaults{})
 	router := NewRouter(handler)
 
 	root := createCategory(t, router, `{"name":"Root"}`)
@@ -1191,8 +1212,8 @@ func TestListNodeDocumentsIDFilter(t *testing.T) {
 
 func TestDocumentReorderEndpoint(t *testing.T) {
 	ndr := newInMemoryNDR()
-	svc := service.NewService(cache.NewNoop(), ndr)
-	handler := NewHandler(svc, HeaderDefaults{})
+	svc := service.NewService(cache.NewNoop(), ndr, nil)
+	handler := NewHandler(svc, nil, HeaderDefaults{})
 	router := NewRouter(handler)
 
 	// Create some documents
@@ -1254,8 +1275,8 @@ func TestDocumentReorderEndpoint(t *testing.T) {
 
 func TestDocumentReorderEndpoint_EmptyOrderedIDs(t *testing.T) {
 	ndr := newInMemoryNDR()
-	svc := service.NewService(cache.NewNoop(), ndr)
-	handler := NewHandler(svc, HeaderDefaults{})
+	svc := service.NewService(cache.NewNoop(), ndr, nil)
+	handler := NewHandler(svc, nil, HeaderDefaults{})
 	router := NewRouter(handler)
 
 	payload := `{"node_id":100,"ordered_ids":[]}`
@@ -1271,8 +1292,8 @@ func TestDocumentReorderEndpoint_EmptyOrderedIDs(t *testing.T) {
 
 func TestDocumentReorderEndpoint_InvalidJSON(t *testing.T) {
 	ndr := newInMemoryNDR()
-	svc := service.NewService(cache.NewNoop(), ndr)
-	handler := NewHandler(svc, HeaderDefaults{})
+	svc := service.NewService(cache.NewNoop(), ndr, nil)
+	handler := NewHandler(svc, nil, HeaderDefaults{})
 	router := NewRouter(handler)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/documents/reorder", strings.NewReader("{"))
@@ -1287,8 +1308,8 @@ func TestDocumentReorderEndpoint_InvalidJSON(t *testing.T) {
 
 func TestDeleteDocumentEndpoint(t *testing.T) {
 	ndr := newInMemoryNDR()
-	svc := service.NewService(cache.NewNoop(), ndr)
-	handler := NewHandler(svc, HeaderDefaults{})
+	svc := service.NewService(cache.NewNoop(), ndr, nil)
+	handler := NewHandler(svc, nil, HeaderDefaults{})
 	router := NewRouter(handler)
 
 	doc, err := ndr.CreateDocument(context.Background(), ndrclient.RequestMeta{}, ndrclient.DocumentCreate{Title: "Doc"})
@@ -1298,6 +1319,7 @@ func TestDeleteDocumentEndpoint(t *testing.T) {
 
 	url := fmt.Sprintf("/api/v1/documents/%d", doc.ID)
 	req := httptest.NewRequest(http.MethodDelete, url, nil)
+	req = withTestUser(req, nil) // 添加测试用户
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 
@@ -1315,8 +1337,8 @@ func TestDeleteDocumentEndpoint(t *testing.T) {
 
 func TestRestoreDocumentEndpoint(t *testing.T) {
 	ndr := newInMemoryNDR()
-	svc := service.NewService(cache.NewNoop(), ndr)
-	handler := NewHandler(svc, HeaderDefaults{})
+	svc := service.NewService(cache.NewNoop(), ndr, nil)
+	handler := NewHandler(svc, nil, HeaderDefaults{})
 	router := NewRouter(handler)
 
 	doc, err := ndr.CreateDocument(context.Background(), ndrclient.RequestMeta{}, ndrclient.DocumentCreate{Title: "Doc"})
@@ -1353,8 +1375,8 @@ func TestRestoreDocumentEndpoint(t *testing.T) {
 
 func TestPurgeDocumentEndpoint(t *testing.T) {
 	ndr := newInMemoryNDR()
-	svc := service.NewService(cache.NewNoop(), ndr)
-	handler := NewHandler(svc, HeaderDefaults{})
+	svc := service.NewService(cache.NewNoop(), ndr, nil)
+	handler := NewHandler(svc, nil, HeaderDefaults{})
 	router := NewRouter(handler)
 
 	doc, err := ndr.CreateDocument(context.Background(), ndrclient.RequestMeta{}, ndrclient.DocumentCreate{Title: "Doc"})
@@ -1377,8 +1399,8 @@ func TestPurgeDocumentEndpoint(t *testing.T) {
 
 func TestListDeletedDocumentsEndpoint(t *testing.T) {
 	ndr := newInMemoryNDR()
-	svc := service.NewService(cache.NewNoop(), ndr)
-	handler := NewHandler(svc, HeaderDefaults{})
+	svc := service.NewService(cache.NewNoop(), ndr, nil)
+	handler := NewHandler(svc, nil, HeaderDefaults{})
 	router := NewRouter(handler)
 
 	doc, err := ndr.CreateDocument(context.Background(), ndrclient.RequestMeta{}, ndrclient.DocumentCreate{Title: "Doc"})
@@ -1410,8 +1432,8 @@ func TestListDeletedDocumentsEndpoint(t *testing.T) {
 
 func TestGetDocumentEndpoint(t *testing.T) {
 	ndr := newInMemoryNDR()
-	svc := service.NewService(cache.NewNoop(), ndr)
-	handler := NewHandler(svc, HeaderDefaults{})
+	svc := service.NewService(cache.NewNoop(), ndr, nil)
+	handler := NewHandler(svc, nil, HeaderDefaults{})
 	router := NewRouter(handler)
 
 	doc, err := ndr.CreateDocument(context.Background(), ndrclient.RequestMeta{}, ndrclient.DocumentCreate{Title: "Doc"})
@@ -1438,12 +1460,13 @@ func TestGetDocumentEndpoint(t *testing.T) {
 
 func TestDocumentCreationWithTypeAndPosition(t *testing.T) {
 	ndr := newInMemoryNDR()
-	svc := service.NewService(cache.NewNoop(), ndr)
-	handler := NewHandler(svc, HeaderDefaults{})
+	svc := service.NewService(cache.NewNoop(), ndr, nil)
+	handler := NewHandler(svc, nil, HeaderDefaults{})
 	router := NewRouter(handler)
 
 	payload := `{"title":"Test Document","type":"overview","position":5,"content":{"format":"html","data":"<p>Hello World</p>"}}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/documents", strings.NewReader(payload))
+	req = withTestUser(req, nil) // 添加测试用户
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
@@ -1470,8 +1493,8 @@ func TestDocumentCreationWithTypeAndPosition(t *testing.T) {
 
 func TestDocumentUpdateWithTypeAndPosition(t *testing.T) {
 	ndr := newInMemoryNDR()
-	svc := service.NewService(cache.NewNoop(), ndr)
-	handler := NewHandler(svc, HeaderDefaults{})
+	svc := service.NewService(cache.NewNoop(), ndr, nil)
+	handler := NewHandler(svc, nil, HeaderDefaults{})
 	router := NewRouter(handler)
 
 	// Create a document first

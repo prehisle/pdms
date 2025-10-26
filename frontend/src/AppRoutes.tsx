@@ -2,6 +2,9 @@ import { lazy, Suspense } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Spin } from "antd";
 import App from "./App";
+import { AuthProvider } from "./contexts/AuthContext";
+import { PrivateRoute } from "./components/PrivateRoute";
+import { LoginPage, InitializePage } from "./features/auth";
 
 const DocumentEditor = lazy(() =>
   import("./features/documents/components/DocumentEditor").then((module) => ({
@@ -10,7 +13,14 @@ const DocumentEditor = lazy(() =>
 );
 
 const LoadingFallback = () => (
-  <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+  <div
+    style={{
+      display: "flex",
+      justifyContent: "center",
+      alignItems: "center",
+      height: "100vh",
+    }}
+  >
     <Spin size="large" tip="加载编辑器..." />
   </div>
 );
@@ -18,26 +28,45 @@ const LoadingFallback = () => (
 export const AppRoutes = () => {
   return (
     <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<App />} />
-        <Route
-          path="/documents/new"
-          element={
-            <Suspense fallback={<LoadingFallback />}>
-              <DocumentEditor />
-            </Suspense>
-          }
-        />
-        <Route
-          path="/documents/:docId/edit"
-          element={
-            <Suspense fallback={<LoadingFallback />}>
-              <DocumentEditor />
-            </Suspense>
-          }
-        />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+      <AuthProvider>
+        <Routes>
+          {/* 公开路由 */}
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/initialize" element={<InitializePage />} />
+
+          {/* 受保护的路由 */}
+          <Route
+            path="/"
+            element={
+              <PrivateRoute>
+                <App />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/documents/new"
+            element={
+              <PrivateRoute>
+                <Suspense fallback={<LoadingFallback />}>
+                  <DocumentEditor />
+                </Suspense>
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/documents/:docId/edit"
+            element={
+              <PrivateRoute>
+                <Suspense fallback={<LoadingFallback />}>
+                  <DocumentEditor />
+                </Suspense>
+              </PrivateRoute>
+            }
+          />
+
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </AuthProvider>
     </BrowserRouter>
   );
 };

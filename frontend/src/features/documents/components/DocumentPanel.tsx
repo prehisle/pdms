@@ -36,6 +36,7 @@ interface DocumentPanelProps {
   isLoading: boolean;
   isFetching: boolean;
   error: unknown;
+  canCreateDocument?: boolean; // 是否有权限创建文档
   onSearch: (values: DocumentFilterFormValues) => void;
   onReset: () => void;
   onAddDocument: () => void;
@@ -52,6 +53,7 @@ export const DocumentPanel: FC<DocumentPanelProps> = ({
   isLoading,
   isFetching,
   error,
+  canCreateDocument = true,
   onSearch,
   onReset,
   onAddDocument,
@@ -125,15 +127,17 @@ export const DocumentPanel: FC<DocumentPanelProps> = ({
               aria-label="调整文档排序"
             />
           </Tooltip>
-          <Tooltip title="新增文档">
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              onClick={onAddDocument}
-              disabled={selectedNodeId == null}
-              aria-label="新增文档"
-            />
-          </Tooltip>
+          {canCreateDocument && (
+            <Tooltip title="新增文档">
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={onAddDocument}
+                disabled={selectedNodeId == null}
+                aria-label="新增文档"
+              />
+            </Tooltip>
+          )}
         </Space>
       }
     >

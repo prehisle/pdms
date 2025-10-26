@@ -45,7 +45,7 @@ func TestCheckCategoryDependencies(t *testing.T) {
 	fake.getNodes[child.ID] = child
 	fake.documents[parent.ID] = 2
 
-	svc := NewService(cache.NewNoop(), fake)
+	svc := NewService(cache.NewNoop(), fake, nil)
 	resp, err := svc.CheckCategoryDependencies(context.Background(), RequestMeta{}, CategoryCheckRequest{
 		IDs:                []int64{parent.ID, child.ID},
 		IncludeDescendants: true,

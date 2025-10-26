@@ -107,6 +107,124 @@ npm run preview
 - 软删除：文档/节点用 `deleted_at` 标记；使用 `/nodes/{id}/restore` 或 `/documents/{id}/restore` 恢复
 - 清除：`/nodes/{id}/purge` 或 `/documents/{id}/purge` 永久删除
 
+### 用户认证和权限系统
+
+#### 角色定义
+YDMS 实现了基于角色的访问控制（RBAC），定义了三种用户角色：
+
+1. **super_admin（超级管理员）**
+   - 完全访问权限
+   - 可以创建/编辑/删除所有用户（包括其他 super_admin）
+   - 可以管理所有分类和文档
+   - 可以为 course_admin 分配课程权限
+
+2. **course_admin（课程管理员）**
+   - 可以创建/编辑/删除校对员用户
+   - 可以管理分配给自己的课程（根节点）及其子节点
+   - 可以创建/编辑/删除分类和文档
+   - 不能管理其他管理员
+
+3. **proofreader（校对员）**
+   - **只读**查看分类树
+   - **可以编辑**文档内容
+   - **可以查看和恢复**文档历史版本
+   - **不能**创建/删除文档
+   - **不能**创建/编辑/删除分类
+   - **不能**访问用户管理
+   - **可以**修改自己的密码
+
+#### 数据库模型
+
+**users 表**:
+```sql
+id            SERIAL PRIMARY KEY
+username      VARCHAR(100) UNIQUE NOT NULL
+password_hash VARCHAR(255) NOT NULL
+role          VARCHAR(50) NOT NULL  -- super_admin, course_admin, proofreader
+display_name  VARCHAR(100)
+created_by_id INT REFERENCES users(id)
+created_at    TIMESTAMP
+updated_at    TIMESTAMP
+deleted_at    TIMESTAMP  -- 软删除
+```
+
+**course_permissions 表**:
+```sql
+id           SERIAL PRIMARY KEY
+user_id      INT REFERENCES users(id)
+root_node_id INT NOT NULL  -- NDR 中的根节点 ID
+created_at   TIMESTAMP
+```
+
+#### 认证流程
+
+1. **初始化**: 系统首次启动时需要创建第一个 super_admin
+   - `POST /api/v1/init/setup`
+   - 检查状态: `GET /api/v1/init/status`
+
+2. **登录**: 用户使用用户名和密码登录
+   - `POST /api/v1/auth/login`
+   - 返回 JWT token 和用户信息
+
+3. **认证**: 使用 JWT token 进行 API 请求
+   - Header: `Authorization: Bearer <token>`
+   - Middleware 验证 token 并提取用户信息
+
+4. **其他操作**:
+   - 获取当前用户: `GET /api/v1/auth/me`
+   - 修改密码: `POST /api/v1/auth/change-password`
+   - 登出: `POST /api/v1/auth/logout` (前端删除 token)
+
+#### 用户管理 API
+
+- `GET /api/v1/users` - 获取用户列表
+- `POST /api/v1/users` - 创建用户
+- `GET /api/v1/users/:id` - 获取用户详情
+- `DELETE /api/v1/users/:id` - 删除用户
+- `GET /api/v1/users/:id/courses` - 获取用户的课程权限
+- `POST /api/v1/users/:id/courses` - 授予课程权限
+- `DELETE /api/v1/users/:id/courses/:rootNodeId` - 撤销课程权限
+
+#### 前端权限控制
+
+**分类树 (CategoryTreePanel)**:
+- `canManageCategories` prop 控制是否显示管理功能
+- 工具栏中的"新建根目录"按钮根据权限显示/隐藏
+- 右键菜单根据角色动态生成：
+  - proofreader 只能看到"复制所选"（只读操作）
+  - 管理员可以看到所有操作（新建、编辑、删除、剪切、粘贴）
+
+**用户管理 (UserManagementPage)**:
+- 仅 super_admin 和 course_admin 可见
+- super_admin 可以创建所有角色用户
+- course_admin 只能创建 proofreader
+- 不能删除自己
+- course_admin 不能删除其他管理员
+
+**路由保护**:
+- 所有业务路由需要认证 (JWT middleware)
+- 前端使用 `PrivateRoute` 组件保护路由
+- `AuthContext` 提供全局用户状态
+
+#### 测试账号
+
+开发/测试环境使用以下凭据：
+
+```
+超级管理员:
+  Username: testadmin
+  Password: newpass456
+
+课程管理员:
+  Username: course_admin1
+  Password: testpass123
+
+校对员:
+  创建后使用设置的密码
+```
+
+**安全提示**: 生产环境必须修改默认密码！
+
 ## 环境配置
 
 后端从 `backend/` 或环境变量读取 `.env`：
@@ -138,8 +256,15 @@ VITE_DEBUG_MENU=1  # 启用菜单调试模式
 - 所有测试已更新为使用新的文档类型系统（overview, dictation, comprehensive_choice, case_analysis, essay）
 
 ### 前端测试
-- 测试基础设施已存在（package.json 中的 Vitest、React Testing Library）
-- 尚未集成；在添加大量测试套件之前，先在 PR 中提议工具更改
+- **Playwright E2E 测试**: `frontend/e2e/` 目录包含端到端测试
+  - 认证流程测试: `auth.spec.ts`
+  - 用户管理测试: `user-management.spec.ts`
+  - 权限控制测试: `permissions.spec.ts`
+  - 测试辅助工具: `fixtures/auth.ts`
+  - 测试结果: `TEST_RESULTS.md`
+- 运行测试: `npm run test:e2e`
+- UI 模式调试: `npm run test:e2e:ui`
+- 测试基础设施已存在（package.json 中的 Vitest、React Testing Library）用于单元测试
 
 ## 代码风格
 

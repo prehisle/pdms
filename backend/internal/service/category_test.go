@@ -262,7 +262,7 @@ func TestCreateCategory(t *testing.T) {
 	fake := newFakeNDR()
 	now := time.Now().UTC()
 	fake.createResp = sampleNode(1, "Math", "/math", nil, 1, now, now)
-	svc := NewService(cache.NewNoop(), fake)
+	svc := NewService(cache.NewNoop(), fake, nil)
 
 	cat, err := svc.CreateCategory(context.Background(), RequestMeta{}, CategoryCreateRequest{Name: "Math"})
 	if err != nil {
@@ -278,7 +278,7 @@ func TestCreateCategory(t *testing.T) {
 
 func TestCreateCategoryRequiresName(t *testing.T) {
 	fake := newFakeNDR()
-	svc := NewService(cache.NewNoop(), fake)
+	svc := NewService(cache.NewNoop(), fake, nil)
 
 	if _, err := svc.CreateCategory(context.Background(), RequestMeta{}, CategoryCreateRequest{Name: "  "}); err == nil {
 		t.Fatalf("expected error for empty name")
@@ -289,7 +289,7 @@ func TestUpdateCategory(t *testing.T) {
 	fake := newFakeNDR()
 	now := time.Now().UTC()
 	fake.updateResp = sampleNode(2, "Science", "/science", nil, 1, now, now)
-	svc := NewService(cache.NewNoop(), fake)
+	svc := NewService(cache.NewNoop(), fake, nil)
 
 	newName := "Science"
 	cat, err := svc.UpdateCategory(context.Background(), RequestMeta{}, 2, CategoryUpdateRequest{Name: &newName})
@@ -309,7 +309,7 @@ func TestGetCategory(t *testing.T) {
 	now := time.Now().UTC()
 	node := sampleNode(3, "History", "/history", nil, 1, now, now)
 	fake.getNodes[3] = node
-	svc := NewService(cache.NewNoop(), fake)
+	svc := NewService(cache.NewNoop(), fake, nil)
 
 	cat, err := svc.GetCategory(context.Background(), RequestMeta{}, 3, false)
 	if err != nil {
@@ -322,7 +322,7 @@ func TestGetCategory(t *testing.T) {
 
 func TestDeleteCategory(t *testing.T) {
 	fake := newFakeNDR()
-	svc := NewService(cache.NewNoop(), fake)
+	svc := NewService(cache.NewNoop(), fake, nil)
 
 	if err := svc.DeleteCategory(context.Background(), RequestMeta{}, 9); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -339,7 +339,7 @@ func TestDeleteCategoryWithChildren(t *testing.T) {
 	child := sampleNode(101, "Child", "/parent/child", ptr[int64](100), 1, now, now)
 	fake.getNodes[100] = parent
 	fake.getNodes[101] = child
-	svc := NewService(cache.NewNoop(), fake)
+	svc := NewService(cache.NewNoop(), fake, nil)
 
 	if err := svc.DeleteCategory(context.Background(), RequestMeta{}, 100); err == nil {
 		t.Fatalf("expected error when deleting parent with children")
@@ -353,7 +353,7 @@ func TestRestoreCategory(t *testing.T) {
 	fake := newFakeNDR()
 	now := time.Now().UTC()
 	fake.restoreResp = sampleNode(5, "Physics", "/physics", nil, 1, now, now)
-	svc := NewService(cache.NewNoop(), fake)
+	svc := NewService(cache.NewNoop(), fake, nil)
 
 	cat, err := svc.RestoreCategory(context.Background(), RequestMeta{}, 5)
 	if err != nil {
@@ -371,7 +371,7 @@ func TestMoveCategory(t *testing.T) {
 	child := sampleNode(11, "Child", "/child", ptr[int64](10), 2, now, now)
 	fake.getNodes[10] = parent
 	fake.updateResp = child
-	svc := NewService(cache.NewNoop(), fake)
+	svc := NewService(cache.NewNoop(), fake, nil)
 
 	cat, err := svc.MoveCategory(context.Background(), RequestMeta{}, 11, MoveCategoryRequest{NewParentID: ptr[int64](10), ParentSpecified: true})
 	if err != nil {
@@ -392,7 +392,7 @@ func TestGetCategoryTree(t *testing.T) {
 			sampleNode(3, "Other", "/other", nil, 2, now, now),
 		},
 	}
-	svc := NewService(cache.NewNoop(), fake)
+	svc := NewService(cache.NewNoop(), fake, nil)
 
 	tree, err := svc.GetCategoryTree(context.Background(), RequestMeta{}, false)
 	if err != nil {
@@ -438,7 +438,7 @@ func TestGetCategoryTreePaginates(t *testing.T) {
 			},
 		},
 	}
-	svc := NewService(cache.NewNoop(), fake)
+	svc := NewService(cache.NewNoop(), fake, nil)
 
 	tree, err := svc.GetCategoryTree(context.Background(), RequestMeta{}, false)
 	if err != nil {
@@ -469,7 +469,7 @@ func TestReorderCategories(t *testing.T) {
 		sampleNode(2, "Child B", "/root/child-b", ptr[int64](1), 2, now, now),
 		sampleNode(3, "Child A", "/root/child-a", ptr[int64](1), 1, now, now),
 	}
-	svc := NewService(cache.NewNoop(), fake)
+	svc := NewService(cache.NewNoop(), fake, nil)
 
 	parentID := int64(1)
 	res, err := svc.ReorderCategories(context.Background(), RequestMeta{}, CategoryReorderRequest{
@@ -500,7 +500,7 @@ func TestRepositionCategoryMoveAndReorder(t *testing.T) {
 		movedNode,
 		sampleNode(11, "Sibling", "/target/sibling", ptr[int64](10), 2, now, now),
 	}
-	svc := NewService(cache.NewNoop(), fake)
+	svc := NewService(cache.NewNoop(), fake, nil)
 
 	result, err := svc.RepositionCategory(context.Background(), RequestMeta{}, 2, CategoryRepositionRequest{
 		NewParentID:     ptr[int64](10),
@@ -530,7 +530,7 @@ func TestRepositionCategoryReorderOnly(t *testing.T) {
 		current,
 		sampleNode(21, "B", "/root/b", ptr[int64](5), 2, now, now),
 	}
-	svc := NewService(cache.NewNoop(), fake)
+	svc := NewService(cache.NewNoop(), fake, nil)
 
 	result, err := svc.RepositionCategory(context.Background(), RequestMeta{}, 20, CategoryRepositionRequest{
 		OrderedIDs: []int64{20, 21},
@@ -551,7 +551,7 @@ func TestRepositionCategoryReorderOnly(t *testing.T) {
 
 func TestRepositionCategoryRequiresOrderedIDs(t *testing.T) {
 	fake := newFakeNDR()
-	svc := NewService(cache.NewNoop(), fake)
+	svc := NewService(cache.NewNoop(), fake, nil)
 
 	if _, err := svc.RepositionCategory(context.Background(), RequestMeta{}, 1, CategoryRepositionRequest{
 		OrderedIDs: []int64{},
@@ -570,7 +570,7 @@ func TestBulkRestoreCategories(t *testing.T) {
 	now := time.Now().UTC()
 	restored := sampleNode(30, "X", "/x", nil, 1, now, now)
 	fake.restoreResp = restored
-	svc := NewService(cache.NewNoop(), fake)
+	svc := NewService(cache.NewNoop(), fake, nil)
 
 	items, err := svc.BulkRestoreCategories(context.Background(), RequestMeta{}, []int64{30})
 	if err != nil {
@@ -583,7 +583,7 @@ func TestBulkRestoreCategories(t *testing.T) {
 
 func TestBulkDeleteCategories(t *testing.T) {
 	fake := newFakeNDR()
-	svc := NewService(cache.NewNoop(), fake)
+	svc := NewService(cache.NewNoop(), fake, nil)
 
 	ids, err := svc.BulkDeleteCategories(context.Background(), RequestMeta{}, []int64{40, 41, 40})
 	if err != nil {
@@ -604,7 +604,7 @@ func TestBulkDeleteCategoriesWithChildren(t *testing.T) {
 	child := sampleNode(201, "Child", "/parent/child", ptr[int64](200), 1, now, now)
 	fake.getNodes[200] = parent
 	fake.getNodes[201] = child
-	svc := NewService(cache.NewNoop(), fake)
+	svc := NewService(cache.NewNoop(), fake, nil)
 
 	if _, err := svc.BulkDeleteCategories(context.Background(), RequestMeta{}, []int64{200}); err == nil {
 		t.Fatalf("expected error when deleting parent with children")
@@ -616,7 +616,7 @@ func TestBulkDeleteCategoriesWithChildren(t *testing.T) {
 
 func TestBulkPurgeCategories(t *testing.T) {
 	fake := newFakeNDR()
-	svc := NewService(cache.NewNoop(), fake)
+	svc := NewService(cache.NewNoop(), fake, nil)
 	ids, err := svc.BulkPurgeCategories(context.Background(), RequestMeta{}, []int64{40, 41})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -640,7 +640,7 @@ func TestRepositionCategoryMoveToRoot(t *testing.T) {
 	fake.reorderResp = []ndrclient.Node{
 		fake.updateResp,
 	}
-	svc := NewService(cache.NewNoop(), fake)
+	svc := NewService(cache.NewNoop(), fake, nil)
 
 	result, err := svc.RepositionCategory(context.Background(), RequestMeta{}, 31, CategoryRepositionRequest{
 		NewParentID:     nil,
@@ -668,7 +668,7 @@ func TestGetDeletedCategories(t *testing.T) {
 		deletedNode,
 		sampleNode(6, "Active", "/active", nil, 2, now, now),
 	}}
-	svc := NewService(cache.NewNoop(), fake)
+	svc := NewService(cache.NewNoop(), fake, nil)
 
 	items, err := svc.GetDeletedCategories(context.Background(), RequestMeta{})
 	if err != nil {
@@ -715,7 +715,7 @@ func TestGetDeletedCategoriesPaginates(t *testing.T) {
 		},
 	}
 
-	svc := NewService(cache.NewNoop(), fake)
+	svc := NewService(cache.NewNoop(), fake, nil)
 
 	items, err := svc.GetDeletedCategories(context.Background(), RequestMeta{})
 	if err != nil {
@@ -732,7 +732,7 @@ func TestGetDeletedCategoriesPaginates(t *testing.T) {
 
 func TestPurgeCategory(t *testing.T) {
 	fake := newFakeNDR()
-	svc := NewService(cache.NewNoop(), fake)
+	svc := NewService(cache.NewNoop(), fake, nil)
 
 	if err := svc.PurgeCategory(context.Background(), RequestMeta{}, 42); err != nil {
 		t.Fatalf("unexpected error: %v", err)

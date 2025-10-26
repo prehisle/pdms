@@ -72,3 +72,60 @@
 - 前端：~40行 (新类型定义)
 
 **净减少：** ~1500行代码
+
+## 🐛 Bug 修复记录
+
+### 2025-10-26: 课程权限管理 Bug 修复
+
+**问题描述：**
+1. 超级管理员无法给校对员（proofreader）授权课程
+2. 不同用户的课程权限在 UI 上互相干扰
+3. 每次打开课程权限模态框时，已授权课程显示为空
+
+**根本原因：**
+1. 前端仅为 `course_admin` 角色显示"课程权限"按钮，排除了 `proofreader`
+2. `UserPermissionsModal` 组件的 `useEffect` 依赖不完整，导致切换用户时状态未重置
+3. 后端 API 返回字段名 `courses` 与前端期待的 `course_ids` 不匹配
+
+**修复方案：**
+
+1. **前端修复** ([UserManagementDrawer.tsx:141-145](frontend/src/features/users/UserManagementDrawer.tsx#L141-L145))
+   ```typescript
+   // 扩展权限检查以包含 proofreader
+   const canManagePermissions =
+     currentUser?.role === "super_admin" &&
+     (record.role === "course_admin" || record.role === "proofreader");
+   ```
+
+2. **前端修复** ([UserPermissionsModal.tsx:77-90](frontend/src/features/users/components/UserPermissionsModal.tsx#L77-L90))
+   ```typescript
+   // 增强 useEffect 依赖和状态重置逻辑
+   useEffect(() => {
+     if (!open || userId === null) {
+       setTargetKeys([]);
+       return;
+     }
+
+     if (userCourses?.course_ids) {
+       setTargetKeys(userCourses.course_ids.map(String));
+     } else {
+       setTargetKeys([]);
+     }
+   }, [userCourses, userId, open]); // 添加 open 和 userId 到依赖
+   ```
+
+3. **后端修复** ([user_handler.go:337](backend/internal/api/user_handler.go#L337))
+   ```go
+   // 统一 API 响应字段名
+   writeJSON(w, http.StatusOK, map[string]interface{}{
+       "course_ids": courses, // 之前是 "courses"
+   })
+   ```
+
+**影响范围：**
+- ✅ 超级管理员现在可以给校对员授权课程
+- ✅ 切换不同用户时，课程权限正确隔离显示
+- ✅ 已授权课程正确加载和显示
+
+**测试验证：**
+- 手动测试通过，课程权限功能正常工作
