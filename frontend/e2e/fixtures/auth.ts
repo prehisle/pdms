@@ -7,10 +7,10 @@ export { playwrightExpect as expect };
  */
 export const TEST_USERS = {
   superAdmin: {
-    username: 'testadmin',
-    password: 'newpass456',
+    username: 'super_admin',
+    password: 'admin123456',
     role: 'super_admin',
-    displayName: 'Test Admin'
+    displayName: '超级管理员'
   },
   courseAdmin: {
     username: 'course_admin1',
