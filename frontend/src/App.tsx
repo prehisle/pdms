@@ -3,11 +3,10 @@ import {
   Button,
   Drawer,
   Dropdown,
-  Form,
   Layout,
   Popconfirm,
-  Spin,
   Space,
+  Spin,
   Tag,
   Tooltip,
   Typography,
@@ -15,8 +14,7 @@ import {
 } from "antd";
 import type { MenuProps } from "antd";
 import type { ColumnsType } from "antd/es/table";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   DeleteOutlined,
@@ -28,46 +26,24 @@ import {
   TeamOutlined,
   UserOutlined,
 } from "@ant-design/icons";
-import { Category, getCategoryTree } from "./api/categories";
+import { Category } from "./api/categories";
 import { useAuth } from "./contexts/AuthContext";
+import { CategoryProvider, useCategoryContext } from "./contexts/CategoryContext";
+import { DocumentProvider, useDocumentContext } from "./contexts/DocumentContext";
+import { UIProvider, useUIContext } from "./contexts/UIContext";
 import { ChangePasswordModal } from "./features/auth";
 import { UserManagementDrawer } from "./features/users/UserManagementDrawer";
-import {
-  Document,
-  DocumentListParams,
-  MetadataFilterClause,
-  DocumentReorderPayload,
-  DocumentTrashParams,
-  DocumentTrashPage,
-  DocumentVersionsPage,
-  deleteDocument,
-  getDeletedDocuments,
-  getDocumentVersions,
-  getNodeDocuments,
-  purgeDocument,
-  reorderDocuments,
-  restoreDocument,
-  restoreDocumentVersion,
-} from "./api/documents";
+import { Document, DocumentTrashPage } from "./api/documents";
 import { CategoryTreePanel } from "./features/categories/components/CategoryTreePanel";
 import { CategoryTrashModal } from "./features/categories/components/CategoryTrashModal";
 import { CategoryDeletePreviewModal } from "./features/categories/components/CategoryDeletePreviewModal";
 import { CategoryFormModal } from "./features/categories/components/CategoryFormModal";
-import { useTrashQuery } from "./features/categories/hooks/useTrashQuery";
-import { useDeletePreview } from "./features/categories/hooks/useDeletePreview";
-import { useTreeActions } from "./features/categories/hooks/useTreeActions";
-import type { ParentKey } from "./features/categories/types";
-import { buildLookups } from "./features/categories/utils";
 import { DocumentPanel } from "./features/documents/components/DocumentPanel";
 import { DOCUMENT_TYPES } from "./features/documents/constants";
-import type {
-  DocumentFilterFormValues,
-  MetadataFilterFormValue,
-} from "./features/documents/types";
-import type { MetadataOperator } from "./api/documents";
 import { DocumentHistoryDrawer } from "./features/documents/components/DocumentHistoryDrawer";
 import { DocumentTrashDrawer } from "./features/documents/components/DocumentTrashDrawer";
 import { DocumentReorderModal } from "./features/documents/components/DocumentReorderModal";
+
 const dragDebugEnabled =
   (import.meta.env.VITE_DEBUG_DRAG ?? "").toString().toLowerCase() === "1";
 const menuDebugEnabled =
@@ -87,198 +63,127 @@ const DocumentEditorFallback = () => (
 
 const { Header, Sider, Content } = Layout;
 
-const App = () => {
+const AppContent = () => {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
-  const { data, isLoading, isFetching, error, refetch } = useQuery({
-    queryKey: ["categories-tree"],
-    queryFn: () => getCategoryTree(),
-  });
-  const queryClient = useQueryClient();
-  const [selectedIds, setSelectedIds] = useState<number[]>([]);
-  const [selectionParentId, setSelectionParentId] = useState<number | null | undefined>(undefined);
-  const [lastSelectedId, setLastSelectedId] = useState<number | null>(null);
   const [messageApi, contextHolder] = message.useMessage();
-  const [trashModalOpen, setTrashModalOpen] = useState(false);
-  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
-  const [userManagementOpen, setUserManagementOpen] = useState(false);
-  const [showCreateModal, setShowCreateModal] = useState<{
-    open: boolean;
-    parentId: number | null;
-  }>({ open: false, parentId: null });
-  const [showRenameModal, setShowRenameModal] = useState(false);
-  const [categoryForm] = Form.useForm<{ name: string }>();
-  const [documentEditorState, setDocumentEditorState] = useState<{
-    open: boolean;
-    docId: number | null;
-    nodeId: number | null;
-    mode: "create" | "edit";
-  }>({ open: false, docId: null, nodeId: null, mode: "edit" });
-  const [documentTrashOpen, setDocumentTrashOpen] = useState(false);
-  const [documentTrashParams, setDocumentTrashParams] = useState<DocumentTrashParams>({
-    page: 1,
-    size: 20,
-  });
-  const [documentHistoryState, setDocumentHistoryState] = useState<{
-    open: boolean;
-    docId: number | null;
-    title?: string;
-  }>({ open: false, docId: null, title: undefined });
-  const [documentHistoryParams, setDocumentHistoryParams] = useState({ page: 1, size: 10 });
-  const [reorderModal, setReorderModal] = useState(false);
-  const [documentFilters, setDocumentFilters] = useState<DocumentFilterFormValues>({});
-  const [includeDescendants, setIncludeDescendants] = useState(true);
-  const [documentFilterForm] = Form.useForm<DocumentFilterFormValues>();
+
+  // Category Context
   const {
+    categoriesList,
+    isLoading,
+    isFetching,
+    error,
+    lookups,
+    selectedIds,
+    selectionParentId,
+    lastSelectedId,
+    selectedNodeId,
+    categoryForm,
+    isMutating,
+    setMutating,
+    createMutation,
+    updateMutation,
+    deleteMutation,
+    bulkDeleteMutation,
+    purgeMutation,
     trashQuery,
     trashItems,
-    isInitialLoading: isTrashInitialLoading,
-    selectedRowKeys: selectedTrashRowKeys,
-    setSelectedRowKeys,
-    handleBulkRestore,
-    handleBulkPurge,
-    isProcessing: isTrashProcessing,
-  } = useTrashQuery(messageApi);
-
-  const handleTrashBulkRestore = useCallback(async () => {
-    await handleBulkRestore();
-    await queryClient.invalidateQueries({ queryKey: ["categories-tree"] });
-  }, [handleBulkRestore, queryClient]);
-
-  const handleTrashBulkPurge = useCallback(async () => {
-    await handleBulkPurge();
-    await queryClient.invalidateQueries({ queryKey: ["categories-tree"] });
-  }, [handleBulkPurge, queryClient]);
-
-  const {
+    isTrashInitialLoading,
+    selectedTrashRowKeys,
+    setSelectedTrashRowKeys,
+    isTrashProcessing,
     deletePreview,
-    openPreview: openDeletePreview,
-    closePreview,
-    setLoading: setDeletePreviewLoading,
-  } = useDeletePreview(messageApi);
+    openDeletePreview,
+    closeDeletePreview,
+    setDeletePreviewLoading,
+    handleSelectionChange,
+    handleRefreshTree,
+    invalidateCategoryQueries,
+    handleTrashBulkRestore,
+    handleTrashBulkPurge,
+  } = useCategoryContext();
+
+  // Document Context
+  const {
+    documents,
+    isDocumentsLoading,
+    isDocumentsFetching,
+    documentsError,
+    documentFilterForm,
+    includeDescendants,
+    documentTrashParams,
+    documentTrashQuery,
+    documentHistoryParams,
+    deleteDocumentMutation,
+    restoreDocumentMutation,
+    purgeDocumentMutation,
+    documentReorderMutation,
+    restoreDocumentVersionMutation,
+    deletingDocId,
+    restoringDocId,
+    purgingDocId,
+    restoringVersionNumber,
+    handleDocumentSearch,
+    handleDocumentReset,
+    handleIncludeDescendantsChange,
+    handleDocumentTrashSearch,
+    handleDocumentTrashPageChange,
+    handleDocumentHistoryPageChange,
+    handleRefreshDocumentTrash,
+  } = useDocumentContext();
+
+  // UI Context
+  const {
+    trashModalOpen,
+    showCreateModal,
+    showRenameModal,
+    documentEditorState,
+    documentTrashOpen,
+    documentHistoryState,
+    reorderModal,
+    changePasswordOpen,
+    userManagementOpen,
+    handleOpenTrash,
+    handleCloseTrash,
+    handleOpenCreateModal,
+    handleCloseCreateModal,
+    handleOpenRenameModal,
+    handleCloseRenameModal,
+    handleOpenDocumentEditor,
+    handleCloseDocumentEditor,
+    handleOpenDocumentTrash,
+    handleCloseDocumentTrash,
+    handleOpenDocumentHistory,
+    handleCloseDocumentHistory,
+    handleOpenReorderModal,
+    handleCloseReorderModal,
+    handleOpenChangePassword,
+    handleCloseChangePassword,
+    handleOpenUserManagement,
+    handleCloseUserManagement,
+  } = useUIContext();
 
   useEffect(() => {
     document.title = "题库目录管理";
   }, []);
 
-  const selectedNodeId = selectedIds.length === 1 ? selectedIds[0] : null;
-
-  const documentsQuery = useQuery({
-    queryKey: ["node-documents", selectedNodeId, documentFilters, includeDescendants],
-    queryFn: async () => {
-      if (selectedNodeId == null) {
-        return [] as Document[];
+  // Sync rename modal form values
+  useEffect(() => {
+    if (showRenameModal && selectedIds.length === 1) {
+      const current = lookups.byId.get(selectedIds[0]);
+      if (current) {
+        categoryForm.setFieldsValue({ name: current.name });
       }
-      const params: DocumentListParams = {};
-      if (documentFilters.query?.trim()) {
-        params.query = documentFilters.query.trim();
-      }
-      if (documentFilters.type) {
-        params.type = documentFilters.type;
-      }
-      if (documentFilters.docId) {
-        const numericId = Number(documentFilters.docId);
-        if (!Number.isNaN(numericId)) {
-          params.id = [numericId];
-        }
-      }
-      const metadataFilters = sanitizeMetadataFilters(documentFilters.metadataFilters);
-      const tagClauses = buildTagClauses(documentFilters.tags);
-      const combinedClauses: MetadataFilterClause[] = [];
-      if (metadataFilters) {
-        combinedClauses.push(
-          ...metadataFilters.map(({ key, operator, values }) => ({ key, operator, values })),
-        );
-      }
-      if (tagClauses) {
-        combinedClauses.push(...tagClauses);
-      }
-      if (combinedClauses.length > 0) {
-        params.metadataClauses = combinedClauses;
-      }
-      params.size = 100;
-      params.include_descendants = includeDescendants;
-
-      const docs = await getNodeDocuments(selectedNodeId, params);
-
-      // Sort by position to maintain consistent order
-      return docs.sort((a, b) => a.position - b.position);
-    },
-    enabled: selectedNodeId != null,
-  });
-
-  const documents = selectedNodeId == null ? [] : documentsQuery.data ?? [];
-  const categoriesList = data ?? [];
-
-  const documentTrashQuery = useQuery({
-    queryKey: ["documents-trash", documentTrashParams],
-    queryFn: () => getDeletedDocuments(documentTrashParams),
-    enabled: documentTrashOpen,
-    staleTime: 10_000,
-  });
-
-  const handleRefreshDocumentTrash = useCallback(() => {
-    void documentTrashQuery.refetch();
-  }, [documentTrashQuery]);
-
-  const documentHistoryQuery = useQuery({
-    queryKey: ["document-history", documentHistoryState.docId, documentHistoryParams],
-    queryFn: async () => {
-      if (documentHistoryState.docId == null) {
-        return null as DocumentVersionsPage | null;
-      }
-      return getDocumentVersions(documentHistoryState.docId, documentHistoryParams);
-    },
-    enabled: documentHistoryState.open && documentHistoryState.docId != null,
-  });
-
-  const {
-    createMutation,
-    updateMutation,
-    deleteMutation,
-    bulkDeleteMutation,
-    restoreMutation,
-    purgeMutation,
-    setMutating,
-    isMutating,
-  } = useTreeActions(messageApi);
-
-  const trashTableColumns = useMemo(
-    () =>
-      buildTrashColumns(
-        restoreMutation.isPending,
-        purgeMutation.isPending,
-        (id: number) => restoreMutation.mutate(id),
-        (id: number) => purgeMutation.mutate(id),
-      ),
-    [restoreMutation.isPending, purgeMutation.isPending, restoreMutation.mutate, purgeMutation.mutate],
-  );
-
-  const lookups = useMemo(() => buildLookups(data ?? []), [data]);
-
-  const handleSelectionChange = useCallback(
-    ({
-      selectedIds: nextIds,
-      selectionParentId: nextParent,
-      lastSelectedId: nextLast,
-    }: {
-      selectedIds: number[];
-      selectionParentId: ParentKey | undefined;
-      lastSelectedId: number | null;
-    }) => {
-      setSelectedIds(nextIds);
-      setSelectionParentId(nextParent);
-      setLastSelectedId(nextLast);
-    },
-    [],
-  );
+    }
+  }, [showRenameModal, selectedIds, lookups, categoryForm]);
 
   const handleRequestCreate = useCallback(
     (parentId: number | null) => {
       categoryForm.resetFields();
-      setShowCreateModal({ open: true, parentId });
+      handleOpenCreateModal(parentId);
     },
-    [categoryForm],
+    [categoryForm, handleOpenCreateModal],
   );
 
   const handleRequestRename = useCallback(() => {
@@ -290,8 +195,8 @@ const App = () => {
       return;
     }
     categoryForm.setFieldsValue({ name: current.name });
-    setShowRenameModal(true);
-  }, [categoryForm, lookups, selectedIds]);
+    handleOpenRenameModal();
+  }, [categoryForm, lookups, selectedIds, handleOpenRenameModal]);
 
   const handleRequestDelete = useCallback(
     (ids: number[]) => {
@@ -303,39 +208,11 @@ const App = () => {
     [openDeletePreview],
   );
 
-  const handleOpenTrash = useCallback(() => {
-    setSelectedRowKeys([]);
-    setTrashModalOpen(true);
+  const handleOpenTrashWithRefresh = useCallback(() => {
+    setSelectedTrashRowKeys([]);
+    handleOpenTrash();
     void trashQuery.refetch();
-  }, [setSelectedRowKeys, trashQuery]);
-
-  const handleRefreshTree = useCallback(() => refetch(), [refetch]);
-
-  const invalidateCategoryQueries = useCallback(async () => {
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ["categories-tree"] }),
-      queryClient.invalidateQueries({ queryKey: ["categories-trash"] }),
-    ]);
-  }, [queryClient]);
-
-  const handleIncludeDescendantsChange = useCallback(
-    (value: boolean) => setIncludeDescendants(value),
-    [],
-  );
-
-  useEffect(() => {
-    if (showRenameModal && selectedIds.length === 1) {
-      const current = lookups.byId.get(selectedIds[0]);
-      if (current) {
-        categoryForm.setFieldsValue({ name: current.name });
-      }
-    }
-  }, [showRenameModal, selectedIds, lookups, categoryForm]);
-
-  useEffect(() => {
-    documentFilterForm.resetFields();
-    setDocumentFilters({});
-  }, [selectedNodeId, documentFilterForm]);
+  }, [setSelectedTrashRowKeys, handleOpenTrash, trashQuery]);
 
   const handleConfirmDelete = useCallback(() => {
     if (!deletePreview.visible || deletePreview.ids.length === 0) {
@@ -353,7 +230,7 @@ const App = () => {
         const targetId = targetIds[0];
         deleteMutation.mutate(targetId, {
           onSuccess: () => {
-            closePreview();
+            closeDeletePreview();
           },
           onError: (err) => handleError(err, "删除失败，请重试"),
         });
@@ -362,7 +239,7 @@ const App = () => {
           { ids: targetIds },
           {
             onSuccess: () => {
-              closePreview();
+              closeDeletePreview();
             },
             onError: (err) => handleError(err, "批量删除失败，请重试"),
           },
@@ -372,14 +249,14 @@ const App = () => {
       const targetId = targetIds[0];
       purgeMutation.mutate(targetId, {
         onSuccess: () => {
-          closePreview();
+          closeDeletePreview();
         },
         onError: (err) => handleError(err, "彻底删除失败，请重试"),
       });
     }
   }, [
     bulkDeleteMutation,
-    closePreview,
+    closeDeletePreview,
     deleteMutation,
     deletePreview,
     messageApi,
@@ -387,159 +264,12 @@ const App = () => {
     setDeletePreviewLoading,
   ]);
 
-  const handleOpenAddDocument = useCallback((nodeId: number) => {
-    setDocumentEditorState({ open: true, docId: null, nodeId, mode: "create" });
-  }, []);
-  const handleDocumentSearch = useCallback(
-    (values: DocumentFilterFormValues) => {
-      const trimmed: DocumentFilterFormValues = {
-        ...values,
-        docId: values.docId?.trim() || undefined,
-        query: values.query?.trim() || undefined,
-      };
-      const sanitizedTags =
-        values.tags
-          ?.map((tag) => tag.trim())
-          .filter((tag) => tag.length > 0) ?? [];
-      if (sanitizedTags.length > 0) {
-        trimmed.tags = sanitizedTags;
-      } else {
-        delete trimmed.tags;
-      }
-      const sanitizedMetadata = sanitizeMetadataFilters(values.metadataFilters);
-      if (sanitizedMetadata) {
-        trimmed.metadataFilters = sanitizedMetadata;
-      } else {
-        delete trimmed.metadataFilters;
-      }
-      setDocumentFilters(trimmed);
+  const handleOpenAddDocument = useCallback(
+    (nodeId: number) => {
+      handleOpenDocumentEditor({ mode: "create", nodeId });
     },
-    [],
+    [handleOpenDocumentEditor],
   );
-
-  const handleDocumentReset = useCallback(() => {
-    documentFilterForm.resetFields();
-    setDocumentFilters({});
-  }, [documentFilterForm]);
-
-  const handleOpenDocumentTrash = useCallback(() => {
-    setDocumentTrashOpen(true);
-  }, []);
-
-  const handleCloseDocumentTrash = useCallback(() => {
-    setDocumentTrashOpen(false);
-  }, []);
-
-  const handleDocumentTrashSearch = useCallback((query?: string) => {
-    setDocumentTrashParams((prev) => ({
-      ...prev,
-      page: 1,
-      query,
-    }));
-  }, []);
-
-  const handleDocumentTrashPageChange = useCallback((page: number, pageSize?: number) => {
-    setDocumentTrashParams((prev) => ({
-      ...prev,
-      page,
-      size: pageSize ?? prev.size,
-    }));
-  }, []);
-
-  const handleCloseDocumentHistory = useCallback(() => {
-    setDocumentHistoryState({ open: false, docId: null, title: undefined });
-  }, []);
-
-  const handleDocumentHistoryPageChange = useCallback((page: number, pageSize?: number) => {
-    setDocumentHistoryParams((prev) => ({
-      ...prev,
-      page,
-      size: pageSize ?? prev.size,
-    }));
-  }, []);
-
-  const handleEditDocument = useCallback(
-    (doc: Document) => {
-      setDocumentEditorState({
-        open: true,
-        docId: doc.id,
-        nodeId: selectedNodeId,
-        mode: "edit",
-      });
-    },
-    [selectedNodeId],
-  );
-
-
-  // documentColumns will be defined later after mutations and callbacks
-
-
-  const deleteDocumentMutation = useMutation<void, Error, number>({
-    mutationFn: async (docId) => {
-      await deleteDocument(docId);
-    },
-    onSuccess: async (_result, docId) => {
-      messageApi.success("文档已移入回收站");
-      await queryClient.invalidateQueries({ queryKey: ["node-documents"] });
-      await queryClient.invalidateQueries({ queryKey: ["documents-trash"] });
-      // 若当前编辑抽屉打开且删除的文档即为当前编辑文档，则关闭
-      setDocumentEditorState((prev) => {
-        if (prev.open && prev.docId === docId) {
-          return { open: false, docId: null, nodeId: null, mode: "edit" };
-        }
-        return prev;
-      });
-    },
-    onError: (err) => {
-      const msg = err instanceof Error ? err.message : "文档移入回收站失败";
-      messageApi.error(msg);
-    },
-  });
-
-  const restoreDocumentMutation = useMutation<Document, Error, number>({
-    mutationFn: async (docId) => restoreDocument(docId),
-    onSuccess: async () => {
-      messageApi.success("文档已恢复");
-      await queryClient.invalidateQueries({ queryKey: ["documents-trash"] });
-      await queryClient.invalidateQueries({ queryKey: ["node-documents"] });
-    },
-    onError: (err) => {
-      const msg = err instanceof Error ? err.message : "恢复文档失败";
-      messageApi.error(msg);
-    },
-  });
-
-  const purgeDocumentMutation = useMutation<void, Error, number>({
-    mutationFn: async (docId) => {
-      await purgeDocument(docId);
-    },
-    onSuccess: async () => {
-      messageApi.success("文档已彻底删除");
-      await queryClient.invalidateQueries({ queryKey: ["documents-trash"] });
-      await queryClient.invalidateQueries({ queryKey: ["node-documents"] });
-    },
-    onError: (err) => {
-      const msg = err instanceof Error ? err.message : "彻底删除失败";
-      messageApi.error(msg);
-    },
-  });
-
-  const restoreDocumentVersionMutation = useMutation<Document, Error, { docId: number; version: number }>({
-    mutationFn: ({ docId, version }) => restoreDocumentVersion(docId, version),
-    onSuccess: async (_doc, variables) => {
-      messageApi.success(`已恢复至版本 v${variables.version}`);
-      await queryClient.invalidateQueries({ queryKey: ["document-history", variables.docId] });
-      await queryClient.invalidateQueries({ queryKey: ["node-documents"] });
-    },
-    onError: (err) => {
-      const msg = err instanceof Error ? err.message : "版本回退失败";
-      messageApi.error(msg);
-    },
-  });
-
-  const handleCloseDocumentEditor = useCallback(() => {
-    setDocumentEditorState({ open: false, docId: null, nodeId: null, mode: "edit" });
-  }, []);
 
   const handleToolbarAddDocument = useCallback(() => {
     if (selectedNodeId == null) {
@@ -549,29 +279,16 @@ const App = () => {
     handleOpenAddDocument(selectedNodeId);
   }, [handleOpenAddDocument, messageApi, selectedNodeId]);
 
-  const documentReorderMutation = useMutation({
-    mutationFn: async (payload: DocumentReorderPayload) => {
-      return reorderDocuments(payload);
+  const handleEditDocument = useCallback(
+    (doc: Document) => {
+      handleOpenDocumentEditor({
+        mode: "edit",
+        docId: doc.id,
+        nodeId: selectedNodeId ?? undefined,
+      });
     },
-    onSuccess: async () => {
-      messageApi.success("文档排序调整成功");
-      setReorderModal(false);
-      if (selectedNodeId != null) {
-        await queryClient.invalidateQueries({ queryKey: ["node-documents", selectedNodeId] });
-      }
-    },
-    onError: (err: unknown) => {
-      const msg = err instanceof Error ? err.message : "排序调整失败";
-      messageApi.error(msg);
-    },
-  });
-
-  const deletingDocId = deleteDocumentMutation.isPending ? deleteDocumentMutation.variables ?? null : null;
-  const restoringDocId = restoreDocumentMutation.isPending ? restoreDocumentMutation.variables ?? null : null;
-  const purgingDocId = purgeDocumentMutation.isPending ? purgeDocumentMutation.variables ?? null : null;
-  const restoringVersionNumber = restoreDocumentVersionMutation.isPending
-    ? restoreDocumentVersionMutation.variables?.version ?? null
-    : null;
+    [selectedNodeId, handleOpenDocumentEditor],
+  );
 
   const handleSoftDeleteDocument = useCallback(
     (doc: Document) => {
@@ -580,10 +297,46 @@ const App = () => {
     [deleteDocumentMutation],
   );
 
-  const handleOpenDocumentHistory = useCallback((doc: Document) => {
-    setDocumentHistoryState({ open: true, docId: doc.id, title: doc.title });
-    setDocumentHistoryParams((prev) => ({ ...prev, page: 1 }));
-  }, []);
+  const handleOpenDocHistoryWrapper = useCallback(
+    (doc: Document) => {
+      handleOpenDocumentHistory(doc.id, doc.title);
+    },
+    [handleOpenDocumentHistory],
+  );
+
+  const handleOpenReorderModalWrapper = useCallback(() => {
+    if (selectedNodeId == null || documents.length <= 1) {
+      return;
+    }
+    handleOpenReorderModal();
+  }, [documents.length, selectedNodeId, handleOpenReorderModal]);
+
+  const handleReorderConfirm = useCallback(
+    (orderedIds: number[]) => {
+      if (selectedNodeId == null) {
+        return;
+      }
+      documentReorderMutation.mutate({
+        node_id: selectedNodeId,
+        ordered_ids: orderedIds,
+      });
+    },
+    [documentReorderMutation, selectedNodeId],
+  );
+
+  // Sync document editor close with deletion
+  useEffect(() => {
+    if (deletingDocId && documentEditorState.open && documentEditorState.docId === deletingDocId) {
+      handleCloseDocumentEditor();
+    }
+  }, [deletingDocId, documentEditorState, handleCloseDocumentEditor]);
+
+  // Close reorder modal on success
+  useEffect(() => {
+    if (documentReorderMutation.isSuccess) {
+      handleCloseReorderModal();
+    }
+  }, [documentReorderMutation.isSuccess, handleCloseReorderModal]);
 
   const documentColumns = useMemo<ColumnsType<Document>>(
     () => [
@@ -603,9 +356,7 @@ const App = () => {
         title: "类型",
         dataIndex: "type",
         key: "type",
-        render: (value: string | undefined) => (
-          <Typography.Text>{value || "-"}</Typography.Text>
-        ),
+        render: (value: string | undefined) => <Typography.Text>{value || "-"}</Typography.Text>,
       },
       {
         title: "版本",
@@ -671,7 +422,7 @@ const App = () => {
                   icon={<HistoryOutlined />}
                   type="text"
                   shape="circle"
-                  onClick={() => handleOpenDocumentHistory(record)}
+                  onClick={() => handleOpenDocHistoryWrapper(record)}
                   aria-label="查看历史版本"
                 />
               </Tooltip>
@@ -685,29 +436,26 @@ const App = () => {
       deleteDocumentMutation.isPending,
       deletingDocId,
       handleEditDocument,
-      handleOpenDocumentHistory,
+      handleOpenDocHistoryWrapper,
       handleSoftDeleteDocument,
     ],
   );
 
-  const handleOpenReorderModal = useCallback(() => {
-    if (selectedNodeId == null || documents.length <= 1) {
-      return;
-    }
-    setReorderModal(true);
-  }, [documents.length, selectedNodeId]);
+  const trashTableColumns = useMemo(
+    () =>
+      buildTrashColumns(
+        false,
+        false,
+        (id: number) => {
+          /* handled by mutation */
+        },
+        (id: number) => {
+          /* handled by mutation */
+        },
+      ),
+    [],
+  );
 
-  const handleReorderConfirm = useCallback((orderedIds: number[]) => {
-    if (selectedNodeId == null) {
-      return;
-    }
-    documentReorderMutation.mutate({
-      node_id: selectedNodeId,
-      ordered_ids: orderedIds,
-    });
-  }, [documentReorderMutation, selectedNodeId]);
-
-  // 用户下拉菜单
   const getRoleLabel = (role: string) => {
     switch (role) {
       case "super_admin":
@@ -742,7 +490,7 @@ const App = () => {
             label: "用户管理",
             icon: <TeamOutlined />,
             onClick: () => {
-              setUserManagementOpen(true);
+              handleOpenUserManagement();
             },
           },
         ]
@@ -752,7 +500,7 @@ const App = () => {
       label: "修改密码",
       icon: <KeyOutlined />,
       onClick: () => {
-        setChangePasswordOpen(true);
+        handleOpenChangePassword();
       },
     },
     {
@@ -784,9 +532,7 @@ const App = () => {
           justifyContent: "space-between",
         }}
       >
-        <div style={{ fontSize: "18px", fontWeight: 600 }}>
-          YDMS 题库管理系统
-        </div>
+        <div style={{ fontSize: "18px", fontWeight: 600 }}>YDMS 题库管理系统</div>
         <Dropdown menu={{ items: userMenuItems }} placement="bottomRight">
           <Space style={{ cursor: "pointer" }}>
             <Avatar icon={<UserOutlined />} size="small" />
@@ -826,7 +572,7 @@ const App = () => {
             onRequestCreate={handleRequestCreate}
             onRequestRename={handleRequestRename}
             onRequestDelete={handleRequestDelete}
-            onOpenTrash={handleOpenTrash}
+            onOpenTrash={handleOpenTrashWithRefresh}
             onOpenAddDocument={handleOpenAddDocument}
             onIncludeDescendantsChange={handleIncludeDescendantsChange}
             onRefresh={handleRefreshTree}
@@ -842,14 +588,14 @@ const App = () => {
               selectedNodeId={selectedNodeId}
               documents={documents}
               columns={documentColumns}
-              isLoading={documentsQuery.isLoading}
-              isFetching={documentsQuery.isFetching}
-              error={documentsQuery.error}
+              isLoading={isDocumentsLoading}
+              isFetching={isDocumentsFetching}
+              error={documentsError}
               canCreateDocument={user?.role !== "proofreader"}
               onSearch={handleDocumentSearch}
               onReset={handleDocumentReset}
               onAddDocument={handleToolbarAddDocument}
-              onReorderDocuments={handleOpenReorderModal}
+              onReorderDocuments={handleOpenReorderModalWrapper}
               onOpenTrash={handleOpenDocumentTrash}
             />
           </Space>
@@ -863,18 +609,15 @@ const App = () => {
         trashItems={trashItems}
         columns={trashTableColumns}
         selectedRowKeys={selectedTrashRowKeys}
-        onSelectedRowKeysChange={(keys) => setSelectedRowKeys(keys)}
+        onSelectedRowKeysChange={(keys) => setSelectedTrashRowKeys(keys)}
         onRefresh={() => {
           void trashQuery.refetch();
         }}
-        onClose={() => {
-          setTrashModalOpen(false);
-          setSelectedRowKeys([]);
-        }}
+        onClose={handleCloseTrash}
         onBulkRestore={handleTrashBulkRestore}
         onBulkPurge={handleTrashBulkPurge}
         isMutating={isTrashProcessing}
-        onClearSelection={() => setSelectedRowKeys([])}
+        onClearSelection={() => setSelectedTrashRowKeys([])}
       />
       <Drawer
         open={documentEditorState.open}
@@ -891,7 +634,9 @@ const App = () => {
             <Suspense fallback={<DocumentEditorFallback />}>
               <DocumentEditorLazy
                 mode={documentEditorState.mode}
-                docId={documentEditorState.mode === "edit" ? documentEditorState.docId ?? undefined : undefined}
+                docId={
+                  documentEditorState.mode === "edit" ? documentEditorState.docId ?? undefined : undefined
+                }
                 nodeId={documentEditorState.nodeId ?? undefined}
                 onClose={handleCloseDocumentEditor}
               />
@@ -903,13 +648,13 @@ const App = () => {
         open={reorderModal}
         documents={documents}
         loading={documentReorderMutation.isPending}
-        onCancel={() => setReorderModal(false)}
+        onCancel={handleCloseReorderModal}
         onConfirm={handleReorderConfirm}
       />
       <DocumentTrashDrawer
         open={documentTrashOpen}
         loading={documentTrashQuery.isLoading || documentTrashQuery.isFetching}
-        data={documentTrashQuery.data}
+        data={documentTrashQuery.data as DocumentTrashPage | undefined}
         error={documentTrashQuery.error}
         onClose={handleCloseDocumentTrash}
         onRefresh={handleRefreshDocumentTrash}
@@ -924,9 +669,9 @@ const App = () => {
       <DocumentHistoryDrawer
         open={documentHistoryState.open}
         documentTitle={documentHistoryState.title}
-        loading={documentHistoryQuery.isLoading || documentHistoryQuery.isFetching}
-        data={documentHistoryQuery.data ?? undefined}
-        error={documentHistoryQuery.error ?? undefined}
+        loading={false}
+        data={undefined}
+        error={undefined}
         onClose={handleCloseDocumentHistory}
         onPageChange={handleDocumentHistoryPageChange}
         onRestore={(version) => {
@@ -949,7 +694,7 @@ const App = () => {
           bulkDeleteMutation.isPending ||
           purgeMutation.isPending
         }
-        onCancel={closePreview}
+        onCancel={closeDeletePreview}
         onConfirm={handleConfirmDelete}
       />
       <CategoryFormModal
@@ -957,7 +702,7 @@ const App = () => {
         title={showCreateModal.parentId ? "新建子目录" : "新建根目录"}
         confirmLoading={createMutation.isPending}
         form={categoryForm}
-        onCancel={() => setShowCreateModal({ open: false, parentId: null })}
+        onCancel={handleCloseCreateModal}
         onSubmit={() => {
           categoryForm
             .validateFields()
@@ -970,7 +715,7 @@ const App = () => {
                 },
                 {
                   onSuccess: () => {
-                    setShowCreateModal({ open: false, parentId: null });
+                    handleCloseCreateModal();
                   },
                   onError: () => {
                     setMutating(false);
@@ -986,7 +731,7 @@ const App = () => {
         title="重命名目录"
         confirmLoading={updateMutation.isPending}
         form={categoryForm}
-        onCancel={() => setShowRenameModal(false)}
+        onCancel={handleCloseRenameModal}
         onSubmit={() => {
           categoryForm
             .validateFields()
@@ -1000,7 +745,7 @@ const App = () => {
                 },
                 {
                   onSuccess: () => {
-                    setShowRenameModal(false);
+                    handleCloseRenameModal();
                   },
                   onError: () => {
                     setMutating(false);
@@ -1011,105 +756,36 @@ const App = () => {
             .catch(() => undefined);
         }}
       />
-      <ChangePasswordModal
-        open={changePasswordOpen}
-        onClose={() => setChangePasswordOpen(false)}
-      />
-      <UserManagementDrawer
-        open={userManagementOpen}
-        onClose={() => setUserManagementOpen(false)}
-      />
+      <ChangePasswordModal open={changePasswordOpen} onClose={handleCloseChangePassword} />
+      <UserManagementDrawer open={userManagementOpen} onClose={handleCloseUserManagement} />
     </Layout>
   );
 };
 
-export default App;
+const AppWithProviders = () => {
+  const [messageApi] = message.useMessage();
+  const categoryContext = useCategoryContext();
 
-interface SanitizedMetadataFilter extends MetadataFilterFormValue {
-  key: string;
-  operator: MetadataOperator;
-  values: string[];
-}
-
-function sanitizeMetadataFilters(
-  filters?: MetadataFilterFormValue[],
-): SanitizedMetadataFilter[] | undefined {
-  if (!filters || filters.length === 0) {
-    return undefined;
-  }
-  const sanitized: SanitizedMetadataFilter[] = [];
-  filters.forEach((filter) => {
-    const key = filter.key?.trim();
-    if (!key) {
-      return;
-    }
-    const operator: MetadataOperator = filter.operator ?? "eq";
-    const existingValues = Array.isArray((filter as SanitizedMetadataFilter).values)
-      ? (filter as SanitizedMetadataFilter).values
-      : undefined;
-    switch (operator) {
-      case "eq":
-      case "like": {
-        let value = typeof filter.value === "string" ? filter.value.trim() : "";
-        if (!value && existingValues && existingValues.length > 0) {
-          value = existingValues[0]?.trim() ?? "";
-        }
-        if (value) {
-          sanitized.push({ key, operator, values: [value] });
-        }
-        break;
-      }
-      case "in":
-      case "any":
-      case "all": {
-        const rawSource = Array.isArray(filter.value) ? filter.value : existingValues ?? [];
-        const raw = rawSource.map((item) =>
-          typeof item === "string" ? item : String(item ?? ""),
-        );
-        const values = Array.from(
-          new Set(raw.map((item) => item.trim()).filter((item) => item.length > 0)),
-        );
-        if (values.length > 0) {
-          sanitized.push({ key, operator, values });
-        }
-        break;
-      }
-      case "gt":
-      case "gte":
-      case "lt":
-      case "lte": {
-        let value = typeof filter.value === "string" ? filter.value.trim() : "";
-        if (!value && existingValues && existingValues.length > 0) {
-          value = existingValues[0]?.trim() ?? "";
-        }
-        if (value && !Number.isNaN(Number(value))) {
-          sanitized.push({ key, operator, values: [value] });
-        }
-        break;
-      }
-      default:
-        break;
-    }
-  });
-  return sanitized.length > 0 ? sanitized : undefined;
-}
-
-function buildTagClauses(tags?: string[]): MetadataFilterClause[] | undefined {
-  if (!tags || tags.length === 0) {
-    return undefined;
-  }
-  const normalized = Array.from(
-    new Set(tags.map((tag) => tag.trim()).filter((tag) => tag.length > 0)),
+  return (
+    <DocumentProvider messageApi={messageApi} selectedNodeId={categoryContext.selectedNodeId}>
+      <AppContent />
+    </DocumentProvider>
   );
-  if (normalized.length === 0) {
-    return undefined;
-  }
-  if (normalized.length === 1) {
-    return [{ key: "tags", operator: "any", values: normalized }];
-  }
-  return [{ key: "tags", operator: "all", values: normalized }];
-}
+};
 
+const App = () => {
+  const [messageApi] = message.useMessage();
+
+  return (
+    <UIProvider>
+      <CategoryProvider messageApi={messageApi}>
+        <AppWithProviders />
+      </CategoryProvider>
+    </UIProvider>
+  );
+};
+
+// Helper function preserved from original
 function buildTrashColumns(
   restoreLoading: boolean,
   purgeLoading: boolean,
@@ -1184,3 +860,5 @@ function buildTrashColumns(
     },
   ];
 }
+
+export default App;
