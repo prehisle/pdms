@@ -156,13 +156,9 @@ func (h *Handler) Documents(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, page)
 	case http.MethodPost:
 		// 权限检查：校对员不能创建文档
-		user, err := h.getCurrentUser(r)
-		if err != nil {
-			respondError(w, http.StatusUnauthorized, err)
-			return
-		}
-		if user.Role == "proofreader" {
-			respondError(w, http.StatusForbidden, errors.New("proofreaders cannot create documents"))
+		_, httpErr := h.requireNotProofreader(r, "create documents")
+		if httpErr != nil {
+			respondError(w, httpErr.code, httpErr.message)
 			return
 		}
 
@@ -304,13 +300,9 @@ func (h *Handler) getDocument(w http.ResponseWriter, r *http.Request, meta servi
 
 func (h *Handler) deleteDocument(w http.ResponseWriter, r *http.Request, meta service.RequestMeta, id int64) {
 	// 权限检查：校对员不能删除文档
-	user, err := h.getCurrentUser(r)
-	if err != nil {
-		respondError(w, http.StatusUnauthorized, err)
-		return
-	}
-	if user.Role == "proofreader" {
-		respondError(w, http.StatusForbidden, errors.New("proofreaders cannot delete documents"))
+	_, httpErr := h.requireNotProofreader(r, "delete documents")
+	if httpErr != nil {
+		respondError(w, httpErr.code, httpErr.message)
 		return
 	}
 
@@ -531,13 +523,9 @@ func (h *Handler) handleCategoryItem(w http.ResponseWriter, r *http.Request, met
 
 func (h *Handler) createCategory(w http.ResponseWriter, r *http.Request, meta service.RequestMeta) {
 	// 权限检查：校对员不能创建分类（节点）
-	user, err := h.getCurrentUser(r)
-	if err != nil {
-		respondError(w, http.StatusUnauthorized, err)
-		return
-	}
-	if user.Role == "proofreader" {
-		respondError(w, http.StatusForbidden, errors.New("proofreaders cannot create categories"))
+	_, httpErr := h.requireNotProofreader(r, "create categories")
+	if httpErr != nil {
+		respondError(w, httpErr.code, httpErr.message)
 		return
 	}
 
@@ -566,13 +554,9 @@ func (h *Handler) getCategory(w http.ResponseWriter, r *http.Request, meta servi
 
 func (h *Handler) updateCategory(w http.ResponseWriter, r *http.Request, meta service.RequestMeta, id int64) {
 	// 权限检查：校对员不能编辑分类（节点）
-	user, err := h.getCurrentUser(r)
-	if err != nil {
-		respondError(w, http.StatusUnauthorized, err)
-		return
-	}
-	if user.Role == "proofreader" {
-		respondError(w, http.StatusForbidden, errors.New("proofreaders cannot edit categories"))
+	_, httpErr := h.requireNotProofreader(r, "edit categories")
+	if httpErr != nil {
+		respondError(w, httpErr.code, httpErr.message)
 		return
 	}
 
@@ -591,13 +575,9 @@ func (h *Handler) updateCategory(w http.ResponseWriter, r *http.Request, meta se
 
 func (h *Handler) deleteCategory(w http.ResponseWriter, r *http.Request, meta service.RequestMeta, id int64) {
 	// 权限检查：校对员不能删除分类（节点）
-	user, err := h.getCurrentUser(r)
-	if err != nil {
-		respondError(w, http.StatusUnauthorized, err)
-		return
-	}
-	if user.Role == "proofreader" {
-		respondError(w, http.StatusForbidden, errors.New("proofreaders cannot delete categories"))
+	_, httpErr := h.requireNotProofreader(r, "delete categories")
+	if httpErr != nil {
+		respondError(w, httpErr.code, httpErr.message)
 		return
 	}
 
