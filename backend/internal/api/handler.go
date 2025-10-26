@@ -164,16 +164,16 @@ func (h *Handler) Documents(w http.ResponseWriter, r *http.Request) {
 
 		var payload service.DocumentCreateRequest
 		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-			respondError(w, http.StatusBadRequest, err)
+			respondAPIError(w, NewAPIError(ErrCodeValidation, http.StatusBadRequest, "请求格式错误", err.Error()))
 			return
 		}
 		if strings.TrimSpace(payload.Title) == "" {
-			respondError(w, http.StatusBadRequest, errors.New("title is required"))
+			respondAPIError(w, ErrDocumentTitleRequired)
 			return
 		}
 		doc, err := h.service.CreateDocument(r.Context(), meta, payload)
 		if err != nil {
-			respondError(w, http.StatusBadGateway, err)
+			respondAPIError(w, WrapUpstreamError(err))
 			return
 		}
 		writeJSON(w, http.StatusCreated, doc)
@@ -278,12 +278,12 @@ func (h *Handler) handleDocumentItem(w http.ResponseWriter, r *http.Request, met
 func (h *Handler) updateDocument(w http.ResponseWriter, r *http.Request, meta service.RequestMeta, id int64) {
 	var payload service.DocumentUpdateRequest
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		respondError(w, http.StatusBadRequest, err)
+		respondAPIError(w, NewAPIError(ErrCodeValidation, http.StatusBadRequest, "请求格式错误", err.Error()))
 		return
 	}
 	doc, err := h.service.UpdateDocument(r.Context(), meta, id, payload)
 	if err != nil {
-		respondError(w, http.StatusBadGateway, err)
+		respondAPIError(w, WrapUpstreamError(err))
 		return
 	}
 	writeJSON(w, http.StatusOK, doc)
@@ -292,7 +292,7 @@ func (h *Handler) updateDocument(w http.ResponseWriter, r *http.Request, meta se
 func (h *Handler) getDocument(w http.ResponseWriter, r *http.Request, meta service.RequestMeta, id int64) {
 	doc, err := h.service.GetDocument(r.Context(), meta, id)
 	if err != nil {
-		respondError(w, http.StatusBadGateway, err)
+		respondAPIError(w, WrapUpstreamError(err))
 		return
 	}
 	writeJSON(w, http.StatusOK, doc)
@@ -307,7 +307,7 @@ func (h *Handler) deleteDocument(w http.ResponseWriter, r *http.Request, meta se
 	}
 
 	if err := h.service.DeleteDocument(r.Context(), meta, id); err != nil {
-		respondError(w, http.StatusBadGateway, err)
+		respondAPIError(w, WrapUpstreamError(err))
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -531,12 +531,12 @@ func (h *Handler) createCategory(w http.ResponseWriter, r *http.Request, meta se
 
 	var payload service.CategoryCreateRequest
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		respondError(w, http.StatusBadRequest, err)
+		respondAPIError(w, NewAPIError(ErrCodeValidation, http.StatusBadRequest, "请求格式错误", err.Error()))
 		return
 	}
 	category, err := h.service.CreateCategory(r.Context(), meta, payload)
 	if err != nil {
-		respondError(w, http.StatusBadGateway, err)
+		respondAPIError(w, WrapUpstreamError(err))
 		return
 	}
 	writeJSON(w, http.StatusCreated, category)
@@ -546,7 +546,7 @@ func (h *Handler) getCategory(w http.ResponseWriter, r *http.Request, meta servi
 	includeDeleted := r.URL.Query().Get("include_deleted") == "true"
 	category, err := h.service.GetCategory(r.Context(), meta, id, includeDeleted)
 	if err != nil {
-		respondError(w, http.StatusBadGateway, err)
+		respondAPIError(w, WrapUpstreamError(err))
 		return
 	}
 	writeJSON(w, http.StatusOK, category)
@@ -562,12 +562,12 @@ func (h *Handler) updateCategory(w http.ResponseWriter, r *http.Request, meta se
 
 	var payload service.CategoryUpdateRequest
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		respondError(w, http.StatusBadRequest, err)
+		respondAPIError(w, NewAPIError(ErrCodeValidation, http.StatusBadRequest, "请求格式错误", err.Error()))
 		return
 	}
 	category, err := h.service.UpdateCategory(r.Context(), meta, id, payload)
 	if err != nil {
-		respondError(w, http.StatusBadGateway, err)
+		respondAPIError(w, WrapUpstreamError(err))
 		return
 	}
 	writeJSON(w, http.StatusOK, category)
@@ -582,7 +582,7 @@ func (h *Handler) deleteCategory(w http.ResponseWriter, r *http.Request, meta se
 	}
 
 	if err := h.service.DeleteCategory(r.Context(), meta, id); err != nil {
-		respondError(w, http.StatusBadGateway, err)
+		respondAPIError(w, WrapUpstreamError(err))
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
