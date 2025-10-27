@@ -1,0 +1,129 @@
+services:
+  # PostgreSQL 数据库
+  postgres:
+    image: postgres:16-alpine
+    container_name: ydms-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-ydms}
+      POSTGRES_USER: ${POSTGRES_USER:-ydms_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - ydms-network
+    # 注意：PostgreSQL 端口不暴露到宿主机，仅在 Docker 内部网络访问
+    # 如需从宿主机访问数据库，取消下面的注释并修改端口避免冲突
+    # ports:
+    #   - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ydms_user} -d ${POSTGRES_DB:-ydms}"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # YDMS 应用服务
+  ydms-app:
+    image: ydms:prod
+    container_name: ydms-app
+    restart: unless-stopped
+    environment:
+      # 数据库配置
+      YDMS_DB_HOST: postgres
+      YDMS_DB_PORT: 5432
+      YDMS_DB_USER: ${POSTGRES_USER:-ydms_user}
+      YDMS_DB_PASSWORD: ${POSTGRES_PASSWORD}
+      YDMS_DB_NAME: ${POSTGRES_DB:-ydms}
+      YDMS_DB_SSLMODE: disable
+
+      # NDR 服务配置
+      YDMS_NDR_BASE_URL: ${YDMS_NDR_BASE_URL}
+      YDMS_NDR_API_KEY: ${YDMS_NDR_API_KEY}
+      YDMS_ADMIN_KEY: ${YDMS_ADMIN_KEY}
+
+      # HTTP 服务配置
+      YDMS_HTTP_PORT: 9180
+      YDMS_DEFAULT_USER_ID: ${YDMS_DEFAULT_USER_ID:-ydms_user}
+
+      # JWT 配置
+      YDMS_JWT_SECRET: ${YDMS_JWT_SECRET}
+      YDMS_JWT_EXPIRY: ${YDMS_JWT_EXPIRY:-24h}
+
+      # 调试配置
+      YDMS_DEBUG_TRAFFIC: ${YDMS_DEBUG_TRAFFIC:-0}
+    volumes:
+      - ydms_logs:/app/logs
+      - ydms_data:/app/data
+    networks:
+      - ydms-network
+    ports:
+      - "${YDMS_HTTP_PORT:-9180}:9180"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9180/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+
+  # 前端服务（Nginx + 静态文件）
+  frontend:
+    image: ydms-frontend:prod
+    container_name: ydms-frontend
+    restart: unless-stopped
+    volumes:
+      - ydms_logs:/var/log/nginx
+    networks:
+      - ydms-network
+    ports:
+      - "${HTTP_PORT:-9001}:80"
+      - "${HTTPS_PORT:-9002}:443"
+    depends_on:
+      - ydms-app
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:80/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+# 网络配置
+networks:
+  ydms-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+# 数据卷配置
+volumes:
+  postgres_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${PWD}/data/postgres
+  ydms_logs:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${PWD}/data/logs
+  ydms_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${PWD}/data/app

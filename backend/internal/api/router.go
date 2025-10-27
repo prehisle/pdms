@@ -49,6 +49,7 @@ func NewRouterWithConfig(cfg RouterConfig) http.Handler {
 	authWrap := cfg.Handler.applyAuthMiddleware(cfg.JWTSecret)
 
 	// 健康检查端点（公开）
+	mux.Handle("/health", wrap(http.HandlerFunc(cfg.Handler.Health)))
 	mux.Handle("/healthz", wrap(http.HandlerFunc(cfg.Handler.Health)))
 	mux.Handle("/api/v1/healthz", wrap(http.HandlerFunc(cfg.Handler.Health)))
 	mux.Handle("/api/v1/ping", wrap(http.HandlerFunc(cfg.Handler.Ping)))
@@ -237,3 +238,4 @@ func requestContextMiddleware(defaultUserID string) func(http.Handler) http.Hand
 		})
 	}
 }
+

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 
+	"golang.org/x/crypto/bcrypt"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -51,5 +52,51 @@ func AutoMigrate(db *gorm.DB) error {
 	}
 
 	log.Println("Database migrations completed successfully")
+
+	// 创建默认管理员账号（如果不存在）
+	if err := ensureDefaultAdmin(db); err != nil {
+		log.Printf("Warning: failed to create default admin: %v", err)
+		// 不返回错误，允许应用继续启动
+	}
+
+	return nil
+}
+
+// ensureDefaultAdmin 确保默认管理员账号存在
+func ensureDefaultAdmin(db *gorm.DB) error {
+	var count int64
+	if err := db.Model(&User{}).Where("role = ?", "super_admin").Count(&count).Error; err != nil {
+		return fmt.Errorf("check admin user: %w", err)
+	}
+
+	// 如果已经有超级管理员，跳过
+	if count > 0 {
+		log.Println("Super admin user already exists, skipping default admin creation")
+		return nil
+	}
+
+	// 创建默认管理员
+	// 生成密码 hash (密码: admin123)
+	passwordBytes, err := bcrypt.GenerateFromPassword([]byte("admin123"), bcrypt.DefaultCost)
+	if err != nil {
+		return fmt.Errorf("hash password: %w", err)
+	}
+
+	defaultAdmin := User{
+		Username:     "admin",
+		PasswordHash: string(passwordBytes),
+		Role:         "super_admin",
+		DisplayName:  "系统管理员",
+	}
+
+	if err := db.Create(&defaultAdmin).Error; err != nil {
+		return fmt.Errorf("create default admin: %w", err)
+	}
+
+	log.Println("✓ Default admin created successfully")
+	log.Println("  Username: admin")
+	log.Println("  Password: admin123")
+	log.Println("  ⚠️  WARNING: Please change the default password immediately!")
+
 	return nil
 }
