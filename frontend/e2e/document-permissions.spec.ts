@@ -1,5 +1,7 @@
 import { test, expect } from './fixtures/auth';
 
+test.describe.configure({ mode: 'serial' });
+
 /**
  * 文档权限控制测试
  *

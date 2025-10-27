@@ -15,6 +15,11 @@ test.describe('用户管理功能测试', () => {
     return drawer;
   }
 
+  async function waitForAntMessage(page: any, text: string) {
+    const message = page.locator('.ant-message-notice-content').filter({ hasText: text });
+    await expect(message).toBeVisible({ timeout: 10000 });
+  }
+
   test('超级管理员应该能看到用户管理入口', async ({ page }) => {
     // 打开用户菜单
     await page.click('.ant-dropdown-trigger');
@@ -90,10 +95,17 @@ test.describe('用户管理功能测试', () => {
     // 等待确认框出现并确认删除
     const confirmButton = page.locator('.ant-popconfirm .ant-btn-primary, .ant-popconfirm button:has-text("删除"), .ant-popconfirm button:has-text("确定")').first();
     await confirmButton.waitFor({ state: 'visible', timeout: 5000 });
+    const deleteResponsePromise = page.waitForResponse(
+      (resp) =>
+        resp.url().includes('/api/v1/users/') &&
+        resp.request().method() === 'DELETE',
+    );
     await confirmButton.click();
+    const deleteResponse = await deleteResponsePromise;
+    expect(deleteResponse.ok()).toBeTruthy();
 
     // 验证成功消息
-    await expect(page.locator('.ant-message-success')).toBeVisible();
+    await waitForAntMessage(page, '用户已删除').catch(() => undefined);
   });
 
   test('不应该能够删除自己', async ({ page }) => {

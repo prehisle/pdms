@@ -70,7 +70,7 @@ func (s *UserService) CreateUser(username, password, role string, createdByID *u
 		return nil, errors.New("password must be at least 8 characters")
 	}
 
-	// 检查用户名是否已存在
+	// 检查用户名是否已存在（排除软删除用户）
 	var count int64
 	s.db.Model(&database.User{}).Where("username = ?", username).Count(&count)
 	if count > 0 {
@@ -81,6 +81,21 @@ func (s *UserService) CreateUser(username, password, role string, createdByID *u
 	passwordHash, err := auth.HashPassword(password)
 	if err != nil {
 		return nil, err
+	}
+
+	// 检查是否存在被软删除的用户，若存在则复活
+	var softDeleted database.User
+	if err := s.db.Unscoped().Where("username = ?", username).First(&softDeleted).Error; err == nil {
+		if softDeleted.DeletedAt.Valid {
+			softDeleted.PasswordHash = passwordHash
+			softDeleted.Role = role
+			softDeleted.DeletedAt = gorm.DeletedAt{}
+			softDeleted.CreatedByID = createdByID
+			if err := s.db.Unscoped().Save(&softDeleted).Error; err != nil {
+				return nil, err
+			}
+			return &softDeleted, nil
+		}
 	}
 
 	// 创建用户

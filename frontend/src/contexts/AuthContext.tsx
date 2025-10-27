@@ -85,6 +85,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     try {
       const currentUser = await getCurrentUser();
       setUser(currentUser);
+      setInitialized(true);
     } catch (error) {
       console.error("Failed to load user:", error);
       // Token 可能已过期，清除
@@ -104,6 +105,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       setToken(response.token);
       setUser(response.user);
       localStorage.setItem(TOKEN_KEY, response.token);
+      setInitialized(true);
       setInitialized(true);
     } catch (error) {
       console.error("Initialization failed:", error);

@@ -21,6 +21,7 @@ backend/.gocache/
 # Test results
 test-results/
 frontend/test-results/
+frontend/playwright-report/
 
 # Temporary notes
 notebook.md

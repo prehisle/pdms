@@ -1,6 +1,11 @@
 import { test, expect, TEST_USERS } from './fixtures/auth';
 
 test.describe('认证功能测试', () => {
+  const waitForAntMessage = async (page: any, text: string) => {
+    const message = page.locator('.ant-message-notice-content').filter({ hasText: text });
+    await expect(message).toBeVisible({ timeout: 10000 });
+  };
+
   test('应该能够成功登录', async ({ page, loginAs }) => {
     await loginAs('superAdmin');
 
@@ -64,7 +69,7 @@ test.describe('认证功能测试', () => {
     await modal.locator('.ant-modal-footer .ant-btn-primary').click();
 
     // 验证成功消息
-    await expect(page.locator('.ant-message-success')).toBeVisible({ timeout: 10000 });
+    await waitForAntMessage(page, '密码修改成功！');
 
     // 改回原密码以便后续测试
     await page.click('.ant-dropdown-trigger');
@@ -79,6 +84,6 @@ test.describe('认证功能测试', () => {
     await passwordInputs2.nth(2).fill(TEST_USERS.superAdmin.password);
 
     await modal2.locator('.ant-modal-footer .ant-btn-primary').click();
-    await expect(page.locator('.ant-message-success')).toBeVisible({ timeout: 10000 });
+    await waitForAntMessage(page, '密码修改成功！');
   });
 });
