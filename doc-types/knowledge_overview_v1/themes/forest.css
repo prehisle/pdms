@@ -1,0 +1,41 @@
+/* 森林墨绿主题：偏国风的竹林墨韵 */
+.overview-theme-forest {
+  background: linear-gradient(135deg, rgba(15, 118, 110, 0.12), rgba(22, 163, 74, 0.12));
+  padding: 16px;
+  border-radius: 18px;
+}
+
+.overview-theme-forest .html-preview-content {
+  background: #f8fdf8;
+  border-radius: 14px;
+  padding: 26px;
+  border: 1px solid rgba(22, 163, 74, 0.25);
+  box-shadow: 0 16px 32px rgba(22, 101, 52, 0.12);
+}
+
+.overview-theme-forest .html-preview-content .yjxt-content-card {
+  border-radius: 12px;
+  border: 1px solid rgba(22, 101, 52, 0.18);
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 8px 20px rgba(15, 118, 110, 0.1);
+}
+
+.overview-theme-forest .html-preview-content .yjxt-card-title {
+  color: #256f43;
+  border-bottom: 2px solid rgba(37, 111, 67, 0.28);
+}
+
+.overview-theme-forest .html-preview-content .yjxt-section-title {
+  color: #14532d;
+  border-bottom: 2px solid rgba(20, 83, 45, 0.22);
+}
+
+.overview-theme-forest .html-preview-content p,
+.overview-theme-forest .html-preview-content li {
+  color: rgba(22, 83, 55, 0.9);
+}
+
+.overview-theme-forest .html-preview-content .yjxt-bullet-list li::before,
+.overview-theme-forest .html-preview-content .yjxt-advice-content li::before {
+  background: #16a34a;
+}
