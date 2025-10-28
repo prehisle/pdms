@@ -57,6 +57,12 @@ export const DOCUMENT_TYPE_DEFINITIONS = [
     contentFormat: "yaml",
     templatePath: "../../../doc-types/essay_v1/template.yaml",
   },
+  {
+    id: "dictation_v1",
+    label: "默写(v1)",
+    contentFormat: "yaml",
+    templatePath: "../../../doc-types/dictation_v1/template.yaml",
+  },
 ] as const satisfies readonly DocumentTypeDefinition[];
 
 export const DOCUMENT_TYPES = {
@@ -68,6 +74,7 @@ export const DOCUMENT_TYPES = {
   COMPREHENSIVE_CHOICE_V1: "comprehensive_choice_v1",
   CASE_ANALYSIS_V1: "case_analysis_v1",
   ESSAY_V1: "essay_v1",
+  DICTATION_V1: "dictation_v1",
 } as const;
 
 export type DocumentType = typeof DOCUMENT_TYPES[keyof typeof DOCUMENT_TYPES];
@@ -105,6 +112,10 @@ export const DOCUMENT_TYPE_OPTIONS = [
     value: "essay_v1",
     label: "论文题(v1)",
   },
+  {
+    value: "dictation_v1",
+    label: "默写(v1)",
+  },
 ] as const;
 
 export const DOCUMENT_TYPE_MAP = {
@@ -116,4 +127,5 @@ export const DOCUMENT_TYPE_MAP = {
   comprehensive_choice_v1: DOCUMENT_TYPE_DEFINITIONS[5],
   case_analysis_v1: DOCUMENT_TYPE_DEFINITIONS[6],
   essay_v1: DOCUMENT_TYPE_DEFINITIONS[7],
+  dictation_v1: DOCUMENT_TYPE_DEFINITIONS[8],
 } as const;

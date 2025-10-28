@@ -51,6 +51,12 @@ func init() {
 			ContentFormat: ContentFormatYAML,
 			TemplatePath: "../../../doc-types/essay_v1/template.yaml",
 		},
+		DocumentType("dictation_v1"): {
+			ID: DocumentType("dictation_v1"),
+			Label: "默写(v1)",
+			ContentFormat: ContentFormatYAML,
+			TemplatePath: "../../../doc-types/dictation_v1/template.yaml",
+		},
 	}
 	documentTypeOrder = []DocumentType{
 		DocumentType("overview"),
@@ -61,5 +67,6 @@ func init() {
 		DocumentType("comprehensive_choice_v1"),
 		DocumentType("case_analysis_v1"),
 		DocumentType("essay_v1"),
+		DocumentType("dictation_v1"),
 	}
 }

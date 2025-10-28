@@ -1,0 +1,15 @@
+---
+id: 0
+doc_type: yaml
+question_type: 填空题
+source:
+  - "来源说明"
+---
+
+study_time:
+details:
+  - no: 1
+    question:
+    answer: "____答案示例____。"
+    type: fill_blank
+    km_point: 关键知识点

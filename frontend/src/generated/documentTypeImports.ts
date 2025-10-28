@@ -6,6 +6,7 @@ import "../features/documents/typePlugins/case_analysis_v1/register";
 import "../features/documents/typePlugins/comprehensiveChoice/register";
 import "../features/documents/typePlugins/comprehensiveChoiceV1/register";
 import "../features/documents/typePlugins/dictation/register";
+import "../features/documents/typePlugins/dictation_v1/register";
 import "../features/documents/typePlugins/essay/register";
 import "../features/documents/typePlugins/essay_v1/register";
 
