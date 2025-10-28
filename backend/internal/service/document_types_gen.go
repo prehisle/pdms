@@ -39,6 +39,12 @@ func init() {
 			ContentFormat: ContentFormatYAML,
 			TemplatePath: "../../../doc-types/comprehensive_choice_v1/template.yaml",
 		},
+		DocumentType("case_analysis_v1"): {
+			ID: DocumentType("case_analysis_v1"),
+			Label: "案例分析题(v1)",
+			ContentFormat: ContentFormatYAML,
+			TemplatePath: "../../../doc-types/case_analysis_v1/template.yaml",
+		},
 	}
 	documentTypeOrder = []DocumentType{
 		DocumentType("overview"),
@@ -47,5 +53,6 @@ func init() {
 		DocumentType("case_analysis"),
 		DocumentType("essay"),
 		DocumentType("comprehensive_choice_v1"),
+		DocumentType("case_analysis_v1"),
 	}
 }

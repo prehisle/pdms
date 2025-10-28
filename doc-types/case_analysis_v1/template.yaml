@@ -1,0 +1,28 @@
+---
+id: 0
+doc_type: yaml
+data_type: case-analyze
+source:
+  - "来源说明"
+---
+
+title: |-
+  <p>在此填写案例背景与题干描述，示例：阅读以下软件系统设计方案，完成问题1至问题N。</p>
+analysis: |-
+  <p>在此填写解析部分，可包含段落、列表等 HTML 内容。</p>
+
+details:
+  - no: 1
+    question: |-
+      <p>问题1：在此输入题目正文，可使用 HTML。</p>
+    answer: |-
+      <p>参考答案示例。</p>
+    score: 10
+    type: text
+  - no: 2
+    question: |-
+      <p>问题2：可根据需要设置不同的题型。</p>
+    answer: |-
+      <p>该处填写问题2的答案。</p>
+    score: 10
+    type: text

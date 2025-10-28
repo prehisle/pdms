@@ -33,3 +33,9 @@ types:
     template: "template.yaml"
     frontend:
       hook_import: "../features/documents/typePlugins/comprehensiveChoiceV1/register"
+  - id: case_analysis_v1
+    label: "案例分析题(v1)"
+    content_format: "yaml"
+    template: "template.yaml"
+    frontend:
+      hook_import: "../features/documents/typePlugins/case_analysis_v1/register"
