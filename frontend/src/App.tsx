@@ -14,7 +14,7 @@ import {
 } from "antd";
 import type { MenuProps } from "antd";
 import type { ColumnsType } from "antd/es/table";
-import { lazy, Suspense, useCallback, useEffect, useMemo } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   DeleteOutlined,
@@ -35,6 +35,7 @@ import { ChangePasswordModal } from "./features/auth";
 import { UserManagementDrawer } from "./features/users/UserManagementDrawer";
 import { Document, DocumentTrashPage, DocumentVersionsPage } from "./api/documents";
 import { CategoryTreePanel } from "./features/categories/components/CategoryTreePanel";
+import { CategoryBreadcrumb } from "./features/categories/components/CategoryBreadcrumb";
 import { CategoryTrashModal } from "./features/categories/components/CategoryTrashModal";
 import { CategoryDeletePreviewModal } from "./features/categories/components/CategoryDeletePreviewModal";
 import { CategoryFormModal } from "./features/categories/components/CategoryFormModal";
@@ -43,6 +44,7 @@ import { DOCUMENT_TYPES } from "./features/documents/constants";
 import { DocumentHistoryDrawer } from "./features/documents/components/DocumentHistoryDrawer";
 import { DocumentTrashDrawer } from "./features/documents/components/DocumentTrashDrawer";
 import { DocumentReorderModal } from "./features/documents/components/DocumentReorderModal";
+import { StatusBar } from "./components/StatusBar";
 
 const dragDebugEnabled =
   (import.meta.env.VITE_DEBUG_DRAG ?? "").toString().toLowerCase() === "1";
@@ -61,12 +63,18 @@ const DocumentEditorFallback = () => (
   </div>
 );
 
-const { Header, Sider, Content } = Layout;
+const { Header, Sider, Content, Footer } = Layout;
 
 const AppContent = () => {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
   const [messageApi, contextHolder] = message.useMessage();
+
+  // Header 折叠状态
+  const [headerCollapsed, setHeaderCollapsed] = useState(() => {
+    const saved = localStorage.getItem("ydms_header_collapsed");
+    return saved === "true";
+  });
 
   // Category Context
   const {
@@ -169,6 +177,15 @@ const AppContent = () => {
 
   useEffect(() => {
     document.title = "资料目录管理";
+  }, []);
+
+  // 持久化 Header 折叠状态
+  useEffect(() => {
+    localStorage.setItem("ydms_header_collapsed", String(headerCollapsed));
+  }, [headerCollapsed]);
+
+  const handleToggleHeader = useCallback(() => {
+    setHeaderCollapsed((prev: boolean) => !prev);
   }, []);
 
   // Sync rename modal form values
@@ -331,6 +348,18 @@ const AppContent = () => {
       });
     },
     [documentReorderMutation, selectedNodeId],
+  );
+
+  const handleBreadcrumbNavigate = useCallback(
+    (nodeId: number) => {
+      // 选中点击的分类节点
+      handleSelectionChange({
+        selectedIds: [nodeId],
+        selectionParentId: lookups.byId.get(nodeId)?.parent_id ?? null,
+        lastSelectedId: nodeId,
+      });
+    },
+    [handleSelectionChange, lookups],
   );
 
   // Sync document editor close with deletion
@@ -539,6 +568,12 @@ const AppContent = () => {
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
+          height: headerCollapsed ? 0 : 64,
+          minHeight: headerCollapsed ? 0 : 64,
+          lineHeight: headerCollapsed ? 0 : "64px",
+          overflow: "hidden",
+          transition: "all 0.3s ease",
+          opacity: headerCollapsed ? 0 : 1,
         }}
       >
         <div style={{ fontSize: "18px", fontWeight: 600 }}>YDMS 资料管理系统</div>
@@ -591,6 +626,11 @@ const AppContent = () => {
         </Sider>
         <Content style={{ padding: "24px" }}>
           <Space direction="vertical" size="large" style={{ width: "100%" }}>
+            <CategoryBreadcrumb
+              selectedNodeId={selectedNodeId}
+              lookups={lookups}
+              onNavigate={handleBreadcrumbNavigate}
+            />
             <DocumentPanel
               filterForm={documentFilterForm}
               documentTypes={DOCUMENT_TYPES}
@@ -610,6 +650,19 @@ const AppContent = () => {
           </Space>
         </Content>
       </Layout>
+      <Footer style={{ padding: 0 }}>
+        <StatusBar
+          selectedCategory={selectedIds.length === 1 ? lookups.byId.get(selectedIds[0]) ?? null : null}
+          selectedCount={selectedIds.length}
+          totalCategories={categoriesList?.length ?? 0}
+          includeDescendants={includeDescendants}
+          userRole={user?.role}
+          headerCollapsed={headerCollapsed}
+          onToggleHeader={handleToggleHeader}
+          userMenuItems={userMenuItems}
+          userName={user?.display_name || user?.username}
+        />
+      </Footer>
       <CategoryTrashModal
         open={trashModalOpen}
         loading={trashQuery.isFetching || isTrashProcessing}

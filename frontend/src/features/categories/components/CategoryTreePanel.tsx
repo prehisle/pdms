@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Key, MouseEvent as ReactMouseEvent } from "react";
 
-import { Alert, Collapse, Empty, Menu, Spin, Tag, Tree, Typography } from "antd";
+import { Alert, Empty, Menu, Spin, Tag, Tree, Typography } from "antd";
 import type { MenuProps, TreeProps } from "antd";
 import type { MessageInstance } from "antd/es/message/interface";
 import {
@@ -16,7 +16,6 @@ import {
 } from "@ant-design/icons";
 
 import type { Category } from "../../../api/categories";
-import { CategoryDetailCard } from "./CategoryDetailCard";
 import { CategoryTreeToolbar } from "./CategoryTreeToolbar";
 import type { CategoryLookups, ParentKey, TreeDataNode } from "../types";
 import { buildFilteredTree, getParentId } from "../utils";
@@ -97,7 +96,6 @@ export function CategoryTreePanel({
   const [searchValue, setSearchValue] = useState("");
   const [expandedKeys, setExpandedKeys] = useState<string[]>([]);
   const [autoExpandParent, setAutoExpandParent] = useState(true);
-  const [detailCollapseKeys, setDetailCollapseKeys] = useState<string[]>(["detail"]);
   const {
     clipboard,
     clipboardSourceSet,
@@ -141,11 +139,6 @@ export function CategoryTreePanel({
     }
   }, [effectiveCategories, searchValue, defaultExpandedKeys]);
 
-  useEffect(() => {
-    if (selectedIds.length > 0) {
-      setDetailCollapseKeys(["detail"]);
-    }
-  }, [selectedIds]);
 
   useEffect(() => {
     if (!categories || categories.length === 0) {
@@ -715,32 +708,6 @@ export function CategoryTreePanel({
           />
         </div>
       )}
-      <Collapse
-        activeKey={detailCollapseKeys}
-        onChange={(keys) => {
-          const nextKeys = (Array.isArray(keys) ? keys : [keys]).map((key) => key.toString());
-          setDetailCollapseKeys(nextKeys);
-        }}
-        items={[
-          {
-            key: "detail",
-            label: "目录详情",
-            children:
-              selectedIds.length === 1 ? (
-                <CategoryDetailCard category={lookups.byId.get(selectedIds[0]) ?? null} />
-              ) : selectedIds.length > 1 ? (
-                <Typography.Paragraph type="secondary">
-                  已选择 {selectedIds.length} 个节点。可通过工具栏或右键菜单执行批量操作。
-                </Typography.Paragraph>
-              ) : (
-                <Typography.Paragraph type="secondary">
-                  请选择一个目录节点查看详情。可通过折叠按钮隐藏该面板。
-                </Typography.Paragraph>
-              ),
-          },
-        ]}
-        style={{ marginTop: 16 }}
-      />
     </div>
   );
 }
