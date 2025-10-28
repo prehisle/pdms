@@ -51,3 +51,15 @@ types:
     template: "template.yaml"
     frontend:
       hook_import: "../features/documents/typePlugins/dictation_v1/register"
+  - id: knowledge_overview_v1
+    label: "知识点概览(v1)"
+    content_format: "html"
+    template: "template.html"
+    frontend:
+      hook_import: "../features/documents/typePlugins/knowledge_overview_v1/register"
+  - id: chapter_overview_v1
+    label: "章节概览(v1)"
+    content_format: "html"
+    template: "template.html"
+    frontend:
+      hook_import: "../features/documents/typePlugins/chapter_overview_v1/register"

@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Tag } from "antd";
+import yaml from "js-yaml";
 
 export function renderDifficultyTag(difficulty?: number) {
   if (typeof difficulty !== "number") {
@@ -46,4 +47,34 @@ export function stripHtmlTags(value?: string): string {
     return "";
   }
   return value.replace(/<[^>]+>/g, "").trim();
+}
+
+export function parseFrontMatterHtml(content: string): { meta?: Record<string, unknown>; body: string } {
+  if (!content) {
+    return { body: "" };
+  }
+  const trimmed = content.trim();
+  if (!trimmed.startsWith("---")) {
+    return { body: content };
+  }
+
+  const match = /^---\s*\n([\s\S]*?)\n---\s*\n?([\s\S]*)$/m.exec(trimmed);
+  if (!match) {
+    return { body: content };
+  }
+
+  const [, frontMatter, body] = match;
+  try {
+    const parsed = yaml.load(frontMatter);
+    if (isRecord(parsed)) {
+      return { meta: parsed as Record<string, unknown>, body: body ?? "" };
+    }
+  } catch {
+    // ignore errors, fall back to body content
+  }
+  return { body: body ?? "" };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

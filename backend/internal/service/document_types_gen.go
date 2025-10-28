@@ -57,6 +57,18 @@ func init() {
 			ContentFormat: ContentFormatYAML,
 			TemplatePath: "../../../doc-types/dictation_v1/template.yaml",
 		},
+		DocumentType("knowledge_overview_v1"): {
+			ID: DocumentType("knowledge_overview_v1"),
+			Label: "知识点概览(v1)",
+			ContentFormat: ContentFormatHTML,
+			TemplatePath: "../../../doc-types/knowledge_overview_v1/template.html",
+		},
+		DocumentType("chapter_overview_v1"): {
+			ID: DocumentType("chapter_overview_v1"),
+			Label: "章节概览(v1)",
+			ContentFormat: ContentFormatHTML,
+			TemplatePath: "../../../doc-types/chapter_overview_v1/template.html",
+		},
 	}
 	documentTypeOrder = []DocumentType{
 		DocumentType("overview"),
@@ -68,5 +80,7 @@ func init() {
 		DocumentType("case_analysis_v1"),
 		DocumentType("essay_v1"),
 		DocumentType("dictation_v1"),
+		DocumentType("knowledge_overview_v1"),
+		DocumentType("chapter_overview_v1"),
 	}
 }

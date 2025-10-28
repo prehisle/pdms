@@ -63,6 +63,18 @@ export const DOCUMENT_TYPE_DEFINITIONS = [
     contentFormat: "yaml",
     templatePath: "../../../doc-types/dictation_v1/template.yaml",
   },
+  {
+    id: "knowledge_overview_v1",
+    label: "知识点概览(v1)",
+    contentFormat: "html",
+    templatePath: "../../../doc-types/knowledge_overview_v1/template.html",
+  },
+  {
+    id: "chapter_overview_v1",
+    label: "章节概览(v1)",
+    contentFormat: "html",
+    templatePath: "../../../doc-types/chapter_overview_v1/template.html",
+  },
 ] as const satisfies readonly DocumentTypeDefinition[];
 
 export const DOCUMENT_TYPES = {
@@ -75,6 +87,8 @@ export const DOCUMENT_TYPES = {
   CASE_ANALYSIS_V1: "case_analysis_v1",
   ESSAY_V1: "essay_v1",
   DICTATION_V1: "dictation_v1",
+  KNOWLEDGE_OVERVIEW_V1: "knowledge_overview_v1",
+  CHAPTER_OVERVIEW_V1: "chapter_overview_v1",
 } as const;
 
 export type DocumentType = typeof DOCUMENT_TYPES[keyof typeof DOCUMENT_TYPES];
@@ -116,6 +130,14 @@ export const DOCUMENT_TYPE_OPTIONS = [
     value: "dictation_v1",
     label: "默写(v1)",
   },
+  {
+    value: "knowledge_overview_v1",
+    label: "知识点概览(v1)",
+  },
+  {
+    value: "chapter_overview_v1",
+    label: "章节概览(v1)",
+  },
 ] as const;
 
 export const DOCUMENT_TYPE_MAP = {
@@ -128,4 +150,6 @@ export const DOCUMENT_TYPE_MAP = {
   case_analysis_v1: DOCUMENT_TYPE_DEFINITIONS[6],
   essay_v1: DOCUMENT_TYPE_DEFINITIONS[7],
   dictation_v1: DOCUMENT_TYPE_DEFINITIONS[8],
+  knowledge_overview_v1: DOCUMENT_TYPE_DEFINITIONS[9],
+  chapter_overview_v1: DOCUMENT_TYPE_DEFINITIONS[10],
 } as const;
