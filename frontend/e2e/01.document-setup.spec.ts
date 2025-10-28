@@ -53,6 +53,7 @@ test.describe('文档测试环境准备', () => {
 
     // 关闭 Drawer
     await page.keyboard.press('Escape');
+    await page.locator('.ant-modal-wrap').waitFor({ state: 'hidden', timeout: 5000 }).catch(() => undefined);
   });
 
   test('准备测试分类和文档', async ({ page, loginAs }) => {
@@ -94,8 +95,11 @@ test.describe('文档测试环境准备', () => {
     }
 
     // 点击测试分类节点
-    const testCategory = page.locator('.ant-tree-treenode:not([aria-hidden="true"]):has-text("测试分类")').first();
-    await testCategory.click();
+    await page.locator('.ant-modal-wrap').waitFor({ state: 'hidden', timeout: 5000 }).catch(() => undefined);
+    const testCategory = page
+      .locator('.ant-tree-treenode:not([aria-hidden="true"]):has-text("测试分类") .ant-tree-node-content-wrapper')
+      .first();
+    await testCategory.click({ timeout: 15000 });
 
     // 等待文档面板加载
     await expect(page.locator('text=文档列表')).toBeVisible();
@@ -104,35 +108,44 @@ test.describe('文档测试环境准备', () => {
     await page.waitForTimeout(1000);
 
     // 检查是否已有文档
-    const noDataRow = page.locator('.ant-table-tbody tr:has-text("暂无数据")');
-    const hasNoData = await noDataRow.count() > 0;
+    const tableRows = page.locator('.ant-table-tbody tr');
+    const rowCount = await tableRows.count();
+    const emptyStateVisible = await page.locator('.ant-empty').isVisible().catch(() => false);
+    const hasDocuments = !emptyStateVisible && rowCount > 0;
 
-    if (hasNoData) {
+    if (!hasDocuments) {
       console.log('创建测试文档...');
 
       // 点击新增文档按钮
       const addDocButton = page.locator('button[aria-label="新增文档"]');
       await addDocButton.click();
 
-      // 等待创建文档 Modal
-      const docModal = page.locator('.ant-modal:has-text("新建文档")');
-      await docModal.waitFor({ state: 'visible' });
+      // 等待文档编辑器出现
+      const editorDrawer = page.locator('.ant-drawer:has-text("新建文档")');
+      await editorDrawer.waitFor({ state: 'visible', timeout: 15000 });
+
+      const newDocumentTitle = `测试文档 ${Date.now()}`;
 
       // 填写标题
-      const titleInput = docModal.locator('input[placeholder*="标题"]');
-      await titleInput.fill('测试文档');
+      const titleInput = editorDrawer.locator('input[placeholder="请输入文档标题"]');
+      await titleInput.fill(newDocumentTitle);
 
-      // 选择文档类型（选第一个）
-      const typeSelect = docModal.locator('.ant-select').first();
-      await typeSelect.click();
-      await page.locator('.ant-select-dropdown .ant-select-item').first().click();
+      // 保存文档
+      const saveButton = editorDrawer.locator('button:has-text("保存")');
+      await saveButton.click();
 
-      // 提交
-      const docOkButton = docModal.locator('button:has-text("OK")');
-      await docOkButton.click();
+      // 等待保存成功提示
+      const successToast = page.locator('.ant-message-success:has-text("文档创建成功")');
+      await successToast.waitFor({ state: 'visible', timeout: 10000 });
+      await successToast.waitFor({ state: 'hidden', timeout: 10000 }).catch(() => undefined);
+
+      // 等待编辑器关闭
+      await editorDrawer.waitFor({ state: 'hidden', timeout: 15000 });
 
       // 等待文档出现在列表中
-      await expect(page.locator('.ant-table-tbody tr:has-text("测试文档")')).toBeVisible({ timeout: 10000 });
+      await expect(
+        page.locator(`.ant-table-tbody tr:has-text("${newDocumentTitle}")`),
+      ).toBeVisible({ timeout: 15000 });
 
       console.log('✓ 测试文档创建成功');
     } else {
