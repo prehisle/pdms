@@ -1,0 +1,23 @@
+---
+id: 0
+doc_type: yaml
+data_type: question
+source:
+  - "来源说明"
+---
+
+title: |-
+  <p>在此填写题干 HTML，示例：系统进行资源分配和调度的基本单位是 (1)，其物理实体由 (2) 三部分组成。</p>
+analysis: |-
+  <p>在此填写解析，支持 HTML。</p>
+sub_questions:
+  - options:
+      - key: A
+        content: 选项A
+      - key: B
+        content: 选项B
+      - key: C
+        content: 选项C
+      - key: D
+        content: 选项D
+    answer: A

@@ -15,6 +15,7 @@ import { HistoryOutlined, UndoOutlined } from "@ant-design/icons";
 import Editor from "@monaco-editor/react";
 
 import type { DocumentVersion, DocumentVersionsPage } from "../../../api/documents";
+import { DOCUMENT_TYPE_MAP, DOCUMENT_TYPE_KEYS } from "../constants";
 import { HTMLPreview } from "./HTMLPreview";
 import { YAMLPreview } from "./YAMLPreview";
 
@@ -32,9 +33,30 @@ interface DocumentHistoryDrawerProps {
 
 const { Paragraph, Text, Title } = Typography;
 
+const DEFAULT_DOCUMENT_TYPE = DOCUMENT_TYPE_KEYS[0] ?? "overview";
+
+function isDocumentType(value: string): value is keyof typeof DOCUMENT_TYPE_MAP {
+  return Object.prototype.hasOwnProperty.call(DOCUMENT_TYPE_MAP, value);
+}
+
+function resolveDocumentType(type?: string | null): string {
+  if (type && isDocumentType(type)) {
+    return type;
+  }
+  return DEFAULT_DOCUMENT_TYPE;
+}
+
+function inferFormatFromType(type: string): "html" | "yaml" {
+  if (isDocumentType(type) && DOCUMENT_TYPE_MAP[type].contentFormat === "html") {
+    return "html";
+  }
+  return "yaml";
+}
+
 function extractVersionContent(version: DocumentVersion | null) {
+  const fallbackType = resolveDocumentType(version?.type);
   if (!version || !version.content) {
-    return { data: "", format: version?.type === "overview" ? "html" : "yaml" };
+    return { data: "", format: inferFormatFromType(fallbackType) };
   }
   const content = version.content as Record<string, unknown>;
   const rawData = typeof content.data === "string" ? content.data : "";
@@ -54,10 +76,10 @@ function extractVersionContent(version: DocumentVersion | null) {
   if (typeof content.format === "string") {
     format = content.format.toLowerCase();
   } else if (version.type) {
-    format = version.type === "overview" ? "html" : "yaml";
+    format = inferFormatFromType(resolveDocumentType(version.type));
   }
   if (!format) {
-    format = "yaml";
+    format = inferFormatFromType(fallbackType);
   }
   return { data: serialized, format };
 }
@@ -109,7 +131,7 @@ export const DocumentHistoryDrawer: FC<DocumentHistoryDrawerProps> = ({
   const previewContent = preview.data;
   const previewFormat = preview.format;
 
-  const previewDocumentType = selectedVersion?.type || "overview";
+  const previewDocumentType = resolveDocumentType(selectedVersion?.type);
 
   const columns: ColumnsType<DocumentVersion> = [
     {

@@ -20,6 +20,7 @@ backend/bin/
 backend/tmp/
 backend/server
 backend/.gocache/
+tmp/
 
 # Test results
 test-results/

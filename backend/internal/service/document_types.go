@@ -1,25 +1,16 @@
+//go:generate go run ../../cmd/docgen --config ../../../doc-types/config.yaml --repo-root ../../.. --frontend-dir ../../../frontend --backend-dir ../..
+
 package service
 
-import "fmt"
-
-// DocumentType defines the type of document content
-type DocumentType string
-
-const (
-	// DocTypeOverview represents an HTML overview document
-	DocTypeOverview DocumentType = "overview"
-	// DocTypeDictation represents a dictation exercise in YAML format
-	DocTypeDictation DocumentType = "dictation"
-	// DocTypeComprehensiveChoice represents a multi-blank choice question in YAML format
-	// Each blank corresponds to a single-choice sub-question
-	DocTypeComprehensiveChoice DocumentType = "comprehensive_choice"
-	// DocTypeCaseAnalysis represents a case analysis question in YAML format
-	DocTypeCaseAnalysis DocumentType = "case_analysis"
-	// DocTypeEssay represents an essay question in YAML format
-	DocTypeEssay DocumentType = "essay"
+import (
+	"fmt"
+	"sort"
 )
 
-// ContentFormat defines the storage format of document content
+// DocumentType defines the type of document content.
+type DocumentType string
+
+// ContentFormat defines the storage format of document content.
 type ContentFormat string
 
 const (
@@ -27,49 +18,81 @@ const (
 	ContentFormatYAML ContentFormat = "yaml"
 )
 
-// DocumentContent represents the structured content of a document
+// DocumentContent represents the structured content of a document.
 type DocumentContent struct {
 	Format ContentFormat `json:"format"`
 	Data   string        `json:"data"`
 }
 
-// ValidDocumentTypes returns all valid document types
+// DocumentTypeDefinition captures configuration information for a document type.
+type DocumentTypeDefinition struct {
+	ID            DocumentType
+	Label         string
+	ContentFormat ContentFormat
+	TemplatePath  string
+}
+
+var (
+	documentTypeDefinitions map[DocumentType]DocumentTypeDefinition
+	documentTypeOrder       []DocumentType
+)
+
+// ValidDocumentTypes returns all valid document types in configuration order.
 func ValidDocumentTypes() []DocumentType {
-	return []DocumentType{
-		DocTypeOverview,
-		DocTypeDictation,
-		DocTypeComprehensiveChoice,
-		DocTypeCaseAnalysis,
-		DocTypeEssay,
+	if len(documentTypeOrder) > 0 {
+		out := make([]DocumentType, len(documentTypeOrder))
+		copy(out, documentTypeOrder)
+		return out
 	}
+	if len(documentTypeDefinitions) == 0 {
+		return nil
+	}
+	derived := make([]DocumentType, 0, len(documentTypeDefinitions))
+	for id := range documentTypeDefinitions {
+		derived = append(derived, id)
+	}
+	sort.Slice(derived, func(i, j int) bool {
+		return string(derived[i]) < string(derived[j])
+	})
+	return derived
 }
 
-// IsValidDocumentType checks if a document type is valid
+// DocumentTypeDefinitions exposes a copy of configured document types keyed by ID.
+func DocumentTypeDefinitions() map[DocumentType]DocumentTypeDefinition {
+	if len(documentTypeDefinitions) == 0 {
+		return nil
+	}
+	out := make(map[DocumentType]DocumentTypeDefinition, len(documentTypeDefinitions))
+	for id, def := range documentTypeDefinitions {
+		out[id] = def
+	}
+	return out
+}
+
+// IsValidDocumentType checks if a document type is valid.
 func IsValidDocumentType(t string) bool {
-	for _, validType := range ValidDocumentTypes() {
-		if string(validType) == t {
-			return true
-		}
+	if len(documentTypeDefinitions) == 0 {
+		return false
 	}
-	return false
+	_, ok := documentTypeDefinitions[DocumentType(t)]
+	return ok
 }
 
-// GetContentFormat returns the expected content format for a document type
+// GetContentFormat returns the expected content format for a document type.
 func GetContentFormat(docType DocumentType) ContentFormat {
-	switch docType {
-	case DocTypeOverview:
-		return ContentFormatHTML
-	case DocTypeDictation, DocTypeComprehensiveChoice, DocTypeCaseAnalysis, DocTypeEssay:
-		return ContentFormatYAML
-	default:
+	if len(documentTypeDefinitions) == 0 {
 		return ContentFormatYAML
 	}
+	if def, ok := documentTypeDefinitions[docType]; ok {
+		return def.ContentFormat
+	}
+	return ContentFormatYAML
 }
 
-// ValidateDocumentContent validates the document content structure
+// ValidateDocumentContent validates the document content structure.
 func ValidateDocumentContent(content map[string]any, docType string) error {
 	if !IsValidDocumentType(docType) {
-		return fmt.Errorf("invalid document type: %s", docType)
+		return fmt.Errorf("invalid document type: %s. Valid types: %v", docType, ValidDocumentTypes())
 	}
 
 	if content == nil {
@@ -106,7 +129,7 @@ func ValidateDocumentContent(content map[string]any, docType string) error {
 	return nil
 }
 
-// ValidateDocumentMetadata validates common metadata fields
+// ValidateDocumentMetadata validates common metadata fields.
 func ValidateDocumentMetadata(metadata map[string]any) error {
 	if metadata == nil {
 		return nil

@@ -1,15 +1,10 @@
 import { buildQuery, http } from "./http";
-
-// Document types
-export const DOCUMENT_TYPES = {
-  OVERVIEW: "overview",
-  DICTATION: "dictation",
-  COMPREHENSIVE_CHOICE: "comprehensive_choice",
-  CASE_ANALYSIS: "case_analysis",
-  ESSAY: "essay",
-} as const;
-
-export type DocumentType = typeof DOCUMENT_TYPES[keyof typeof DOCUMENT_TYPES];
+export {
+  DOCUMENT_TYPES,
+  DOCUMENT_TYPE_DEFINITIONS,
+  DOCUMENT_TYPE_OPTIONS,
+} from "../generated/documentTypes";
+export type { DocumentType } from "../generated/documentTypes";
 
 export type MetadataOperator =
   | "eq"

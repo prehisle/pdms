@@ -68,6 +68,18 @@ YDMS 由 Go 后端与 React 前端组成，面向资料管理及文档维护场�
    - 回收站入口位于文档面板右上方，所有操作会自动刷新当前节点的文档列表与回收站视图。
    - 历史版本抽屉提供版本浏览与一键回退，回退成功后会刷新历史列表与节点文档数据，确保前后端状态一致。
 
+### 4.7 文档类型配置生成器
+
+- 所有文档类型在 `doc-types/` 目录集中维护：`config.yaml` 列出启用类型，每个类型目录（如 `doc-types/overview/`）下存放模板、校验及后续扩展所需资源。
+- 运行 `make generate-doc-types` 会读取配置并生成：
+  - `backend/internal/service/document_types_gen.go`：注册表驱动的文档类型、格式映射等。
+  - `frontend/src/generated/documentTypes.ts` 与 `documentTemplates.ts`：前端常量、下拉选项和默认模板。
+- 修改 `doc-types/` 的内容后必须重新执行生成命令，并确保将生成的代码一同提交；后端/前端构建会直接消费这些产物。
+- 使用 `scripts/add-doc-type.sh <id> <label> <format>` 可快速创建类型目录与模板，并给出配置片段；随后手动将片段追加到 `config.yaml` 并执行 `make generate-doc-types`。
+- 如果类型需要自定义前端预览/编辑逻辑，在 `config.yaml` 中设置 `frontend.hook_import`，并在
+  `frontend/src/features/documents/typePlugins/<type>/register.tsx` 中调用
+  `registerYamlPreview` 注册实现；生成器会自动 import 这些 hook。
+
 ## 5. 依赖与版本管理
 
 ### 5.1 Go 模块

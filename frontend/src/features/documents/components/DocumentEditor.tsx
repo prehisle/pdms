@@ -22,7 +22,11 @@ import {
 } from "@ant-design/icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { DOCUMENT_TYPES } from "../constants";
+import {
+  DOCUMENT_TYPES,
+  DOCUMENT_TYPE_MAP,
+  DOCUMENT_TYPE_KEYS,
+} from "../constants";
 import { getDocumentTemplate } from "../templates";
 import { HTMLPreview } from "./HTMLPreview";
 import { YAMLPreview } from "./YAMLPreview";
@@ -39,6 +43,15 @@ import type { MetadataValueType } from "../types";
 
 const { Header, Content } = Layout;
 const { Title } = Typography;
+
+function getDocumentTypeDefinition(type: string) {
+  return DOCUMENT_TYPE_MAP[type as keyof typeof DOCUMENT_TYPE_MAP];
+}
+
+function getDocumentContentFormat(type: string): "html" | "yaml" {
+  const definition = getDocumentTypeDefinition(type);
+  return definition?.contentFormat === "html" ? "html" : "yaml";
+}
 
 interface DocumentEditorProps {
   mode?: "create" | "edit";
@@ -168,8 +181,9 @@ export const DocumentEditor: FC<DocumentEditorProps> = ({ mode, docId: docIdProp
   const parsedNodeIdFromQuery = nodeIdQuery ? Number.parseInt(nodeIdQuery, 10) : undefined;
   const effectiveNodeId = nodeIdProp ?? parsedNodeIdFromQuery;
 
+  const defaultDocumentType = DOCUMENT_TYPE_KEYS[0] ?? "overview";
   const [title, setTitle] = useState("");
-  const [documentType, setDocumentType] = useState<string>("overview");
+  const [documentType, setDocumentType] = useState<string>(defaultDocumentType);
   const [position, setPosition] = useState<number | undefined>();
   const [content, setContent] = useState("");
   const [metadataDifficulty, setMetadataDifficulty] = useState<number | null>(null);
@@ -204,7 +218,11 @@ export const DocumentEditor: FC<DocumentEditorProps> = ({ mode, docId: docIdProp
       return;
     }
     setTitle(existingDoc.title ?? "");
-    setDocumentType(existingDoc.type || "overview");
+    const nextType =
+      existingDoc.type && getDocumentTypeDefinition(existingDoc.type)
+        ? existingDoc.type
+        : defaultDocumentType;
+    setDocumentType(nextType);
     setPosition(existingDoc.position);
     setContent(extractDocumentContent(existingDoc.content));
     const metadata = (existingDoc.metadata ?? {}) as Record<string, unknown>;
@@ -220,7 +238,7 @@ export const DocumentEditor: FC<DocumentEditorProps> = ({ mode, docId: docIdProp
     delete restMetadata.difficulty;
     delete restMetadata.tags;
     setMetadataEntries(buildMetadataEntriesFromObject(restMetadata));
-  }, [isEditMode, existingDoc]);
+  }, [isEditMode, existingDoc, defaultDocumentType]);
 
   useEffect(() => {
     if (isEditMode) {
@@ -252,7 +270,7 @@ export const DocumentEditor: FC<DocumentEditorProps> = ({ mode, docId: docIdProp
   }, [isEditMode, loadError, closeEditor]);
 
   const editorLanguage = useMemo(() => {
-    return documentType === "overview" ? "html" : "yaml";
+    return getDocumentContentFormat(documentType);
   }, [documentType]);
 
   const handleTypeChange = useCallback((value: string) => {
@@ -753,7 +771,7 @@ export const DocumentEditor: FC<DocumentEditorProps> = ({ mode, docId: docIdProp
             实时预览
           </div>
           <div style={{ flex: 1, overflow: "auto" }}>
-            {documentType === "overview" ? (
+            {getDocumentContentFormat(documentType) === "html" ? (
               <HTMLPreview content={content} />
             ) : (
               <YAMLPreview content={content} documentType={documentType} />

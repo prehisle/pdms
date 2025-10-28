@@ -23,6 +23,9 @@ dev-frontend: ## 启动前端开发服务器
 test-backend: ## 运行后端测试
 	@cd backend && go test ./... -cover
 
+generate-doc-types: ## 基于 doc-types 配置生成前后端代码
+	@cd backend && go run ./cmd/docgen --config ../doc-types/config.yaml --repo-root .. --frontend-dir ../frontend --backend-dir .
+
 test-e2e: ## 运行 E2E 测试
 	@cd frontend && npx playwright test --reporter=list
 
