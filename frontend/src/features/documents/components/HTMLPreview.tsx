@@ -4,9 +4,12 @@ import { Alert, Empty } from "antd";
 
 interface HTMLPreviewProps {
   content: string;
+  className?: string;
+  contentClassName?: string;
+  unstyled?: boolean;
 }
 
-export const HTMLPreview: FC<HTMLPreviewProps> = ({ content }) => {
+export const HTMLPreview: FC<HTMLPreviewProps> = ({ content, className, contentClassName, unstyled }) => {
   const sanitizedHTML = useMemo(() => {
     if (!content || !content.trim()) {
       return null;
@@ -57,22 +60,24 @@ export const HTMLPreview: FC<HTMLPreviewProps> = ({ content }) => {
     );
   }
 
+  const wrapperStyle = unstyled
+    ? undefined
+    : {
+        padding: "24px",
+        height: "100%",
+        overflow: "auto" as const,
+        backgroundColor: "#fff",
+      };
+
+  const wrapperClassName = ["html-preview-wrapper", className].filter(Boolean).join(" ");
+  const innerClassName = ["html-preview-content", contentClassName].filter(Boolean).join(" ");
+
   return (
-    <div
-      style={{
-        padding: '24px',
-        height: '100%',
-        overflow: 'auto',
-        backgroundColor: '#fff',
-      }}
-    >
+    <div className={wrapperClassName} style={wrapperStyle}>
       <div
-        className="html-preview-content"
+        className={innerClassName}
         dangerouslySetInnerHTML={{ __html: sanitizedHTML }}
-        style={{
-          lineHeight: 1.8,
-          fontSize: '14px',
-        }}
+        style={unstyled ? undefined : { lineHeight: 1.8, fontSize: "14px" }}
       />
       <style>{`
         .html-preview-content h1 {

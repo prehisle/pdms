@@ -1,10 +1,11 @@
-import { Card, Descriptions, Divider, Typography } from "antd";
+import { Card, Descriptions, Divider, Space, Typography } from "antd";
 import type { FC } from "react";
 
 import { HTMLPreview } from "../../components/HTMLPreview";
 import { registerYamlPreview } from "../../previewRegistry";
 import type { YamlPreviewRenderResult } from "../../previewRegistry";
 import { parseFrontMatterHtml, renderNumber } from "../shared";
+import { OverviewThemeStyles, useOverviewTheme } from "../overviewThemes";
 import type { KnowledgeOverviewV1DocumentHtml, KnowledgeOverviewV1Meta } from "./types";
 import "../overviewStyles.css";
 
@@ -37,24 +38,34 @@ function renderKnowledgeOverviewV1Content(content: string): YamlPreviewRenderRes
   };
 }
 
-const KnowledgeOverviewV1Preview: FC<{ data: KnowledgeOverviewV1DocumentHtml }> = ({ data }) => (
-  <div style={{ padding: "24px", overflow: "auto", height: "100%" }}>
-    <Title level={3}>知识点概览</Title>
-    <Divider />
+const KnowledgeOverviewV1Preview: FC<{ data: KnowledgeOverviewV1DocumentHtml }> = ({ data }) => {
+  const { theme, selector } = useOverviewTheme();
 
-    {data.meta ? (
-      <Card size="small" title="元数据" style={{ marginBottom: 16 }}>
-        <Descriptions column={2} size="small">
-          <Descriptions.Item label="ID">{renderNumber(data.meta.id)}</Descriptions.Item>
-          <Descriptions.Item label="文档类型">{data.meta.doc_type || "-"}</Descriptions.Item>
-          <Descriptions.Item label="数据类型">{data.meta.data_type || "-"}</Descriptions.Item>
-        </Descriptions>
-      </Card>
-    ) : null}
+  return (
+    <div style={{ padding: "24px", overflow: "auto", height: "100%" }}>
+      <Space align="baseline" style={{ display: "flex", justifyContent: "space-between" }}>
+        <Title level={3} style={{ marginBottom: 8 }}>
+          知识点概览
+        </Title>
+        {selector}
+      </Space>
+      <Divider />
 
-    <HTMLPreview content={data.body} />
-  </div>
-);
+      {data.meta ? (
+        <Card size="small" title="元数据" style={{ marginBottom: 16 }}>
+          <Descriptions column={2} size="small">
+            <Descriptions.Item label="ID">{renderNumber(data.meta.id)}</Descriptions.Item>
+            <Descriptions.Item label="文档类型">{data.meta.doc_type || "-"}</Descriptions.Item>
+            <Descriptions.Item label="数据类型">{data.meta.data_type || "-"}</Descriptions.Item>
+          </Descriptions>
+        </Card>
+      ) : null}
+
+      <OverviewThemeStyles css={theme.css} />
+      <HTMLPreview content={data.body} className={theme.className} contentClassName={theme.className ? `${theme.className}__content` : undefined} />
+    </div>
+  );
+};
 
 function sanitizeMeta(value: Record<string, unknown> | undefined): KnowledgeOverviewV1Meta | undefined {
   if (!value) {
