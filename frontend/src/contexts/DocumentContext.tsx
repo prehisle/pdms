@@ -11,6 +11,7 @@ import {
 import type { MessageInstance } from "antd/es/message/interface";
 import {
   Document,
+  DocumentVersionsPage,
   DocumentListParams,
   DocumentReorderPayload,
   DocumentTrashParams,
@@ -48,6 +49,7 @@ interface DocumentContextValue {
 
   // 历史记录
   documentHistoryParams: { page: number; size: number };
+  documentHistoryDocId: number | null;
   documentHistoryQuery: ReturnType<typeof useQuery>;
 
   // Mutations
@@ -73,6 +75,7 @@ interface DocumentContextValue {
   handleDocumentTrashPageChange: (page: number, pageSize?: number) => void;
   handleDocumentHistoryPageChange: (page: number, pageSize?: number) => void;
   handleRefreshDocumentTrash: () => void;
+  setDocumentHistoryDocId: (docId: number | null) => void;
 }
 
 const DocumentContext = createContext<DocumentContextValue | undefined>(undefined);
@@ -104,13 +107,14 @@ export const DocumentProvider = ({
   const [documentFilterForm] = Form.useForm<DocumentFilterFormValues>();
 
   // 回收站参数
-  const [documentTrashParams, setDocumentTrashParams] = useState<DocumentTrashParams>({
-    page: 1,
-    size: 20,
-  });
+const [documentTrashParams, setDocumentTrashParams] = useState<DocumentTrashParams>({
+  page: 1,
+  size: 20,
+});
 
-  // 历史记录参数
+  // 历史记录状态
   const [documentHistoryParams, setDocumentHistoryParams] = useState({ page: 1, size: 10 });
+  const [documentHistoryDocId, setDocumentHistoryDocId] = useState<number | null>(null);
 
   // 文档列表查询
   const documentsQuery = useQuery({
@@ -163,11 +167,23 @@ export const DocumentProvider = ({
     staleTime: 10_000,
   });
 
-  // 历史记录查询 - 不在此处直接创建，由 UI context 控制
-  const documentHistoryQuery = useQuery({
-    queryKey: ["document-history", null, documentHistoryParams],
-    queryFn: async () => null,
-    enabled: false,
+  const documentHistoryQuery = useQuery<DocumentVersionsPage | null>({
+    queryKey: [
+      "document-history",
+      documentHistoryDocId,
+      documentHistoryParams.page,
+      documentHistoryParams.size,
+    ],
+    queryFn: async ({ queryKey }) => {
+      const docId = queryKey[1] as number | null;
+      const page = queryKey[2] as number;
+      const size = queryKey[3] as number;
+      if (docId == null) {
+        return null;
+      }
+      return getDocumentVersions(docId, { page, size });
+    },
+    enabled: documentHistoryDocId != null,
   });
 
   // Mutations
@@ -314,6 +330,13 @@ export const DocumentProvider = ({
     }));
   }, []);
 
+  useEffect(() => {
+    if (documentHistoryDocId == null) {
+      return;
+    }
+    setDocumentHistoryParams((prev) => ({ ...prev, page: 1 }));
+  }, [documentHistoryDocId]);
+
   const handleRefreshDocumentTrash = useCallback(() => {
     void documentTrashQuery.refetch();
   }, [documentTrashQuery]);
@@ -343,6 +366,7 @@ export const DocumentProvider = ({
     documentTrashParams,
     documentTrashQuery,
     documentHistoryParams,
+    documentHistoryDocId,
     documentHistoryQuery,
     deleteDocumentMutation,
     restoreDocumentMutation,
@@ -360,6 +384,7 @@ export const DocumentProvider = ({
     handleDocumentTrashPageChange,
     handleDocumentHistoryPageChange,
     handleRefreshDocumentTrash,
+    setDocumentHistoryDocId,
   };
 
   return <DocumentContext.Provider value={value}>{children}</DocumentContext.Provider>;

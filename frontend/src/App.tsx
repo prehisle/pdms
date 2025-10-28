@@ -33,7 +33,7 @@ import { DocumentProvider, useDocumentContext } from "./contexts/DocumentContext
 import { UIProvider, useUIContext } from "./contexts/UIContext";
 import { ChangePasswordModal } from "./features/auth";
 import { UserManagementDrawer } from "./features/users/UserManagementDrawer";
-import { Document, DocumentTrashPage } from "./api/documents";
+import { Document, DocumentTrashPage, DocumentVersionsPage } from "./api/documents";
 import { CategoryTreePanel } from "./features/categories/components/CategoryTreePanel";
 import { CategoryTrashModal } from "./features/categories/components/CategoryTrashModal";
 import { CategoryDeletePreviewModal } from "./features/categories/components/CategoryDeletePreviewModal";
@@ -115,6 +115,8 @@ const AppContent = () => {
     documentTrashParams,
     documentTrashQuery,
     documentHistoryParams,
+    documentHistoryDocId,
+    documentHistoryQuery,
     deleteDocumentMutation,
     restoreDocumentMutation,
     purgeDocumentMutation,
@@ -131,6 +133,7 @@ const AppContent = () => {
     handleDocumentTrashPageChange,
     handleDocumentHistoryPageChange,
     handleRefreshDocumentTrash,
+    setDocumentHistoryDocId,
   } = useDocumentContext();
 
   // UI Context
@@ -299,10 +302,16 @@ const AppContent = () => {
 
   const handleOpenDocHistoryWrapper = useCallback(
     (doc: Document) => {
+      setDocumentHistoryDocId(doc.id);
       handleOpenDocumentHistory(doc.id, doc.title);
     },
-    [handleOpenDocumentHistory],
+    [handleOpenDocumentHistory, setDocumentHistoryDocId],
   );
+
+  const handleCloseDocumentHistoryWrapper = useCallback(() => {
+    setDocumentHistoryDocId(null);
+    handleCloseDocumentHistory();
+  }, [handleCloseDocumentHistory, setDocumentHistoryDocId]);
 
   const handleOpenReorderModalWrapper = useCallback(() => {
     if (selectedNodeId == null || documents.length <= 1) {
@@ -669,10 +678,10 @@ const AppContent = () => {
       <DocumentHistoryDrawer
         open={documentHistoryState.open}
         documentTitle={documentHistoryState.title}
-        loading={false}
-        data={undefined}
-        error={undefined}
-        onClose={handleCloseDocumentHistory}
+        loading={documentHistoryQuery.isLoading || documentHistoryQuery.isFetching}
+        data={(documentHistoryQuery.data ?? undefined) as DocumentVersionsPage | undefined}
+        error={documentHistoryQuery.error}
+        onClose={handleCloseDocumentHistoryWrapper}
         onPageChange={handleDocumentHistoryPageChange}
         onRestore={(version) => {
           if (documentHistoryState.docId == null) return;
