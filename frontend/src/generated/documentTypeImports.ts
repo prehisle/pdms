@@ -7,5 +7,6 @@ import "../features/documents/typePlugins/comprehensiveChoice/register";
 import "../features/documents/typePlugins/comprehensiveChoiceV1/register";
 import "../features/documents/typePlugins/dictation/register";
 import "../features/documents/typePlugins/essay/register";
+import "../features/documents/typePlugins/essay_v1/register";
 
 export const DOCUMENT_TYPE_HOOKS_IMPORTED = true;

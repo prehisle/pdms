@@ -1,0 +1,18 @@
+---
+id: 0
+doc_type: yaml
+data_type: article
+source:
+  - "来源说明"
+---
+
+title: 示例论文题标题
+content: |-
+  <p>在此撰写论文题干，明确论题，并提出需要讨论的要点。</p>
+analysis: |-
+  <p>在此撰写参考解析，可包含分段或列表。</p>
+digest: |-
+  <p>要点总结。</p>
+sample: |-
+  <p>范文示例或段落。</p>
+theme_id: 0
