@@ -30,6 +30,7 @@ import {
 import { getDocumentTemplate } from "../templates";
 import { HTMLPreview } from "./HTMLPreview";
 import { YAMLPreview } from "./YAMLPreview";
+import { resolveYamlPreview } from "../previewRegistry";
 import {
   bindDocument,
   createDocument,
@@ -268,6 +269,8 @@ export const DocumentEditor: FC<DocumentEditorProps> = ({ mode, docId: docIdProp
     message.error(errorMessage);
     closeEditor();
   }, [isEditMode, loadError, closeEditor]);
+
+  const hasCustomPreview = useMemo(() => resolveYamlPreview(documentType) != null, [documentType]);
 
   const editorLanguage = useMemo(() => {
     return getDocumentContentFormat(documentType);
@@ -771,7 +774,9 @@ export const DocumentEditor: FC<DocumentEditorProps> = ({ mode, docId: docIdProp
             实时预览
           </div>
           <div style={{ flex: 1, overflow: "auto" }}>
-            {getDocumentContentFormat(documentType) === "html" ? (
+            {hasCustomPreview ? (
+              <YAMLPreview content={content} documentType={documentType} />
+            ) : getDocumentContentFormat(documentType) === "html" ? (
               <HTMLPreview content={content} />
             ) : (
               <YAMLPreview content={content} documentType={documentType} />

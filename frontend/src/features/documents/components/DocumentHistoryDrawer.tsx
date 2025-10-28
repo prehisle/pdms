@@ -18,6 +18,7 @@ import type { DocumentVersion, DocumentVersionsPage } from "../../../api/documen
 import { DOCUMENT_TYPE_MAP, DOCUMENT_TYPE_KEYS } from "../constants";
 import { HTMLPreview } from "./HTMLPreview";
 import { YAMLPreview } from "./YAMLPreview";
+import { resolveYamlPreview } from "../previewRegistry";
 
 interface DocumentHistoryDrawerProps {
   open: boolean;
@@ -132,6 +133,10 @@ export const DocumentHistoryDrawer: FC<DocumentHistoryDrawerProps> = ({
   const previewFormat = preview.format;
 
   const previewDocumentType = resolveDocumentType(selectedVersion?.type);
+  const hasCustomPreview = useMemo(
+    () => resolveYamlPreview(previewDocumentType) != null,
+    [previewDocumentType],
+  );
 
   const columns: ColumnsType<DocumentVersion> = [
     {
@@ -280,7 +285,7 @@ export const DocumentHistoryDrawer: FC<DocumentHistoryDrawerProps> = ({
               ) : null}
               <div style={{ flex: 1, minHeight: 0 }}>
                 <Editor
-                  language={previewFormat === "html" ? "html" : "yaml"}
+                  language={hasCustomPreview ? "yaml" : previewFormat === "html" ? "html" : "yaml"}
                   value={previewContent}
                   options={{
                     readOnly: true,
@@ -315,7 +320,9 @@ export const DocumentHistoryDrawer: FC<DocumentHistoryDrawerProps> = ({
                 渲染预览
               </div>
               <div style={{ flex: 1, overflow: "auto", padding: 16 }}>
-                {previewFormat === "html" ? (
+                {hasCustomPreview ? (
+                  <YAMLPreview content={previewContent} documentType={previewDocumentType} />
+                ) : previewFormat === "html" ? (
                   <HTMLPreview content={previewContent} />
                 ) : (
                   <YAMLPreview content={previewContent} documentType={previewDocumentType} />
