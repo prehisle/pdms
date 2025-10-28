@@ -22,6 +22,7 @@ interface UIContextValue {
     open: boolean;
     docId: number | null;
     title?: string;
+    docType?: string;
   };
 
   // 文档重排序弹窗
@@ -52,7 +53,7 @@ interface UIContextValue {
   handleCloseDocumentTrash: () => void;
 
   // Actions - Document History
-  handleOpenDocumentHistory: (docId: number, title?: string) => void;
+  handleOpenDocumentHistory: (docId: number, title?: string, docType?: string) => void;
   handleCloseDocumentHistory: () => void;
 
   // Actions - Reorder Modal
@@ -105,7 +106,8 @@ export const UIProvider = ({ children }: UIProviderProps) => {
     open: boolean;
     docId: number | null;
     title?: string;
-  }>({ open: false, docId: null, title: undefined });
+    docType?: string;
+  }>({ open: false, docId: null, title: undefined, docType: undefined });
 
   // 文档重排序弹窗
   const [reorderModal, setReorderModal] = useState(false);
@@ -166,12 +168,12 @@ export const UIProvider = ({ children }: UIProviderProps) => {
   }, []);
 
   // Document History Actions
-  const handleOpenDocumentHistory = useCallback((docId: number, title?: string) => {
-    setDocumentHistoryState({ open: true, docId, title });
+  const handleOpenDocumentHistory = useCallback((docId: number, title?: string, docType?: string) => {
+    setDocumentHistoryState({ open: true, docId, title, docType });
   }, []);
 
   const handleCloseDocumentHistory = useCallback(() => {
-    setDocumentHistoryState({ open: false, docId: null, title: undefined });
+    setDocumentHistoryState({ open: false, docId: null, title: undefined, docType: undefined });
   }, []);
 
   // Reorder Modal Actions

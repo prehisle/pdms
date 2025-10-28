@@ -23,6 +23,7 @@ import { resolveYamlPreview } from "../previewRegistry";
 interface DocumentHistoryDrawerProps {
   open: boolean;
   documentTitle?: string;
+  documentType?: string;
   loading: boolean;
   data?: DocumentVersionsPage;
   error?: unknown;
@@ -88,6 +89,7 @@ function extractVersionContent(version: DocumentVersion | null) {
 export const DocumentHistoryDrawer: FC<DocumentHistoryDrawerProps> = ({
   open,
   documentTitle,
+  documentType,
   loading,
   data,
   error,
@@ -132,7 +134,7 @@ export const DocumentHistoryDrawer: FC<DocumentHistoryDrawerProps> = ({
   const previewContent = preview.data;
   const previewFormat = preview.format;
 
-  const previewDocumentType = resolveDocumentType(selectedVersion?.type);
+  const previewDocumentType = resolveDocumentType(selectedVersion?.type ?? documentType);
   const hasCustomPreview = useMemo(
     () => resolveYamlPreview(previewDocumentType) != null,
     [previewDocumentType],

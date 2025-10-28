@@ -58,6 +58,15 @@ types:
     frontend:
       hook_import: "../features/documents/typePlugins/knowledge_overview_v1/register"
       themes:
+        - id: "classic"
+          label: "经典蓝"
+          path: "themes/classic.css"
+        - id: "warm"
+          label: "暖色晨曦"
+          path: "themes/warm.css"
+        - id: "night"
+          label: "夜间沉浸"
+          path: "themes/night.css"
         - id: "glass"
           label: "玻璃拟态"
           description: "半透明蓝紫色，强调高光与模糊"
@@ -73,6 +82,15 @@ types:
     frontend:
       hook_import: "../features/documents/typePlugins/chapter_overview_v1/register"
       themes:
+        - id: "classic"
+          label: "经典蓝"
+          path: "themes/classic.css"
+        - id: "warm"
+          label: "暖色晨曦"
+          path: "themes/warm.css"
+        - id: "night"
+          label: "夜间沉浸"
+          path: "themes/night.css"
         - id: "glass"
           label: "玻璃拟态"
           description: "半透明蓝紫色，强调高光与模糊"

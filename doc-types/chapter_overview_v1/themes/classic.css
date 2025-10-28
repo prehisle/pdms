@@ -1,0 +1,18 @@
+.overview-theme-classic .html-preview-content {
+  background: #ffffff;
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: 0 10px 30px rgba(24, 144, 255, 0.08);
+}
+.overview-theme-classic .html-preview-content .yjxt-content-card {
+  border: 1px solid rgba(24, 144, 255, 0.12);
+  box-shadow: 0 4px 16px rgba(24, 144, 255, 0.08);
+}
+.overview-theme-classic .html-preview-content .yjxt-card-title {
+  color: #177ddc;
+  border-bottom: 2px solid rgba(23, 125, 220, 0.2);
+}
+.overview-theme-classic .html-preview-content .yjxt-section-title {
+  border-bottom: 2px solid rgba(23, 125, 220, 0.2);
+  color: #0c66c2;
+}

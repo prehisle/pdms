@@ -303,7 +303,7 @@ const AppContent = () => {
   const handleOpenDocHistoryWrapper = useCallback(
     (doc: Document) => {
       setDocumentHistoryDocId(doc.id);
-      handleOpenDocumentHistory(doc.id, doc.title);
+      handleOpenDocumentHistory(doc.id, doc.title, doc.type);
     },
     [handleOpenDocumentHistory, setDocumentHistoryDocId],
   );
@@ -678,6 +678,7 @@ const AppContent = () => {
       <DocumentHistoryDrawer
         open={documentHistoryState.open}
         documentTitle={documentHistoryState.title}
+        documentType={documentHistoryState.docType}
         loading={documentHistoryQuery.isLoading || documentHistoryQuery.isFetching}
         data={(documentHistoryQuery.data ?? undefined) as DocumentVersionsPage | undefined}
         error={documentHistoryQuery.error}
