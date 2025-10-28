@@ -34,8 +34,15 @@ export const TEST_USERS = {
 };
 
 const ensuredUsers = new Set<string>();
-let systemInitialized = false;
 let superAdminToken: string | null = null;
+const BACKEND_HEALTH_PATH = '/api/v1/healthz';
+
+interface CategoryNode {
+  id: number;
+  name: string;
+  parent_id?: number | null;
+  children?: CategoryNode[];
+}
 
 async function delay(ms: number): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, ms));
@@ -63,49 +70,28 @@ async function readErrorPayload(res: { json: () => Promise<unknown>; text: () =>
   }
 }
 
-async function ensureSystemInitialized(request: APIRequestContext): Promise<void> {
-  if (systemInitialized) {
-    return;
-  }
-
-  for (let attempt = 0; attempt < 5; attempt++) {
+async function waitForBackendReady(request: APIRequestContext, retries = 10): Promise<void> {
+  for (let attempt = 0; attempt < retries; attempt++) {
     try {
-      const statusRes = await request.get('/api/v1/init/status');
-      if (!statusRes.ok()) {
-        const payload = await readErrorPayload(statusRes);
-        throw new Error(`检查初始化状态失败：${statusRes.status()} ${payload}`);
+      const healthRes = await request.get(BACKEND_HEALTH_PATH, { timeout: 5000 });
+      if (healthRes.ok()) {
+        return;
       }
-      const statusData = await statusRes.json() as { initialized?: boolean } | undefined;
-      if (!statusData?.initialized) {
-        const setupRes = await request.post('/api/v1/init/setup', {
-          data: {
-            username: TEST_USERS.superAdmin.username,
-            password: TEST_USERS.superAdmin.password,
-          },
-        });
-        if (!setupRes.ok()) {
-          const payload = await readErrorPayload(setupRes);
-          throw new Error(`系统初始化失败：${setupRes.status()} ${payload}`);
-        }
-      }
-
-      systemInitialized = true;
-      return;
-    } catch (error) {
-      if (attempt === 4) {
-        throw error;
-      }
-      await delay(500 * (attempt + 1));
+    } catch {
+      // ignore and retry
     }
+    await delay(300 * (attempt + 1));
   }
+  throw new Error('后端健康检查失败，无法连接到 /api/v1/healthz');
 }
+
 
 async function getSuperAdminToken(request: APIRequestContext): Promise<string> {
   if (superAdminToken) {
     return superAdminToken;
   }
 
-  await ensureSystemInitialized(request);
+  await waitForBackendReady(request);
 
   const loginRes = await request.post('/api/v1/auth/login', {
     data: {
@@ -127,8 +113,16 @@ async function getSuperAdminToken(request: APIRequestContext): Promise<string> {
 }
 
 async function ensureTestUserAccount(request: APIRequestContext, user: typeof TEST_USERS[keyof typeof TEST_USERS]): Promise<void> {
+  await waitForBackendReady(request);
+
   if (user.username === TEST_USERS.superAdmin.username) {
-    await ensureSystemInitialized(request);
+    const loginAttempt = await attemptLogin(request, user);
+    if (loginAttempt.status !== 'success') {
+      throw new Error(
+        `默认超级管理员无法登录，请确认数据库已存在账号 ${user.username}，错误信息：${loginAttempt.message ?? '未知错误'}`,
+      );
+    }
+    ensuredUsers.add(user.username);
     return;
   }
 
@@ -285,7 +279,11 @@ async function ensureLoggedOut(page: Page): Promise<void> {
       // 忽略清理错误
     }
   }).catch(() => undefined);
-  await page.context().clearCookies();
+  try {
+    await page.context().clearCookies();
+  } catch {
+    // 忽略清理失败
+  }
 }
 
 async function openUserManagementDrawer(page: Page): Promise<Locator> {
@@ -388,51 +386,147 @@ async function submitCreateUserForm(
   return await responsePromise;
 }
 
+async function ensureUserCoursePermissions(
+  request: APIRequestContext,
+  user: typeof TEST_USERS[keyof typeof TEST_USERS],
+  options?: { rootNames?: string[] },
+): Promise<void> {
+  await ensureTestUserAccount(request, user);
+
+  const token = await getSuperAdminToken(request);
+  const headers = {
+    Authorization: `Bearer ${token}`,
+    'Content-Type': 'application/json',
+  };
+
+  const usersRes = await request.get('/api/v1/users', { headers });
+  if (!usersRes.ok()) {
+    const payload = await readErrorPayload(usersRes);
+    throw new Error(`获取用户列表失败：${usersRes.status()} ${payload}`);
+  }
+  const usersData = await usersRes.json() as { users?: Array<{ id: number; username: string }> } | undefined;
+  const targetUser = usersData?.users?.find((entry) => entry.username === user.username);
+  if (!targetUser) {
+    throw new Error(`无法找到用户 ${user.username}，请确认其已创建`);
+  }
+
+  const categoriesRes = await request.get('/api/v1/categories/tree', { headers });
+  if (!categoriesRes.ok()) {
+    const payload = await readErrorPayload(categoriesRes);
+    throw new Error(`获取课程分类失败：${categoriesRes.status()} ${payload}`);
+  }
+  const categoriesData = await categoriesRes.json() as CategoryNode[] | undefined;
+  const rootNodes = (categoriesData ?? []).filter((node) => node.parent_id === null || node.parent_id === undefined);
+
+  let targetRoots: CategoryNode[];
+  const desiredNames = options?.rootNames?.filter((name) => name.trim().length > 0);
+
+  if (desiredNames && desiredNames.length > 0) {
+    targetRoots = rootNodes.filter((node) => desiredNames.includes(node.name));
+    if (targetRoots.length === 0) {
+      throw new Error(`未找到指定的根目录：${desiredNames.join(', ')}，请先创建这些课程`);
+    }
+  } else {
+    targetRoots = rootNodes;
+  }
+
+  if (targetRoots.length === 0) {
+    throw new Error('系统中没有可用的根目录，无法为用户授予课程权限');
+  }
+
+  const userCoursesRes = await request.get(`/api/v1/users/${targetUser.id}/courses`, { headers });
+  if (!userCoursesRes.ok()) {
+    const payload = await readErrorPayload(userCoursesRes);
+    throw new Error(`获取用户课程权限失败：${userCoursesRes.status()} ${payload}`);
+  }
+  const courseData = await userCoursesRes.json() as { course_ids?: number[] } | undefined;
+  const existingCourseIds = new Set(courseData?.course_ids ?? []);
+
+  for (const root of targetRoots) {
+    if (existingCourseIds.has(root.id)) {
+      continue;
+    }
+
+    const grantRes = await request.post(`/api/v1/users/${targetUser.id}/courses`, {
+      headers,
+      data: { root_node_id: root.id },
+    });
+
+    if (!grantRes.ok()) {
+      const payload = await readErrorPayload(grantRes);
+      throw new Error(`授予用户 ${user.username} 课程 (${root.name}) 权限失败：${grantRes.status()} ${payload}`);
+    }
+  }
+}
+
 /**
  * 扩展的测试 fixture，包含认证辅助函数
  */
 export const test = base.extend<{
   loginAs: (userType: keyof typeof TEST_USERS) => Promise<void>;
   createTestUser: (username: string, password: string, role: string, displayName?: string) => Promise<void>;
+  ensureCoursePermission: (userType: keyof typeof TEST_USERS, options?: { rootNames?: string[] }) => Promise<void>;
 }>({
   loginAs: async ({ page }, use) => {
     const login = async (userType: keyof typeof TEST_USERS) => {
       const user = TEST_USERS[userType];
 
+      await waitForBackendReady(page.request);
       await ensureTestUserAccount(page.request, user);
 
       if (await isUserAlreadyLoggedIn(page, user)) {
         return;
       }
 
-      await ensureLoggedOut(page);
+      for (let attempt = 0; attempt < 2; attempt++) {
+        await ensureLoggedOut(page);
 
-      await page.goto('/login', { waitUntil: 'domcontentloaded' });
-      await page.waitForSelector('input[placeholder*="用户名"]', { timeout: 10000 });
-      await page.fill('input[placeholder*="用户名"]', user.username);
-      await page.fill('input[type="password"]', user.password);
+        if (page.isClosed()) {
+          if (attempt === 1) {
+            throw new Error('浏览器上下文已关闭，无法继续登录');
+          }
+          continue;
+        }
 
-      const navigationPromise = page.waitForURL('**/', { timeout: 45000, waitUntil: 'commit' });
-      await page.click('button[type="submit"]');
+        try {
+          await page.goto('/login', { waitUntil: 'domcontentloaded' });
+        } catch (navError) {
+          if (attempt === 1) {
+            throw navError;
+          }
+          continue;
+        }
 
-      try {
-        await navigationPromise;
-      } catch (error) {
-        let message = '登录超时';
-        const toast = page.locator('.ant-message-error').first();
-        const visible = await toast.isVisible({ timeout: 3000 }).catch(() => false);
-        if (visible) {
-          const text = await toast.textContent();
-          if (text && text.trim().length > 0) {
-            message = text.trim();
+        try {
+          await page.waitForSelector('input[placeholder*="用户名"]', { timeout: 10000 });
+          await page.fill('input[placeholder*="用户名"]', user.username);
+          await page.fill('input[type="password"]', user.password);
+
+          await Promise.all([
+            page.waitForURL('**/', { timeout: 60000 }).catch(() => null),
+            page.click('button[type="submit"]'),
+          ]);
+
+          const toast = page.locator('.ant-message-error').first();
+          const toastVisible = await toast.isVisible({ timeout: 3000 }).catch(() => false);
+          if (toastVisible) {
+            const text = await toast.textContent();
+            if (text && text.trim().length > 0) {
+              throw new Error(`登录失败：${text.trim()}`);
+            }
+          }
+
+          await page.waitForSelector('.ant-dropdown-trigger', { timeout: 60000 }).catch(() => null);
+          await playwrightExpect(
+            page.locator(`text=${user.displayName}`).or(page.locator(`text=${user.username}`)),
+          ).toBeVisible({ timeout: 15000 });
+          return;
+        } catch (error) {
+          if (attempt === 1) {
+            throw error;
           }
         }
-        throw new Error(`登录失败：${message}（${(error as Error).message}）`);
       }
-
-      await playwrightExpect(
-        page.locator(`text=${user.displayName}`).or(page.locator(`text=${user.username}`)),
-      ).toBeVisible({ timeout: 15000 });
     };
 
     await use(login);
@@ -470,6 +564,18 @@ export const test = base.extend<{
     };
 
     await use(create);
+  },
+
+  ensureCoursePermission: async ({ page }, use) => {
+    const ensurePermission = async (
+      userType: keyof typeof TEST_USERS,
+      options?: { rootNames?: string[] },
+    ) => {
+      const user = TEST_USERS[userType];
+      await ensureUserCoursePermissions(page.request, user, options);
+    };
+
+    await use(ensurePermission);
   },
 });
 

@@ -20,24 +20,33 @@ test.describe('权限控制测试', () => {
       await page.goto('/');
 
       // 如果页面上有分类节点，右键点击
-      const firstNode = page.locator('.ant-tree-treenode').first();
+      await page.waitForSelector('.ant-tree-treenode:not([aria-hidden="true"])', { timeout: 10000 }).catch(() => null);
+      const firstNode = page
+        .locator('.ant-tree-treenode:not([aria-hidden="true"]) .ant-tree-node-content-wrapper')
+        .first();
       const nodeCount = await firstNode.count();
+      console.log('右键菜单测试节点数量:', nodeCount);
 
       if (nodeCount > 0) {
         await firstNode.click({ button: 'right' });
 
-        // 验证右键菜单中的所有选项
-        await expect(page.locator('.ant-dropdown-menu li:has-text("新建子目录")')).toBeVisible();
-        await expect(page.locator('.ant-dropdown-menu li:has-text("重命名目录")')).toBeVisible();
-        await expect(page.locator('.ant-dropdown-menu li:has-text("删除目录")')).toBeVisible();
+        const menuItemsLocator = page.locator('[role="menuitem"]:visible');
+        await expect(menuItemsLocator.first()).toBeVisible({ timeout: 5000 });
+        const superAdminItems = await menuItemsLocator.allTextContents();
+        console.log('超级管理员右键菜单内容:', superAdminItems);
+        await expect(menuItemsLocator.filter({ hasText: '添加文档' })).toBeVisible();
+        await expect(menuItemsLocator.filter({ hasText: '新建子目录' })).toBeVisible();
+        await expect(menuItemsLocator.filter({ hasText: '重命名目录' })).toBeVisible();
+        await expect(menuItemsLocator.filter({ hasText: '删除目录' })).toBeVisible();
       }
     });
   });
 
   test.describe('课程管理员权限', () => {
-    test.beforeEach(async ({ loginAs }) => {
+    test.beforeEach(async ({ loginAs, ensureCoursePermission }) => {
       // 直接以课程管理员身份登录（假设该用户已存在）
       // 如果不存在，测试会失败并提示需要先创建该用户
+      await ensureCoursePermission('courseAdmin');
       await loginAs('courseAdmin');
     });
 
@@ -58,9 +67,10 @@ test.describe('权限控制测试', () => {
   });
 
   test.describe('校对员权限限制', () => {
-    test.beforeEach(async ({ loginAs }) => {
+    test.beforeEach(async ({ loginAs, ensureCoursePermission }) => {
       // 直接以校对员身份登录（假设该用户已存在）
       // 如果不存在，测试会失败并提示需要先创建该用户
+      await ensureCoursePermission('proofreader');
       await loginAs('proofreader');
     });
 
@@ -78,21 +88,28 @@ test.describe('权限控制测试', () => {
       await page.goto('/');
 
       // 如果页面上有分类节点，右键点击
-      const firstNode = page.locator('.ant-tree-treenode').first();
+      await page.waitForSelector('.ant-tree-treenode:not([aria-hidden="true"])', { timeout: 10000 }).catch(() => null);
+      const firstNode = page
+        .locator('.ant-tree-treenode:not([aria-hidden="true"]) .ant-tree-node-content-wrapper')
+        .first();
       const nodeCount = await firstNode.count();
 
-      if (nodeCount > 0) {
-        await firstNode.click({ button: 'right' });
-
-        // 验证只有复制选项可见
-        await expect(page.locator('.ant-dropdown-menu li:has-text("复制所选")')).toBeVisible();
-
-        // 验证不应该看到写操作
-        await expect(page.locator('.ant-dropdown-menu li:has-text("新建子目录")')).not.toBeVisible();
-        await expect(page.locator('.ant-dropdown-menu li:has-text("重命名目录")')).not.toBeVisible();
-        await expect(page.locator('.ant-dropdown-menu li:has-text("删除目录")')).not.toBeVisible();
-        await expect(page.locator('.ant-dropdown-menu li:has-text("剪切所选")')).not.toBeVisible();
+      if (nodeCount === 0) {
+        console.log('校对员右键菜单测试：未找到可见目录节点');
+        return;
       }
+
+      await firstNode.click({ button: 'right' });
+
+      // 校对员不应该看到任何目录操作项，包括复制
+      await page.waitForTimeout(400);
+
+      const menuItemsLocator = page.locator('[role="menuitem"]:visible');
+      const visibleMenuItems = await menuItemsLocator.allTextContents();
+      console.log('校对员右键菜单内容:', visibleMenuItems);
+
+      await expect(menuItemsLocator).toHaveCount(0);
+      await expect(menuItemsLocator.filter({ hasText: '添加文档' })).toHaveCount(0);
     });
 
     test('应该能够修改密码', async ({ page }) => {

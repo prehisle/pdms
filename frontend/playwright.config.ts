@@ -16,21 +16,24 @@ export default defineConfig({
   },
 
   /* 并行运行测试 */
-  fullyParallel: true,
+  fullyParallel: false,
 
   /* 在 CI 上失败时重试 */
   retries: process.env.CI ? 2 : 1,
 
-  /* 在 CI 上禁用并行 */
-  workers: process.env.CI ? 1 : undefined,
+  /* 全程禁用并行，确保顺序执行 */
+  workers: 1,
 
   /* Reporter */
-  reporter: 'html',
+  reporter: [
+    ['list'],
+    ['html'],
+  ],
 
   /* 所有测试的共享设置 */
   use: {
     /* 基础 URL */
-    baseURL: 'http://localhost:5174',
+    baseURL: 'http://localhost:5173',
 
     /* 操作超时 */
     actionTimeout: 15 * 1000, // 15秒
@@ -58,8 +61,8 @@ export default defineConfig({
 
   /* 在测试开始前启动开发服务器 */
   webServer: {
-    command: 'npm run dev',
-    url: 'http://localhost:5174',
+    command: 'npm run dev -- --port 5173 --strictPort',
+    url: 'http://localhost:5173',
     reuseExistingServer: !process.env.CI,
     timeout: 120 * 1000,
   },

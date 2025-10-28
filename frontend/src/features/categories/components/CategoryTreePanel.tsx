@@ -352,8 +352,10 @@ export function CategoryTreePanel({
       resolvedSelectionParent !== undefined && resolvedSelectionIds.length > 0;
     const contextCanCopy = !isMutating && resolvedSelectionAvailable;
 
-    const items: MenuProps["items"] = [
-      {
+    const items: MenuProps["items"] = [];
+
+    if (canManageCategories) {
+      items.push({
         key: "add-document",
         icon: <FileAddOutlined />,
         label: "添加文档",
@@ -361,8 +363,8 @@ export function CategoryTreePanel({
           closeContextMenu("action:add-document");
           onOpenAddDocument(nodeId);
         },
-      },
-    ];
+      });
+    }
 
     if (resolvedSelectionAvailable) {
       if (canManageCategories && resolvedSelectionIds.length === 1) {
@@ -390,20 +392,20 @@ export function CategoryTreePanel({
           },
         );
       }
-      items.push({
-        key: "copy-selection",
-        icon: <CopyOutlined />,
-        label: "复制所选",
-        disabled: !contextCanCopy,
-        onClick: () => {
-          closeContextMenu("action:copy-selection");
-          handleCopySelection({
-            ids: resolvedSelectionIds,
-            parentId: resolvedSelectionParent ?? null,
-          });
-        },
-      });
       if (canManageCategories) {
+        items.push({
+          key: "copy-selection",
+          icon: <CopyOutlined />,
+          label: "复制所选",
+          disabled: !contextCanCopy,
+          onClick: () => {
+            closeContextMenu("action:copy-selection");
+            handleCopySelection({
+              ids: resolvedSelectionIds,
+              parentId: resolvedSelectionParent ?? null,
+            });
+          },
+        });
         items.push(
           {
             key: "cut-selection",

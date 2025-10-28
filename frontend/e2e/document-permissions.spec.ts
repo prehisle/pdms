@@ -14,7 +14,8 @@ test.describe.configure({ mode: 'serial' });
 
 test.describe('文档权限控制测试', () => {
   test.describe('校对员文档权限限制', () => {
-    test.beforeEach(async ({ loginAs, page }) => {
+    test.beforeEach(async ({ loginAs, page, ensureCoursePermission }) => {
+      await ensureCoursePermission('proofreader');
       await loginAs('proofreader');
       await page.goto('/');
 
@@ -99,7 +100,8 @@ test.describe('文档权限控制测试', () => {
   });
 
   test.describe('课程管理员文档权限', () => {
-    test.beforeEach(async ({ loginAs, page }) => {
+    test.beforeEach(async ({ loginAs, page, ensureCoursePermission }) => {
+      await ensureCoursePermission('courseAdmin');
       await loginAs('courseAdmin');
       await page.goto('/');
 
@@ -202,7 +204,12 @@ test.describe('文档权限控制测试', () => {
         await expect(popconfirm).toBeVisible({ timeout: 3000 });
 
         // 点击取消（不实际删除，保留测试数据）
-        await popconfirm.locator('button:has-text("取消")').click();
+        const cancelButton = popconfirm.locator('.ant-btn').filter({ hasText: '取消' }).first();
+        if (await cancelButton.count() > 0) {
+          await cancelButton.click({ force: true });
+        } else {
+          await page.keyboard.press('Escape');
+        }
       } else {
         test.skip();
       }
