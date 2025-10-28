@@ -9,12 +9,11 @@
 服务名称 | 说明
 ---------|------
 `db` | PostgreSQL 15+，持久化数据卷，可加载初始化 SQL。
-`backend` | Go 服务，读取数据库与 JWT 等环境变量，运行自动迁移，可选自动初始化超级管理员。
+`backend` | Go 服务，读取数据库与 JWT 等环境变量，运行自动迁移并生成默认超级管理员（可通过环境变量覆盖账号密码）。
 `frontend` | Vite 构建出的静态文件，使用 Nginx 或轻量 server 提供服务；也可提供开发模式。
 
 可选服务：
-- `seed`：一次性执行 `go run ./cmd/reset-db` 或 SQL 脚本。
-- `admin-init`：调用 `/api/v1/init/setup` 自动创建超级管理员。
+- `seed`：一次性执行 `go run ./cmd/reset-db` 或 SQL 脚本，重置数据库并写入默认管理员。
 
 ## 目录结构建议
 ```
@@ -98,7 +97,7 @@ EXPOSE 9180
 ENTRYPOINT ["./server"]
 ```
 
-若需在容器内部自动初始化管理员，可改用 shell entrypoint，在服务启动后调用 `/api/v1/init/setup`。
+容器启动后，后端会在数据库缺少超级管理员时自动创建默认账号。生产环境应通过环境变量 `YDMS_DEFAULT_ADMIN_USERNAME`、`YDMS_DEFAULT_ADMIN_PASSWORD` 提供强密码，或在启动完成后立即修改密码。
 
 ### frontend (Nginx)
 ```dockerfile
@@ -143,27 +142,9 @@ server {
 - 后端 `.env` 可用于存储默认值，但要注意安全；生产环境应通过 compose 或 secrets 注入。
 
 ## 数据库初始化策略
-1. **容器自带脚本**：将 `go run ./cmd/reset-db` 的逻辑拆分成 SQL，放入 `docker/initdb`，容器启动时自动创建超级管理员。
-2. **后端 entrypoint**：启动后等待 `db` 就绪，再检查 `/api/v1/init/status`，必要时调用 `/api/v1/init/setup`（需提供用户名/密码环境变量）。
-3. **外部脚本**：在部署流水线中先执行 `make reset-db`，再 `docker-compose up`。
-
-推荐方式：把初始化放到后端容器的 entrypoint，提供 `AUTO_INIT_SUPER_ADMIN=true` 时自动执行。例如：
-```bash
-#!/bin/sh
-set -e
-/app/server &
-PID=$!
-
-if [ "$AUTO_INIT_SUPER_ADMIN" = "true" ]; then
-  until curl -sf http://127.0.0.1:9180/api/v1/healthz; do sleep 1; done
-  curl -sf http://127.0.0.1:9180/api/v1/init/status | grep '"initialized":false' && \
-    curl -sf -X POST http://127.0.0.1:9180/api/v1/init/setup \
-      -H 'Content-Type: application/json' \
-      -d '{"username":"super_admin","password":"admin123456"}'
-fi
-
-wait $PID
-```
+1. **容器自带脚本**：在 `docker/initdb` 中放置 SQL 或使用 `go run ./cmd/reset-db`，确保在首次部署前写入结构和默认账号。
+2. **环境变量覆盖**：通过 `YDMS_DEFAULT_ADMIN_USERNAME`、`YDMS_DEFAULT_ADMIN_PASSWORD`、`YDMS_DEFAULT_ADMIN_DISPLAY_NAME` 配置自定义管理员信息。
+3. **外部脚本**：在部署流水线中执行 `make reset-db` 或等价脚本，再 `docker-compose up`。
 
 ## 一键部署流程
 1. 准备 `.env`：
@@ -208,4 +189,3 @@ wait $PID
 - 添加监控/日志服务（如 Loki + Promtail）到 compose。
 - 引入反向代理（Traefik / Nginx）统一处理 SSL 与多服务路由。
 - 将健康检查 (`/api/v1/healthz`) 与 readiness probe 写入 compose 的 `healthcheck`，增强容器编排能力。
-

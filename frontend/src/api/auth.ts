@@ -33,45 +33,11 @@ export interface LoginResponse {
 }
 
 /**
- * 初始化请求
- */
-export interface InitRequest {
-  username: string;
-  password: string;
-}
-
-/**
- * 初始化状态响应
- */
-export interface InitStatusResponse {
-  initialized: boolean;
-}
-
-/**
  * 修改密码请求
  */
 export interface ChangePasswordRequest {
   old_password: string;
   new_password: string;
-}
-
-/**
- * 检查系统是否已初始化
- */
-export async function checkInitStatus(): Promise<InitStatusResponse> {
-  return http<InitStatusResponse>("/api/v1/init/status");
-}
-
-/**
- * 初始化系统（创建第一个 super_admin 用户）
- */
-export async function initializeSystem(
-  data: InitRequest,
-): Promise<LoginResponse> {
-  return http<LoginResponse>("/api/v1/init/setup", {
-    method: "POST",
-    body: JSON.stringify(data),
-  });
 }
 
 /**

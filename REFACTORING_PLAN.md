@@ -678,8 +678,6 @@ func NewRouter(handler *Handler, authMiddleware *auth.Middleware) *chi.Mux {
     // 公开路由
     r.Group(func(r chi.Router) {
         r.Post("/api/v1/auth/login", handler.Login)
-        r.Get("/api/v1/init/status", handler.InitStatus)
-        r.Post("/api/v1/init", handler.Initialize)
     })
 
     // 需要认证的路由

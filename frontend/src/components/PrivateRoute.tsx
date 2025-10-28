@@ -14,7 +14,7 @@ interface PrivateRouteProps {
  * 私有路由组件，需要认证才能访问
  */
 export function PrivateRoute({ children }: PrivateRouteProps) {
-  const { user, loading, initialized } = useAuth();
+  const { user, loading } = useAuth();
   const location = useLocation();
 
   // 正在加载用户信息
@@ -31,11 +31,6 @@ export function PrivateRoute({ children }: PrivateRouteProps) {
         <Spin size="large" tip="加载中..." />
       </div>
     );
-  }
-
-  // 系统未初始化，重定向到初始化页面
-  if (!initialized) {
-    return <Navigate to="/initialize" replace />;
   }
 
   // 未登录，重定向到登录页面

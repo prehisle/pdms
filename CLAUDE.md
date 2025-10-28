@@ -8,7 +8,7 @@
 
 ## 架构概览
 
-YDMS（题库管理系统）是一个全栈应用，采用 Go 后端和 React 前端：
+YDMS（资料管理系统）是一个全栈应用，采用 Go 后端和 React 前端：
 
 - **后端**：Go 1.22+ 服务，充当上游 NDR（节点-文档-关系）服务的代理/门面
   - 入口：`backend/cmd/server/main.go`
@@ -26,6 +26,39 @@ YDMS（题库管理系统）是一个全栈应用，采用 Go 后端和 React �
 - **文档**：`docs/` 包含设计笔记和 `docs/backend/openapi.json`（NDR OpenAPI 规范）
 
 ## 开发命令
+
+### 快速开始（使用 Makefile）
+```bash
+# 查看所有可用命令
+make help
+
+# 快速重置数据库（推荐）- 清空数据但保留表结构
+make quick-reset
+
+# 完整重置并初始化（重建数据库）
+make reset-init
+
+# 启动后端开发服务器
+make dev-backend
+
+# 启动前端开发服务器
+make dev-frontend
+
+# 运行后端测试
+make test-backend
+
+# 运行 E2E 测试
+make test-e2e
+
+# 运行 E2E 测试（UI 模式）
+make test-e2e-ui
+
+# 安装所有依赖
+make install
+
+# 清理临时文件
+make clean
+```
 
 ### 后端
 ```bash
@@ -76,7 +109,34 @@ npm run build
 
 # 预览生产版本构建
 npm run preview
+
+# E2E 测试
+npm run test:e2e              # 无头模式运行测试
+npm run test:e2e:ui           # UI 模式运行测试
+npm run test:e2e:headed       # 有头模式运行测试
+npm run test:e2e:debug        # 调试模式运行测试
 ```
+
+### 数据库管理
+```bash
+# 快速重置（日常使用，推荐）
+make quick-reset
+
+# 完整重置（遇到问题时）
+make reset-init
+
+# 使用 Go 工具重置
+cd backend && go run ./cmd/reset-db
+
+# 手动连接数据库（需配置 .env）
+PGPASSWORD=admin psql -h 192.168.1.4 -p 5432 -U admin -d ydms
+```
+
+**默认管理员账号**（重置后自动创建）：
+- 用户名：`super_admin`
+- 密码：`admin123456`
+
+详细的数据库重置指南请参阅 [DATABASE_RESET.md](DATABASE_RESET.md)。
 
 ## 关键领域概念
 
@@ -158,9 +218,7 @@ created_at   TIMESTAMP
 
 #### 认证流程
 
-1. **初始化**: 系统首次启动时需要创建第一个 super_admin
-   - `POST /api/v1/init/setup`
-   - 检查状态: `GET /api/v1/init/status`
+1. **默认管理员**: 数据库迁移会自动创建 `super_admin / admin123456`，可通过 `YDMS_DEFAULT_ADMIN_*` 环境变量覆盖，部署后务必强制修改密码。
 
 2. **登录**: 用户使用用户名和密码登录
    - `POST /api/v1/auth/login`
@@ -208,8 +266,13 @@ created_at   TIMESTAMP
 
 #### 测试账号
 
-开发/测试环境使用以下凭据：
+**默认管理员**（数据库重置后自动创建）：
+```
+用户名: super_admin
+密码:   admin123456
+```
 
+**开发/测试环境的其他账号**：
 ```
 超级管理员:
   Username: testadmin
@@ -223,7 +286,9 @@ created_at   TIMESTAMP
   创建后使用设置的密码
 ```
 
-**安全提示**: 生产环境必须修改默认密码！
+**安全提示**:
+- 首次登录后请立即修改密码
+- 生产环境必须修改所有默认密码
 
 ## 环境配置
 
@@ -313,7 +378,198 @@ PR 应包括：
 - 使用 `VITE_API_BASE_URL` 自定义 API 端点（开发时默认通过 Vite 代理到 localhost:9180）
 - React Query DevTools 在开发时可用
 
+### Docker Compose 问题
+
+**错误：`KeyError: 'ContainerConfig'`**
+- **原因**：使用旧版 `docker-compose` V1 与镜像元数据不兼容
+- **解决**：
+  ```bash
+  # 使用 Docker Compose V2（空格而非连字符）
+  docker compose down
+  docker compose up -d
+
+  # 如果命令不存在，安装 Docker Compose V2
+  sudo apt-get install docker-compose-plugin
+
+  # 完全重建（如果仍失败）
+  docker compose down
+  docker rm -f ydms-postgres ydms-app ydms-frontend
+  docker pull postgres:16-alpine
+  docker compose up -d --force-recreate
+  ```
+
+**端口冲突错误：`port is already allocated`**
+- **检查端口占用**：
+  ```bash
+  sudo lsof -i :9001   # 前端 HTTP 端口
+  sudo lsof -i :9180   # 后端 API 端口
+  sudo lsof -i :5432   # PostgreSQL（如果暴露）
+  ```
+- **解决方案**：
+  - 方案1：停止占用端口的服务（如 `sudo systemctl stop postgresql`）
+  - 方案2：修改 `.env` 文件使用其他端口，然后 `docker compose restart`
+
+**服务无法启动或健康检查失败**
+- **检查日志**：
+  ```bash
+  docker compose logs postgres   # 数据库日志
+  docker compose logs ydms-app   # 后端日志
+  docker compose logs frontend   # 前端日志
+  ```
+- **检查网络连接**：
+  ```bash
+  docker compose exec ydms-app ping postgres  # 测试内部网络
+  ```
+- **验证环境配置**：
+  ```bash
+  # 确保 .env 文件包含所有必需变量
+  grep -E "POSTGRES_PASSWORD|YDMS_NDR_API_KEY|YDMS_JWT_SECRET" .env
+  ```
+
 ## 生成的文件
 生成的输出应保持未跟踪状态：
 - `backend/tmp/`、`backend/.gocache/`、`backend/server.log`
 - `frontend/dist/`、`frontend/node_modules/`
+
+## 生产部署
+
+### Docker 部署
+项目支持前后端分离的 Docker 部署方式：
+
+```bash
+# 构建后端镜像
+docker build -t ydms-backend:latest -f Dockerfile .
+
+# 构建前端镜像
+docker build -t ydms-frontend:latest -f Dockerfile.frontend ./frontend
+
+# 使用 Docker Compose 部署
+cd deploy/production
+cp .env.example .env
+nano .env  # 配置环境变量
+docker compose up -d
+```
+
+### 一键部署脚本
+```bash
+# 使用本地配置文件部署（推荐）
+./scripts/deploy_prod.sh --env-file deploy/production/.env.1.31
+
+# 查看部署选项
+./scripts/deploy_prod.sh --help
+```
+
+### 生产环境检查
+```bash
+# 查看服务状态
+docker compose ps
+
+# 查看日志
+docker compose logs ydms-app
+
+# 重启服务
+docker compose restart ydms-app
+```
+
+详细的生产部署指南请参阅 [deploy/production/README.md](deploy/production/README.md)。
+
+### 关键配置
+生产环境必须配置以下环境变量：
+- `POSTGRES_PASSWORD` - 数据库密码
+- `YDMS_NDR_BASE_URL` - NDR 服务地址
+- `YDMS_NDR_API_KEY` - NDR API 密钥
+- `YDMS_ADMIN_KEY` - NDR 管理员密钥
+- `YDMS_JWT_SECRET` - JWT 签名密钥
+
+**安全提示**：
+- 生产环境必须修改所有默认密码
+- 使用强密码和随机生成的密钥
+- 定期备份 PostgreSQL 数据库
+
+## 常见工作流
+
+### 日常开发流程
+```bash
+# 1. 启动前重置数据库到干净状态
+make quick-reset
+
+# 2. 在不同终端启动后端和前端
+make dev-backend   # 终端1：后端服务
+make dev-frontend  # 终端2：前端服务
+
+# 3. 开发中...修改代码，自动重载
+
+# 4. 运行测试验证变更
+make test-backend  # 后端测试
+make test-e2e      # E2E 测试
+
+# 5. 提交前检查
+cd backend && go vet ./...    # 检查代码
+cd frontend && npm run build  # 验证构建
+```
+
+### 添加新文档类型
+1. 在 `backend/internal/service/document_types.go` 中添加新的文档类型常量
+2. 更新 `ValidateDocumentContent()` 和 `ValidateDocumentMetadata()` 函数
+3. 在 `backend/internal/service/testdata/` 添加测试数据
+4. 更新相关测试用例
+5. 在前端添加相应的编辑器和预览组件
+
+### 调试 NDR 集成问题
+```bash
+# 1. 启用调试模式
+export YDMS_DEBUG_TRAFFIC=1
+
+# 2. 启动服务并查看日志
+make dev-backend
+
+# 3. 日志会显示所有 HTTP 请求和响应
+# 检查 backend/server.log 文件
+
+# 4. 运行集成测试
+cd backend
+go test ./internal/ndrclient -run TestRealNDRIntegration \
+  -ndr.url=http://localhost:9001 \
+  -ndr.apikey=your-key \
+  -ndr.user=test-user
+```
+
+### 修复 E2E 测试失败
+```bash
+# 1. 重置数据库到已知状态
+make quick-reset
+
+# 2. 以 UI 模式运行失败的测试
+cd frontend
+npx playwright test --ui
+
+# 3. 或以有头模式运行查看浏览器行为
+npx playwright test --headed
+
+# 4. 调试特定测试
+npx playwright test --debug auth.spec.ts
+
+# 5. 查看测试结果报告
+npx playwright show-report
+```
+
+### 添加新的用户权限功能
+1. 更新数据库模型（`backend/internal/models/`）
+2. 修改认证 middleware（`backend/internal/api/middleware.go`）
+3. 更新用户服务层（`backend/internal/service/users.go`）
+4. 在前端更新 `AuthContext` 和权限检查
+5. 添加 E2E 测试验证权限控制（`frontend/e2e/permissions.spec.ts`）
+
+### 处理端口冲突
+```bash
+# 检查端口占用
+lsof -i :9180  # YDMS 后端
+lsof -i :5173  # Vite 前端
+lsof -i :9001  # NDR 服务
+
+# 终止占用端口的进程
+kill -9 <PID>
+
+# 或使用 fuser
+fuser -k 9180/tcp
+```

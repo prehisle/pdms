@@ -2,7 +2,7 @@
 
 ## 1. 项目概览
 
-YDMS 由 Go 后端与 React 前端组成，面向题库管理及文档维护场景。后端负责对接外部 NDR 服务，提供目录、文档等 API；前端提供基于 Ant Design 与 Monaco Editor 的管理界面。项目采用模块化结构，强调表驱动的业务逻辑、严格的 TypeScript 类型以及可扩展的缓存与配置机制。
+YDMS 由 Go 后端与 React 前端组成，面向资料管理及文档维护场景。后端负责对接外部 NDR 服务，提供目录、文档等 API；前端提供基于 Ant Design 与 Monaco Editor 的管理界面。项目采用模块化结构，强调表驱动的业务逻辑、严格的 TypeScript 类型以及可扩展的缓存与配置机制。
 
 核心目标：
 - 保持稳定的目录与文档管理能力，确保与 NDR 的同步可靠。
@@ -14,7 +14,7 @@ YDMS 由 Go 后端与 React 前端组成，面向题库管理及文档维护场�
 - `backend/`：Go 1.22 服务
   - `cmd/server`：服务入口与开发时的自动重载逻辑。
   - `internal/api`：HTTP 路由与 Handler，负责认证信息透传与中间件。
-  - `internal/service`：题库与文档的领域逻辑，包含批量操作、回滚策略等。
+  - `internal/service`：目录与资料的领域逻辑，包含批量操作、回滚策略等。
   - `internal/ndrclient`：对接上游 NDR 的 HTTP 客户端封装。
   - `internal/cache`：缓存抽象，目前提供空实现，可替换为 Redis 等。
   - `internal/config`：环境变量读取与默认值管理。
@@ -138,6 +138,7 @@ YDMS 由 Go 后端与 React 前端组成，面向题库管理及文档维护场�
 - 不得将真实的 `YDMS_*` 密钥写入仓库，使用 `.env` 本地管理并加入 `.gitignore`。
 - 前端通过 DOMPurify 进行 HTML 净化，但仍需避免将未验证的用户输入直接渲染。
 - 在生产环境禁用 `YDMS_DEBUG_TRAFFIC`，避免日志泄露敏感信息。
+- 默认超级管理员由迁移自动创建（`super_admin/admin123456`，可通过 `YDMS_DEFAULT_ADMIN_*` 覆盖），部署后需立即修改密码或下发随机凭据。
 - 审核第三方依赖更新，关注安全公告，必要时在维护指南中记录处理措施。
 
 ## 10. 文档与沟通

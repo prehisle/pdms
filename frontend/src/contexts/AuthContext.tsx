@@ -3,6 +3,7 @@ import {
   useContext,
   useState,
   useEffect,
+  useCallback,
   ReactNode,
 } from "react";
 import {
@@ -10,10 +11,7 @@ import {
   login as apiLogin,
   logout as apiLogout,
   getCurrentUser,
-  initializeSystem,
-  checkInitStatus,
   LoginRequest,
-  InitRequest,
 } from "../api/auth";
 
 /**
@@ -28,11 +26,8 @@ interface AuthContextState {
   user: User | null;
   token: string | null;
   loading: boolean;
-  initialized: boolean;
   login: (credentials: LoginRequest) => Promise<void>;
   logout: () => Promise<void>;
-  initialize: (data: InitRequest) => Promise<void>;
-  checkSystemInitialized: () => Promise<boolean>;
 }
 
 /**
@@ -57,61 +52,31 @@ export function AuthProvider({ children }: AuthProviderProps) {
     return localStorage.getItem(TOKEN_KEY);
   });
   const [loading, setLoading] = useState(true);
-  const [initialized, setInitialized] = useState(false);
-
-  /**
-   * 检查系统是否已初始化
-   */
-  const checkSystemInitialized = async (): Promise<boolean> => {
-    try {
-      const status = await checkInitStatus();
-      setInitialized(status.initialized);
-      return status.initialized;
-    } catch (error) {
-      console.error("Failed to check init status:", error);
-      return false;
-    }
-  };
 
   /**
    * 加载当前用户信息
    */
-  const loadUser = async () => {
+  const loadUser = useCallback(async () => {
     if (!token) {
+      setUser(null);
       setLoading(false);
       return;
     }
 
+    setLoading(true);
     try {
       const currentUser = await getCurrentUser();
       setUser(currentUser);
-      setInitialized(true);
     } catch (error) {
       console.error("Failed to load user:", error);
       // Token 可能已过期，清除
       setToken(null);
       localStorage.removeItem(TOKEN_KEY);
+      setUser(null);
     } finally {
       setLoading(false);
     }
-  };
-
-  /**
-   * 初始化系统
-   */
-  const initialize = async (data: InitRequest): Promise<void> => {
-    try {
-      const response = await initializeSystem(data);
-      setToken(response.token);
-      setUser(response.user);
-      localStorage.setItem(TOKEN_KEY, response.token);
-      setInitialized(true);
-      setInitialized(true);
-    } catch (error) {
-      console.error("Initialization failed:", error);
-      throw error;
-    }
-  };
+  }, [token]);
 
   /**
    * 登录
@@ -147,21 +112,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
    * 初始加载
    */
   useEffect(() => {
-    const init = async () => {
-      await checkSystemInitialized();
-      await loadUser();
-    };
-    init();
-  }, []);
-
-  /**
-   * token 变化时重新加载用户
-   */
-  useEffect(() => {
-    if (token && !user) {
-      loadUser();
-    }
-  }, [token]);
+    loadUser();
+  }, [loadUser]);
 
   /**
    * 监听 401 未授权事件
@@ -183,11 +135,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
     user,
     token,
     loading,
-    initialized,
     login,
     logout,
-    initialize,
-    checkSystemInitialized,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

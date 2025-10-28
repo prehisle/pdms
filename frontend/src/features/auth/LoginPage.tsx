@@ -57,7 +57,7 @@ export function LoginPage() {
     >
       <Card style={{ width: 400 }}>
         <div style={{ textAlign: "center", marginBottom: 24 }}>
-          <Title level={2}>YDMS 题库管理系统</Title>
+          <Title level={2}>YDMS 资料管理系统</Title>
         </div>
 
         <Form

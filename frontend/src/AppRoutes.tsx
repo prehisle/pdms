@@ -4,7 +4,7 @@ import { Spin } from "antd";
 import App from "./App";
 import { AuthProvider } from "./contexts/AuthContext";
 import { PrivateRoute } from "./components/PrivateRoute";
-import { LoginPage, InitializePage } from "./features/auth";
+import { LoginPage } from "./features/auth";
 
 const DocumentEditor = lazy(() =>
   import("./features/documents/components/DocumentEditor").then((module) => ({
@@ -32,8 +32,6 @@ export const AppRoutes = () => {
         <Routes>
           {/* 公开路由 */}
           <Route path="/login" element={<LoginPage />} />
-          <Route path="/initialize" element={<InitializePage />} />
-
           {/* 受保护的路由 */}
           <Route
             path="/"

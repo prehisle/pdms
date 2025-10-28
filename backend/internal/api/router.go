@@ -14,7 +14,6 @@ import (
 // RouterConfig 路由器配置
 type RouterConfig struct {
 	Handler       *Handler
-	InitHandler   *InitHandler
 	AuthHandler   *AuthHandler
 	UserHandler   *UserHandler
 	CourseHandler *CourseHandler
@@ -53,10 +52,6 @@ func NewRouterWithConfig(cfg RouterConfig) http.Handler {
 	mux.Handle("/healthz", wrap(http.HandlerFunc(cfg.Handler.Health)))
 	mux.Handle("/api/v1/healthz", wrap(http.HandlerFunc(cfg.Handler.Health)))
 	mux.Handle("/api/v1/ping", wrap(http.HandlerFunc(cfg.Handler.Ping)))
-
-	// 初始化端点（公开）
-	mux.Handle("/api/v1/init/status", wrap(http.HandlerFunc(cfg.InitHandler.CheckStatus)))
-	mux.Handle("/api/v1/init/setup", wrap(http.HandlerFunc(cfg.InitHandler.Setup)))
 
 	// 认证端点
 	mux.Handle("/api/v1/auth/login", wrap(http.HandlerFunc(cfg.AuthHandler.Login)))
@@ -238,4 +233,3 @@ func requestContextMiddleware(defaultUserID string) func(http.Handler) http.Hand
 		})
 	}
 }
-

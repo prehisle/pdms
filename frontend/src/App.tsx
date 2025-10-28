@@ -165,7 +165,7 @@ const AppContent = () => {
   } = useUIContext();
 
   useEffect(() => {
-    document.title = "题库目录管理";
+    document.title = "资料目录管理";
   }, []);
 
   // Sync rename modal form values
@@ -532,7 +532,7 @@ const AppContent = () => {
           justifyContent: "space-between",
         }}
       >
-        <div style={{ fontSize: "18px", fontWeight: 600 }}>YDMS 题库管理系统</div>
+        <div style={{ fontSize: "18px", fontWeight: 600 }}>YDMS 资料管理系统</div>
         <Dropdown menu={{ items: userMenuItems }} placement="bottomRight">
           <Space style={{ cursor: "pointer" }}>
             <Avatar icon={<UserOutlined />} size="small" />

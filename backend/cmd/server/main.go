@@ -66,7 +66,11 @@ func runServer() error {
 	}
 
 	// 运行数据库迁移
-	if err := database.AutoMigrate(db); err != nil {
+	if err := database.AutoMigrateWithDefaults(db, database.AdminDefaults{
+		Username:    cfg.Admin.Username,
+		Password:    cfg.Admin.Password,
+		DisplayName: cfg.Admin.DisplayName,
+	}); err != nil {
 		return fmt.Errorf("failed to migrate database: %w", err)
 	}
 
@@ -86,7 +90,6 @@ func runServer() error {
 	})
 
 	// 创建认证相关服务
-	initService := service.NewInitService(db)
 	userService := service.NewUserService(db)
 	svc := service.NewService(cacheProvider, ndr, userService)
 	courseService := service.NewCourseService(db, ndr, userService)
@@ -98,7 +101,6 @@ func runServer() error {
 		UserID:   cfg.Auth.DefaultUserID,
 		AdminKey: cfg.Auth.AdminKey,
 	})
-	initHandler := api.NewInitHandler(initService)
 	authHandler := api.NewAuthHandler(userService, cfg.JWT.Secret, jwtExpiry)
 	userHandler := api.NewUserHandler(userService)
 	courseHandler := api.NewCourseHandler(courseService)
@@ -106,7 +108,6 @@ func runServer() error {
 	// 创建路由器（使用新的配置方式）
 	router := api.NewRouterWithConfig(api.RouterConfig{
 		Handler:       handler,
-		InitHandler:   initHandler,
 		AuthHandler:   authHandler,
 		UserHandler:   userHandler,
 		CourseHandler: courseHandler,

@@ -1,6 +1,6 @@
 # YDMS Backend Skeleton
 
-This module hosts the Go backend for the YDMS question bank.
+This module hosts the Go backend for the YDMS materials management system.
 
 ## Getting started
 

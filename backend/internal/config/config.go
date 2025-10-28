@@ -14,6 +14,7 @@ type Config struct {
 	Debug    DebugConfig
 	DB       DBConfig
 	JWT      JWTConfig
+	Admin    AdminBootstrapConfig
 }
 
 // NDRConfig stores settings for the upstream NDR service.
@@ -41,6 +42,13 @@ type DBConfig struct {
 	Password string
 	DBName   string
 	SSLMode  string
+}
+
+// AdminBootstrapConfig stores default admin bootstrap credentials.
+type AdminBootstrapConfig struct {
+	Username    string
+	Password    string
+	DisplayName string
 }
 
 // JWTConfig stores JWT authentication settings.
@@ -75,6 +83,11 @@ func Load() Config {
 		JWT: JWTConfig{
 			Secret: firstNonEmpty(os.Getenv("YDMS_JWT_SECRET"), "change-me-in-production"),
 			Expiry: firstNonEmpty(os.Getenv("YDMS_JWT_EXPIRY"), "24h"),
+		},
+		Admin: AdminBootstrapConfig{
+			Username:    firstNonEmpty(os.Getenv("YDMS_DEFAULT_ADMIN_USERNAME"), "super_admin"),
+			Password:    firstNonEmpty(os.Getenv("YDMS_DEFAULT_ADMIN_PASSWORD"), "admin123456"),
+			DisplayName: firstNonEmpty(os.Getenv("YDMS_DEFAULT_ADMIN_DISPLAY_NAME"), "超级管理员"),
 		},
 	}
 }

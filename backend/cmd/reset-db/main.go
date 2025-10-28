@@ -23,6 +23,12 @@ func main() {
 	// 加载配置
 	cfg := config.Load()
 
+	adminDefaults := database.AdminDefaults{
+		Username:    cfg.Admin.Username,
+		Password:    cfg.Admin.Password,
+		DisplayName: cfg.Admin.DisplayName,
+	}.WithFallback()
+
 	// 转换为 database.Config
 	dbCfg := database.Config{
 		Host:     cfg.DB.Host,
@@ -62,7 +68,7 @@ func main() {
 
 	// 2. 重新创建表
 	log.Println("\n步骤 2/3: 重新创建表...")
-	err = database.AutoMigrate(db)
+	err = database.AutoMigrateWithDefaults(db, adminDefaults)
 	if err != nil {
 		log.Fatalf("创建表失败: %v", err)
 	}
@@ -71,24 +77,22 @@ func main() {
 	// 3. 创建默认超级管理员
 	log.Println("\n步骤 3/3: 创建默认超级管理员...")
 
-	defaultUsername := "super_admin"
-	defaultPassword := "admin123456"
-
-	passwordHash, err := auth.HashPassword(defaultPassword)
+	passwordHash, err := auth.HashPassword(adminDefaults.Password)
 	if err != nil {
 		log.Fatalf("密码加密失败: %v", err)
 	}
 
-	superAdmin := &database.User{
-		Username:     defaultUsername,
+	superAdmin := database.User{
+		Username:     adminDefaults.Username,
 		PasswordHash: passwordHash,
 		Role:         "super_admin",
-		DisplayName:  "超级管理员",
+		DisplayName:  adminDefaults.DisplayName,
 	}
 
-	err = db.Create(superAdmin).Error
-	if err != nil {
-		log.Fatalf("创建超级管理员失败: %v", err)
+	if err := db.Where(database.User{Username: adminDefaults.Username}).
+		Assign(superAdmin).
+		FirstOrCreate(&superAdmin).Error; err != nil {
+		log.Fatalf("创建或更新超级管理员失败: %v", err)
 	}
 
 	log.Println("✓ 超级管理员创建成功")
@@ -98,8 +102,8 @@ func main() {
 	fmt.Println("数据库重置完成！")
 	fmt.Println(strings.Repeat("=", 60))
 	fmt.Printf("\n默认管理员账号:\n")
-	fmt.Printf("  用户名: %s\n", defaultUsername)
-	fmt.Printf("  密码:   %s\n", defaultPassword)
+	fmt.Printf("  用户名: %s\n", adminDefaults.Username)
+	fmt.Printf("  密码:   %s\n", adminDefaults.Password)
 	fmt.Println("\n⚠️  请在首次登录后立即修改密码！")
 	fmt.Println(strings.Repeat("=", 60) + "\n")
 }

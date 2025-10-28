@@ -2,7 +2,7 @@
 
 ## 概述
 
-本文档介绍如何使用 Docker Compose 在生产环境中部署 YDMS（题库管理系统）。
+本文档介绍如何使用 Docker Compose 在生产环境中部署 YDMS（资料管理系统）。
 
 ## 系统要求
 
