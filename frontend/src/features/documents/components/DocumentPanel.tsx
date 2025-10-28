@@ -1,4 +1,4 @@
-import type { FC } from "react";
+import type { FC, DragEvent } from "react";
 
 import {
   Alert,
@@ -42,6 +42,8 @@ interface DocumentPanelProps {
   onAddDocument: () => void;
   onReorderDocuments: () => void;
   onOpenTrash: () => void;
+  onDocumentDragStart?: (event: DragEvent<HTMLElement>, document: Document) => void;
+  onDocumentDragEnd?: (event: DragEvent<HTMLElement>) => void;
 }
 
 export const DocumentPanel: FC<DocumentPanelProps> = ({
@@ -59,6 +61,8 @@ export const DocumentPanel: FC<DocumentPanelProps> = ({
   onAddDocument,
   onReorderDocuments,
   onOpenTrash,
+  onDocumentDragStart,
+  onDocumentDragEnd,
 }) => (
   <Space direction="vertical" size="large" style={{ width: "100%" }}>
     <Card>
@@ -164,6 +168,31 @@ export const DocumentPanel: FC<DocumentPanelProps> = ({
           columns={columns}
           pagination={false}
           loading={isFetching}
+          components={{
+            body: {
+              row: (props: any) => (
+                <tr
+                  {...props}
+                  draggable={onDocumentDragStart != null}
+                  onDragStart={(e) => {
+                    const rowKey = Number(props["data-row-key"]);
+                    const document = documents.find((doc) => doc.id === rowKey);
+                    if (document && onDocumentDragStart) {
+                      onDocumentDragStart(e, document);
+                    }
+                  }}
+                  onDragEnd={(e) => {
+                    if (onDocumentDragEnd) {
+                      onDocumentDragEnd(e);
+                    }
+                  }}
+                  style={{
+                    cursor: onDocumentDragStart ? "move" : "default",
+                  }}
+                />
+              ),
+            },
+          }}
         />
       )}
     </Card>

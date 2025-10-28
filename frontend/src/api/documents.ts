@@ -125,6 +125,23 @@ export interface DocumentVersionsPage {
   items?: DocumentVersion[];
 }
 
+export interface DocumentBinding {
+  node_id: number;
+  node_name: string;
+  node_path: string;
+  created_at: string;
+  created_by: string;
+}
+
+export interface DocumentBindingStatus {
+  total_bindings: number;
+  node_ids: number[];
+}
+
+export interface DocumentBatchBindPayload {
+  node_ids: number[];
+}
+
 function buildDocumentQuery(params?: DocumentListParams): string {
   if (!params) return "";
   const flatParams: Record<string, unknown> = {};
@@ -265,6 +282,27 @@ export async function reorderDocuments(payload: DocumentReorderPayload): Promise
 export async function bindDocument(nodeId: number, docId: number): Promise<void> {
   await http<void>(`/api/v1/nodes/${nodeId}/bind/${docId}`, {
     method: "POST",
+  });
+}
+
+export async function unbindDocument(nodeId: number, docId: number): Promise<void> {
+  await http<void>(`/api/v1/nodes/${nodeId}/unbind/${docId}`, {
+    method: "DELETE",
+  });
+}
+
+export async function getDocumentBindings(docId: number): Promise<DocumentBinding[]> {
+  return http<DocumentBinding[]>(`/api/v1/documents/${docId}/bindings`);
+}
+
+export async function getDocumentBindingStatus(docId: number): Promise<DocumentBindingStatus> {
+  return http<DocumentBindingStatus>(`/api/v1/documents/${docId}/binding-status`);
+}
+
+export async function batchBindDocument(docId: number, payload: DocumentBatchBindPayload): Promise<DocumentBinding[]> {
+  return http<DocumentBinding[]>(`/api/v1/documents/${docId}/batch-bind`, {
+    method: "POST",
+    body: JSON.stringify(payload),
   });
 }
 

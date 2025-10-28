@@ -144,6 +144,12 @@ type Relationship struct {
 	CreatedBy  string `json:"created_by"`
 }
 
+// DocumentBindingStatus represents the binding status of a document.
+type DocumentBindingStatus struct {
+	TotalBindings int     `json:"total_bindings"`
+	NodeIDs       []int64 `json:"node_ids"`
+}
+
 // DocumentVersion represents a version of a document.
 type DocumentVersion struct {
 	DocumentID    int64          `json:"document_id"`

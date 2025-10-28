@@ -16,6 +16,7 @@ import type { MenuProps } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   DeleteOutlined,
   EditOutlined,
@@ -45,6 +46,7 @@ import { DocumentHistoryDrawer } from "./features/documents/components/DocumentH
 import { DocumentTrashDrawer } from "./features/documents/components/DocumentTrashDrawer";
 import { DocumentReorderModal } from "./features/documents/components/DocumentReorderModal";
 import { StatusBar } from "./components/StatusBar";
+import { useDocumentDrag } from "./features/documents/hooks/useDocumentDrag";
 
 const dragDebugEnabled =
   (import.meta.env.VITE_DEBUG_DRAG ?? "").toString().toLowerCase() === "1";
@@ -69,6 +71,7 @@ const AppContent = () => {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
   const [messageApi, contextHolder] = message.useMessage();
+  const queryClient = useQueryClient();
 
   // Header 折叠状态
   const [headerCollapsed, setHeaderCollapsed] = useState(() => {
@@ -175,6 +178,21 @@ const AppContent = () => {
     handleCloseUserManagement,
   } = useUIContext();
 
+  // 刷新分类和文档查询
+  const invalidateAllQueries = useCallback(async () => {
+    await Promise.all([
+      invalidateCategoryQueries(),
+      queryClient.invalidateQueries({ queryKey: ["node-documents"] }),
+    ]);
+  }, [invalidateCategoryQueries, queryClient]);
+
+  // 文档拖拽功能
+  const { handleDocumentDragStart, handleDocumentDragEnd, handleDropOnNode } = useDocumentDrag({
+    selectedNodeId,
+    messageApi,
+    onInvalidateQueries: invalidateAllQueries,
+  });
+
   useEffect(() => {
     document.title = "资料目录管理";
   }, []);
@@ -228,10 +246,10 @@ const AppContent = () => {
     [openDeletePreview],
   );
 
-  const handleOpenTrashWithRefresh = useCallback(() => {
+  const handleOpenTrashWithRefresh = useCallback(async () => {
     setSelectedTrashRowKeys([]);
     handleOpenTrash();
-    void trashQuery.refetch();
+    await trashQuery.refetch();
   }, [setSelectedTrashRowKeys, handleOpenTrash, trashQuery]);
 
   const handleConfirmDelete = useCallback(() => {
@@ -311,10 +329,66 @@ const AppContent = () => {
   );
 
   const handleSoftDeleteDocument = useCallback(
-    (doc: Document) => {
-      deleteDocumentMutation.mutate(doc.id);
+    async (doc: Document) => {
+      try {
+        // 1. 获取文档的绑定状态
+        const { getDocumentBindingStatus, unbindDocument } = await import("./api/documents");
+        const bindingStatus = await getDocumentBindingStatus(doc.id);
+
+        if (bindingStatus.total_bindings > 1) {
+          // 2. 文档关联到多个目录，显示选择对话框
+          const { Modal } = await import("antd");
+          Modal.confirm({
+            title: "该文档关联到多个目录",
+            content: (
+              <>
+                <p>
+                  文档 <strong>"{doc.title}"</strong> 关联到 <strong>{bindingStatus.total_bindings}</strong> 个目录。
+                </p>
+                <p>请选择操作：</p>
+                <ul>
+                  <li>
+                    <strong>仅从当前目录移除</strong>：文档在其他目录中仍然可见
+                  </li>
+                  <li>
+                    <strong>从所有目录删除</strong>：文档将被移入回收站，所有目录中都不可见
+                  </li>
+                </ul>
+              </>
+            ),
+            okText: "仅从当前目录移除",
+            cancelText: "从所有目录删除",
+            okType: "default",
+            cancelButtonProps: { danger: true },
+            onOk: async () => {
+              // 仅解绑当前节点
+              if (selectedNodeId == null) {
+                messageApi.error("无法确定当前目录");
+                return;
+              }
+              try {
+                await unbindDocument(selectedNodeId, doc.id);
+                messageApi.success("已从当前目录移除");
+                // 刷新文档列表和分类树
+                await invalidateAllQueries();
+              } catch (error) {
+                messageApi.error("移除失败：" + (error as Error).message);
+              }
+            },
+            onCancel: () => {
+              // 删除文档
+              deleteDocumentMutation.mutate(doc.id);
+            },
+          });
+        } else {
+          // 3. 只有一个绑定，直接软删除
+          deleteDocumentMutation.mutate(doc.id);
+        }
+      } catch (error) {
+        messageApi.error("检查文档关系失败：" + (error as Error).message);
+      }
     },
-    [deleteDocumentMutation],
+    [deleteDocumentMutation, selectedNodeId, messageApi, invalidateAllQueries],
   );
 
   const handleOpenDocHistoryWrapper = useCallback(
@@ -361,6 +435,12 @@ const AppContent = () => {
     },
     [handleSelectionChange, lookups],
   );
+
+  const handleOpenDocumentTrashWithRefresh = useCallback(async () => {
+    handleOpenDocumentTrash();
+    // 打开回收站时自动刷新数据
+    await documentTrashQuery.refetch();
+  }, [handleOpenDocumentTrash, documentTrashQuery]);
 
   // Sync document editor close with deletion
   useEffect(() => {
@@ -434,26 +514,19 @@ const AppContent = () => {
                 />
               </Tooltip>
               {user?.role !== "proofreader" && (
-                <Popconfirm
-                  title="确认将该文档移入回收站？"
-                  okText="移入"
-                  cancelText="取消"
-                  onConfirm={() => handleSoftDeleteDocument(record)}
-                  disabled={deleteDocumentMutation.isPending && !deleting}
-                >
-                  <Tooltip title="移入回收站">
-                    <span style={{ display: "inline-flex" }}>
-                      <Button
-                        icon={<DeleteOutlined />}
-                        type="text"
-                        danger
-                        shape="circle"
-                        loading={deleteDocumentMutation.isPending && deleting}
-                        aria-label="移入回收站"
-                      />
-                    </span>
-                  </Tooltip>
-                </Popconfirm>
+                <Tooltip title="删除文档">
+                  <span style={{ display: "inline-flex" }}>
+                    <Button
+                      icon={<DeleteOutlined />}
+                      type="text"
+                      danger
+                      shape="circle"
+                      loading={deleteDocumentMutation.isPending && deleting}
+                      onClick={() => handleSoftDeleteDocument(record)}
+                      aria-label="删除文档"
+                    />
+                  </span>
+                </Tooltip>
               )}
               <Tooltip title="历史版本">
                 <Button
@@ -622,6 +695,7 @@ const AppContent = () => {
             onRefresh={handleRefreshTree}
             onInvalidateQueries={invalidateCategoryQueries}
             setIsMutating={setMutating}
+            onDocumentDrop={handleDropOnNode}
           />
         </Sider>
         <Content style={{ padding: "24px" }}>
@@ -645,7 +719,9 @@ const AppContent = () => {
               onReset={handleDocumentReset}
               onAddDocument={handleToolbarAddDocument}
               onReorderDocuments={handleOpenReorderModalWrapper}
-              onOpenTrash={handleOpenDocumentTrash}
+              onOpenTrash={handleOpenDocumentTrashWithRefresh}
+              onDocumentDragStart={handleDocumentDragStart}
+              onDocumentDragEnd={handleDocumentDragEnd}
             />
           </Space>
         </Content>

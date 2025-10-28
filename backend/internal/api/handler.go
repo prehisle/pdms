@@ -224,6 +224,11 @@ func (h *Handler) DocumentRoutes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if parts[1] == "binding-status" {
+		h.getDocumentBindingStatus(w, r, meta, id)
+		return
+	}
+
 	// Handle version-related routes
 	if parts[1] == "versions" {
 		if len(parts) == 2 {
@@ -336,6 +341,19 @@ func (h *Handler) purgeDocument(w http.ResponseWriter, r *http.Request, meta ser
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) getDocumentBindingStatus(w http.ResponseWriter, r *http.Request, meta service.RequestMeta, id int64) {
+	if r.Method != http.MethodGet {
+		respondError(w, http.StatusMethodNotAllowed, errors.New("method not allowed"))
+		return
+	}
+	status, err := h.service.GetDocumentBindingStatus(r.Context(), meta, id)
+	if err != nil {
+		respondAPIError(w, WrapUpstreamError(err))
+		return
+	}
+	writeJSON(w, http.StatusOK, status)
 }
 
 func (h *Handler) reorderDocuments(w http.ResponseWriter, r *http.Request, meta service.RequestMeta) {
@@ -499,6 +517,25 @@ func (h *Handler) NodeRoutes(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if err := h.service.BindDocument(r.Context(), meta, id, docID); err != nil {
+			respondError(w, http.StatusBadGateway, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	case "unbind":
+		if len(parts) < 3 {
+			respondError(w, http.StatusNotFound, errors.New("not found"))
+			return
+		}
+		docID, err := strconv.ParseInt(parts[2], 10, 64)
+		if err != nil {
+			respondError(w, http.StatusBadRequest, errors.New("invalid document id"))
+			return
+		}
+		if r.Method != http.MethodDelete {
+			respondError(w, http.StatusMethodNotAllowed, errors.New("method not allowed"))
+			return
+		}
+		if err := h.service.UnbindDocument(r.Context(), meta, id, docID); err != nil {
 			respondError(w, http.StatusBadGateway, err)
 			return
 		}

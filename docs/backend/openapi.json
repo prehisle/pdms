@@ -101,7 +101,7 @@
           "documents"
         ],
         "summary": "List Documents",
-        "description": "支持动态 `metadata.<field>[operator]=value` 查询参数，用于元数据筛选：\n\n- 等值（默认）：`metadata.stage=draft`，重复参数按 OR 组合；\n- IN：`metadata.stage[in]=draft,final`（也可重复参数）；\n- 模糊：`metadata.title[like]=设计`，若未包含 `%` 自动按 `%值%` 处理；\n- 范围：`metadata.price[gt]=10` / `[gte]` / `[lt]` / `[lte]`，值必须是数字；\n- 数组包含：`metadata.tags[any]=alpha`（包含任一值）、`metadata.tags[all]=alpha&metadata.tags[all]=beta`（同时包含所有值）。\n\n更多示例见 `docs/当前进度与待办.md` 的 “Metadata 过滤语法速查”。",
+        "description": "支持动态 `metadata.<field>[operator]=value` 查询参数，用于元数据筛选：\n\n- 等值（默认）：`metadata.stage=draft`，重复参数按 OR 组合；\n- IN：`metadata.stage[in]=draft,final`（也可重复参数）；\n- 模糊：`metadata.title[like]=设计`，若未包含 `%` 自动按 `%值%` 处理；\n- 范围：`metadata.price[gt]=10` / `[gte]` / `[lt]` / `[lte]`，值必须是数字；\n- 数组包含：`metadata.tags[any]=alpha`（包含任一值）、`metadata.tags[all]=alpha&metadata.tags[all]=beta`（同时包含所有值）。\n\n更多示例见 `docs/状态看板.md` 的 “Metadata 过滤语法速查”。",
         "operationId": "list_documents_api_v1_documents_get",
         "parameters": [
           {
@@ -1149,6 +1149,230 @@
         }
       }
     },
+    "/api/v1/documents/{id}/bindings": {
+      "get": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "List Document Bindings",
+        "operationId": "list_document_bindings_api_v1_documents__id__bindings_get",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Id"
+            }
+          },
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DocumentBindingOut"
+                  },
+                  "title": "Response List Document Bindings Api V1 Documents  Id  Bindings Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/documents/{id}/batch-bind": {
+      "post": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Batch Bind Document",
+        "operationId": "batch_bind_document_api_v1_documents__id__batch_bind_post",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Id"
+            }
+          },
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          },
+          {
+            "name": "x-user-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-User-Id"
+            }
+          },
+          {
+            "name": "x-request-id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Request-Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DocumentBatchBind"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DocumentBindingOut"
+                  },
+                  "title": "Response Batch Bind Document Api V1 Documents  Id  Batch Bind Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/documents/{id}/binding-status": {
+      "get": {
+        "tags": [
+          "documents"
+        ],
+        "summary": "Document Binding Status",
+        "operationId": "document_binding_status_api_v1_documents__id__binding_status_get",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Id"
+            }
+          },
+          {
+            "name": "x-api-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Api-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentBindingStatus"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/nodes": {
       "post": {
         "tags": [
@@ -2156,7 +2380,7 @@
           "nodes"
         ],
         "summary": "Get Subtree Documents",
-        "description": "支持动态 `metadata.<field>[operator]=value` 查询参数，用于元数据筛选：\n\n- 等值（默认）：`metadata.stage=draft`，重复参数按 OR 组合；\n- IN：`metadata.stage[in]=draft,final`（也可重复参数）；\n- 模糊：`metadata.title[like]=设计`，若未包含 `%` 自动按 `%值%` 处理；\n- 范围：`metadata.price[gt]=10` / `[gte]` / `[lt]` / `[lte]`，值必须是数字；\n- 数组包含：`metadata.tags[any]=alpha`（包含任一值）、`metadata.tags[all]=alpha&metadata.tags[all]=beta`（同时包含所有值）。\n\n更多示例见 `docs/当前进度与待办.md` 的 “Metadata 过滤语法速查”。\n\n另外，可通过 `include_descendants` 控制仅当前节点或整棵子树。",
+        "description": "支持动态 `metadata.<field>[operator]=value` 查询参数，用于元数据筛选：\n\n- 等值（默认）：`metadata.stage=draft`，重复参数按 OR 组合；\n- IN：`metadata.stage[in]=draft,final`（也可重复参数）；\n- 模糊：`metadata.title[like]=设计`，若未包含 `%` 自动按 `%值%` 处理；\n- 范围：`metadata.price[gt]=10` / `[gte]` / `[lt]` / `[lte]`，值必须是数字；\n- 数组包含：`metadata.tags[any]=alpha`（包含任一值）、`metadata.tags[all]=alpha&metadata.tags[all]=beta`（同时包含所有值）。\n\n更多示例见 `docs/状态看板.md` 的 “Metadata 过滤语法速查”。\n\n另外，可通过 `include_descendants` 控制仅当前节点或整棵子树。",
         "operationId": "get_subtree_documents_api_v1_nodes__id__subtree_documents_get",
         "parameters": [
           {
@@ -2585,6 +2809,212 @@
         }
       }
     },
+    "/api/v1/admin/idempotency/cleanup": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Cleanup Idempotency",
+        "operationId": "cleanup_idempotency_api_v1_admin_idempotency_cleanup_post",
+        "parameters": [
+          {
+            "name": "hours",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Hours"
+            }
+          },
+          {
+            "name": "x-admin-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/self-check": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Self Check",
+        "description": "返回数据库、迁移、扩展与关键索引的自检信息。",
+        "operationId": "self_check_api_v1_admin_self_check_get",
+        "parameters": [
+          {
+            "name": "x-admin-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Response Self Check Api V1 Admin Self Check Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/reindex": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Reindex Or Analyze",
+        "description": "对指定表执行 ANALYZE 或 REINDEX（PostgreSQL）。\n\n- method=analyze（默认）：对目标表执行 ANALYZE，快速、低风险。\n- method=reindex：仅在 PostgreSQL 下可用，需 confirm=true 以避免误触。\n- tables 未指定时对全部现有表执行。",
+        "operationId": "reindex_or_analyze_api_v1_admin_reindex_post",
+        "parameters": [
+          {
+            "name": "tables",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tables"
+            }
+          },
+          {
+            "name": "method",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^(analyze|reindex)$",
+              "default": "analyze",
+              "title": "Method"
+            }
+          },
+          {
+            "name": "confirm",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Confirm"
+            }
+          },
+          {
+            "name": "x-admin-key",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Admin-Key"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Response Reindex Or Analyze Api V1 Admin Reindex Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/health": {
       "get": {
         "summary": "Health",
@@ -2620,6 +3050,69 @@
   },
   "components": {
     "schemas": {
+      "DocumentBatchBind": {
+        "properties": {
+          "node_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Node Ids"
+          }
+        },
+        "type": "object",
+        "title": "DocumentBatchBind"
+      },
+      "DocumentBindingOut": {
+        "properties": {
+          "node_id": {
+            "type": "integer",
+            "title": "Node Id"
+          },
+          "node_name": {
+            "type": "string",
+            "title": "Node Name"
+          },
+          "node_path": {
+            "type": "string",
+            "title": "Node Path"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "node_id",
+          "node_name",
+          "node_path",
+          "created_at"
+        ],
+        "title": "DocumentBindingOut"
+      },
+      "DocumentBindingStatus": {
+        "properties": {
+          "total_bindings": {
+            "type": "integer",
+            "title": "Total Bindings"
+          },
+          "node_ids": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Node Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "total_bindings",
+          "node_ids"
+        ],
+        "title": "DocumentBindingStatus"
+      },
       "DocumentCreate": {
         "properties": {
           "title": {

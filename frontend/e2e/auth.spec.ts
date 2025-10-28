@@ -11,7 +11,12 @@ test.describe('认证功能测试', () => {
 
     // 验证登录成功
     await expect(page).toHaveURL('/');
-    await expect(page.locator('text=' + TEST_USERS.superAdmin.displayName).or(page.locator('text=' + TEST_USERS.superAdmin.username))).toBeVisible();
+    // 只检查 header 中的用户信息，避免与 footer 状态栏冲突
+    await expect(
+      page.getByRole('banner')
+        .locator('text=' + TEST_USERS.superAdmin.displayName)
+        .or(page.getByRole('banner').locator('text=' + TEST_USERS.superAdmin.username))
+    ).toBeVisible();
   });
 
   test('登录失败应该显示错误信息', async ({ page }) => {

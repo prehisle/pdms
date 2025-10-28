@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { Key, MouseEvent as ReactMouseEvent } from "react";
+import type { Key, MouseEvent as ReactMouseEvent, DragEvent as ReactDragEvent } from "react";
 
 import { Alert, Empty, Menu, Spin, Tag, Tree, Typography } from "antd";
 import type { MenuProps, TreeProps } from "antd";
@@ -61,6 +61,7 @@ export interface CategoryTreePanelProps {
   onRefresh: () => void;
   onInvalidateQueries: () => Promise<void>;
   setIsMutating: (value: boolean) => void;
+  onDocumentDrop?: (targetNodeId: number, dragData: any) => void;
 }
 
 export function CategoryTreePanel({
@@ -92,10 +93,12 @@ export function CategoryTreePanel({
   onRefresh,
   onInvalidateQueries,
   setIsMutating,
+  onDocumentDrop,
 }: CategoryTreePanelProps) {
   const [searchValue, setSearchValue] = useState("");
   const [expandedKeys, setExpandedKeys] = useState<string[]>([]);
   const [autoExpandParent, setAutoExpandParent] = useState(true);
+  const [dropTargetNodeId, setDropTargetNodeId] = useState<number | null>(null);
   const {
     clipboard,
     clipboardSourceSet,
@@ -269,13 +272,67 @@ export function CategoryTreePanel({
     lookups,
   });
 
+  const handleNodeDragOver = useCallback((event: ReactDragEvent<HTMLSpanElement>, nodeId: number) => {
+    event.preventDefault();
+    event.stopPropagation();
+    event.dataTransfer.dropEffect = "copy";
+    setDropTargetNodeId(nodeId);
+  }, []);
+
+  const handleNodeDragLeave = useCallback((event: ReactDragEvent<HTMLSpanElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setDropTargetNodeId(null);
+  }, []);
+
+  const handleNodeDrop = useCallback(
+    (event: ReactDragEvent<HTMLSpanElement>, nodeId: number) => {
+      event.preventDefault();
+      event.stopPropagation();
+      setDropTargetNodeId(null);
+
+      try {
+        const data = event.dataTransfer.getData("application/json");
+        if (!data) {
+          return;
+        }
+
+        const dragData = JSON.parse(data);
+        if (dragData.type === "document" && onDocumentDrop) {
+          onDocumentDrop(nodeId, dragData);
+        }
+      } catch (error) {
+        messageApi.error("拖放失败：数据格式错误");
+      }
+    },
+    [messageApi, onDocumentDrop],
+  );
+
   const renderTreeTitle = useCallback(
     (node: TreeDataNode) => {
       const nodeId = Number(node.key);
       const isCutNode = clipboard?.mode === "cut" && clipboardSourceSet.has(nodeId);
-      return <span style={isCutNode ? { opacity: 0.5 } : undefined}>{node.title as string}</span>;
+      const isDropTarget = dropTargetNodeId === nodeId;
+
+      return (
+        <span
+          style={{
+            opacity: isCutNode ? 0.5 : 1,
+            backgroundColor: isDropTarget ? "#e6f7ff" : "transparent",
+            padding: "2px 8px",
+            borderRadius: 4,
+            display: "inline-block",
+            width: "100%",
+          }}
+          onDragOver={(e) => handleNodeDragOver(e, nodeId)}
+          onDragLeave={handleNodeDragLeave}
+          onDrop={(e) => handleNodeDrop(e, nodeId)}
+        >
+          {node.title as string}
+        </span>
+      );
     },
-    [clipboard, clipboardSourceSet],
+    [clipboard, clipboardSourceSet, dropTargetNodeId, handleNodeDragOver, handleNodeDragLeave, handleNodeDrop],
   );
 
   const handleTreeRightClick = useCallback<NonNullable<AntTreeProps["onRightClick"]>>(

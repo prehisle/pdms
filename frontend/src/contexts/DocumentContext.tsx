@@ -208,6 +208,8 @@ const [documentTrashParams, setDocumentTrashParams] = useState<DocumentTrashPara
       messageApi.success("文档已恢复");
       await queryClient.invalidateQueries({ queryKey: ["documents-trash"] });
       await queryClient.invalidateQueries({ queryKey: ["node-documents"] });
+      // 显式刷新回收站列表
+      await documentTrashQuery.refetch();
     },
     onError: (err) => {
       const msg = err instanceof Error ? err.message : "恢复文档失败";
@@ -223,6 +225,8 @@ const [documentTrashParams, setDocumentTrashParams] = useState<DocumentTrashPara
       messageApi.success("文档已彻底删除");
       await queryClient.invalidateQueries({ queryKey: ["documents-trash"] });
       await queryClient.invalidateQueries({ queryKey: ["node-documents"] });
+      // 显式刷新回收站列表
+      await documentTrashQuery.refetch();
     },
     onError: (err) => {
       const msg = err instanceof Error ? err.message : "彻底删除失败";

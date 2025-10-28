@@ -961,6 +961,20 @@ func (f *inMemoryNDR) UnbindDocument(ctx context.Context, meta ndrclient.Request
 	return nil
 }
 
+func (f *inMemoryNDR) GetDocumentBindingStatus(ctx context.Context, meta ndrclient.RequestMeta, docID int64) (ndrclient.DocumentBindingStatus, error) {
+	nodeIDs := make([]int64, 0)
+	for nodeID, docs := range f.bindings {
+		if _, ok := docs[docID]; ok {
+			nodeIDs = append(nodeIDs, nodeID)
+		}
+	}
+	sort.Slice(nodeIDs, func(i, j int) bool { return nodeIDs[i] < nodeIDs[j] })
+	return ndrclient.DocumentBindingStatus{
+		TotalBindings: len(nodeIDs),
+		NodeIDs:       nodeIDs,
+	}, nil
+}
+
 func (f *inMemoryNDR) BindRelationship(ctx context.Context, meta ndrclient.RequestMeta, nodeID, docID int64) (ndrclient.Relationship, error) {
 	if f.bindings[nodeID] == nil {
 		f.bindings[nodeID] = make(map[int64]struct{})

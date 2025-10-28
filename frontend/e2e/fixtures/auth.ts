@@ -517,8 +517,11 @@ export const test = base.extend<{
           }
 
           await page.waitForSelector('.ant-dropdown-trigger', { timeout: 60000 }).catch(() => null);
+          // 只检查 header 中的用户信息，避免与 footer 状态栏冲突
           await playwrightExpect(
-            page.locator(`text=${user.displayName}`).or(page.locator(`text=${user.username}`)),
+            page.getByRole('banner')
+              .locator(`text=${user.displayName}`)
+              .or(page.getByRole('banner').locator(`text=${user.username}`)),
           ).toBeVisible({ timeout: 15000 });
           return;
         } catch (error) {

@@ -114,6 +114,11 @@ func (s *Service) BindDocument(ctx context.Context, meta RequestMeta, nodeID, do
 	return s.ndr.BindDocument(ctx, toNDRMeta(meta), nodeID, docID)
 }
 
+// UnbindDocument removes the binding between a node and a document.
+func (s *Service) UnbindDocument(ctx context.Context, meta RequestMeta, nodeID, docID int64) error {
+	return s.ndr.UnbindDocument(ctx, toNDRMeta(meta), nodeID, docID)
+}
+
 // GetDocument fetches a single document by ID.
 func (s *Service) GetDocument(ctx context.Context, meta RequestMeta, docID int64) (ndrclient.Document, error) {
 	return s.ndr.GetDocument(ctx, toNDRMeta(meta), docID)
@@ -132,6 +137,11 @@ func (s *Service) RestoreDocument(ctx context.Context, meta RequestMeta, docID i
 // PurgeDocument permanently removes a document.
 func (s *Service) PurgeDocument(ctx context.Context, meta RequestMeta, docID int64) error {
 	return s.ndr.PurgeDocument(ctx, toNDRMeta(meta), docID)
+}
+
+// GetDocumentBindingStatus returns the binding status of a document.
+func (s *Service) GetDocumentBindingStatus(ctx context.Context, meta RequestMeta, docID int64) (ndrclient.DocumentBindingStatus, error) {
+	return s.ndr.GetDocumentBindingStatus(ctx, toNDRMeta(meta), docID)
 }
 
 // DocumentUpdateRequest represents the payload required to update a document.

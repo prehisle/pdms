@@ -8,10 +8,13 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/joho/godotenv"
 )
 
 func TestClientNodeOperations(t *testing.T) {
@@ -167,6 +170,42 @@ func TestClientNodeOperations(t *testing.T) {
 
 func ptr[T any](v T) *T {
 	return &v
+}
+
+func TestMain(m *testing.M) {
+	envFiles := []string{
+		".env",
+		"../.env",
+		"../../.env",
+		"../../../.env",
+	}
+	for _, file := range envFiles {
+		_ = godotenv.Overload(file)
+	}
+
+	flag.Parse()
+
+	setFromEnv := func(flagPtr *string, envKey string) {
+		if flagPtr == nil {
+			return
+		}
+		if trimmed := strings.TrimSpace(*flagPtr); trimmed != "" {
+			return
+		}
+		if val, ok := os.LookupEnv(envKey); ok {
+			if trimmed := strings.TrimSpace(val); trimmed != "" {
+				*flagPtr = trimmed
+			}
+		}
+	}
+
+	setFromEnv(realNDRURL, "YDMS_NDR_BASE_URL")
+	setFromEnv(realNDRAPI, "YDMS_NDR_API_KEY")
+	setFromEnv(realNDRUser, "YDMS_DEFAULT_USER_ID")
+	setFromEnv(realNDRReqID, "YDMS_NDR_REQUEST_ID")
+
+	code := m.Run()
+	os.Exit(code)
 }
 
 var (

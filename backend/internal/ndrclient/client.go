@@ -39,6 +39,7 @@ type Client interface {
 	BindRelationship(ctx context.Context, meta RequestMeta, nodeID, docID int64) (Relationship, error)
 	UnbindRelationship(ctx context.Context, meta RequestMeta, nodeID, docID int64) error
 	ListRelationships(ctx context.Context, meta RequestMeta, nodeID, docID *int64) ([]Relationship, error)
+	GetDocumentBindingStatus(ctx context.Context, meta RequestMeta, docID int64) (DocumentBindingStatus, error)
 	ListDocumentVersions(ctx context.Context, meta RequestMeta, docID int64, page, size int) (DocumentVersionsPage, error)
 	GetDocumentVersion(ctx context.Context, meta RequestMeta, docID int64, versionNumber int) (DocumentVersion, error)
 	GetDocumentVersionDiff(ctx context.Context, meta RequestMeta, docID int64, fromVersion, toVersion int) (DocumentVersionDiff, error)
@@ -355,6 +356,17 @@ func (c *httpClient) ListRelationships(ctx context.Context, meta RequestMeta, no
 		return nil, err
 	}
 	var resp []Relationship
+	_, err = c.do(req, &resp)
+	return resp, err
+}
+
+func (c *httpClient) GetDocumentBindingStatus(ctx context.Context, meta RequestMeta, docID int64) (DocumentBindingStatus, error) {
+	endpoint := fmt.Sprintf("/api/v1/documents/%d/binding-status", docID)
+	req, err := c.newRequest(ctx, http.MethodGet, endpoint, meta, nil)
+	if err != nil {
+		return DocumentBindingStatus{}, err
+	}
+	var resp DocumentBindingStatus
 	_, err = c.do(req, &resp)
 	return resp, err
 }

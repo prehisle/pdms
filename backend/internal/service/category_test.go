@@ -64,12 +64,14 @@ type fakeNDR struct {
 	deletedDocIDs   []int64
 	restoredDocIDs  []int64
 	purgedDocIDs    []int64
+	docBindings     map[int64]map[int64]struct{}
 }
 
 func newFakeNDR() *fakeNDR {
 	return &fakeNDR{
 		getNodes:      make(map[int64]ndrclient.Node),
 		listResponses: make(map[int]ndrclient.NodesPage),
+		docBindings:   make(map[int64]map[int64]struct{}),
 	}
 }
 
@@ -165,7 +167,16 @@ func (f *fakeNDR) CreateDocument(_ context.Context, _ ndrclient.RequestMeta, bod
 	return f.createDocResp, f.createDocErr
 }
 
-func (f *fakeNDR) BindDocument(context.Context, ndrclient.RequestMeta, int64, int64) error {
+func (f *fakeNDR) BindDocument(_ context.Context, _ ndrclient.RequestMeta, nodeID, docID int64) error {
+	if f.docBindings == nil {
+		f.docBindings = make(map[int64]map[int64]struct{})
+	}
+	nodeBindings, ok := f.docBindings[docID]
+	if !ok {
+		nodeBindings = make(map[int64]struct{})
+		f.docBindings[docID] = nodeBindings
+	}
+	nodeBindings[nodeID] = struct{}{}
 	return nil
 }
 
@@ -209,6 +220,14 @@ func (f *fakeNDR) PurgeDocument(_ context.Context, _ ndrclient.RequestMeta, docI
 }
 
 func (f *fakeNDR) UnbindDocument(_ context.Context, _ ndrclient.RequestMeta, nodeID, docID int64) error {
+	if f.docBindings != nil {
+		if nodeBindings, ok := f.docBindings[docID]; ok {
+			delete(nodeBindings, nodeID)
+			if len(nodeBindings) == 0 {
+				delete(f.docBindings, docID)
+			}
+		}
+	}
 	return nil
 }
 
@@ -226,6 +245,22 @@ func (f *fakeNDR) UnbindRelationship(_ context.Context, _ ndrclient.RequestMeta,
 
 func (f *fakeNDR) ListRelationships(_ context.Context, meta ndrclient.RequestMeta, nodeID, docID *int64) ([]ndrclient.Relationship, error) {
 	return []ndrclient.Relationship{}, nil
+}
+
+func (f *fakeNDR) GetDocumentBindingStatus(_ context.Context, _ ndrclient.RequestMeta, docID int64) (ndrclient.DocumentBindingStatus, error) {
+	var nodeIDs []int64
+	if f.docBindings != nil {
+		if bindings, ok := f.docBindings[docID]; ok {
+			nodeIDs = make([]int64, 0, len(bindings))
+			for nodeID := range bindings {
+				nodeIDs = append(nodeIDs, nodeID)
+			}
+		}
+	}
+	return ndrclient.DocumentBindingStatus{
+		TotalBindings: len(nodeIDs),
+		NodeIDs:       nodeIDs,
+	}, nil
 }
 
 func (f *fakeNDR) ListDocumentVersions(_ context.Context, _ ndrclient.RequestMeta, docID int64, page, size int) (ndrclient.DocumentVersionsPage, error) {
