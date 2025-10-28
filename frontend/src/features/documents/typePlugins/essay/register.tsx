@@ -4,7 +4,7 @@ import yaml from "js-yaml";
 
 import { registerYamlPreview } from "../../previewRegistry";
 import type { YamlPreviewRenderResult } from "../../previewRegistry";
-import type { EssayDocumentYaml, EssayCriterion } from "../../types";
+import type { EssayDocumentYaml, EssayCriterion } from "./types";
 import { renderDifficultyTag, renderNumber, renderTagGroup } from "../shared";
 
 const { Title, Paragraph, Text } = Typography;

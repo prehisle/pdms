@@ -9,7 +9,7 @@ import type {
   ComprehensiveChoiceV1Meta,
   ComprehensiveChoiceV1Option,
   ComprehensiveChoiceV1SubQuestion,
-} from "../../types";
+} from "./types";
 import { renderNumber, stripHtmlTags } from "../shared";
 
 const { Title, Paragraph, Text } = Typography;

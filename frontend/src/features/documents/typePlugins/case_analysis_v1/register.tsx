@@ -8,7 +8,7 @@ import type {
   CaseAnalysisV1Detail,
   CaseAnalysisV1DocumentYaml,
   CaseAnalysisV1Meta,
-} from "../../types";
+} from "./types";
 import { renderNumber } from "../shared";
 
 const { Title, Paragraph, Text } = Typography;
