@@ -73,14 +73,16 @@ YDMS 由 Go 后端与 React 前端组成，面向资料管理及文档维护场�
 - 所有文档类型在 `doc-types/` 目录集中维护：`config.yaml` 列出启用类型，每个类型目录（如 `doc-types/overview/`）下存放模板、校验及后续扩展所需资源。
 - 运行 `make generate-doc-types` 会读取配置并生成：
   - `backend/internal/service/document_types_gen.go`：注册表驱动的文档类型、格式映射等。
-  - `frontend/src/generated/documentTypes.ts` 与 `documentTemplates.ts`：前端常量、下拉选项和默认模板。
+  - `frontend/src/generated/documentTypes.ts`、`documentTemplates.ts`、`documentTypeImports.ts`：前端常量、模板与插件导入。
+  - `frontend/src/generated/documentTypeThemes.ts`：若配置了 `frontend.themes`，生成主题清单供前端选择。
 - 修改 `doc-types/` 的内容后必须重新执行生成命令，并确保将生成的代码一同提交；后端/前端构建会直接消费这些产物。
 - 使用 `scripts/add-doc-type.sh <id> <label> <format>` 可快速创建类型目录与模板，并给出配置片段；随后手动将片段追加到 `config.yaml` 并执行 `make generate-doc-types`。
 - 如果类型需要自定义前端预览/编辑逻辑，在 `config.yaml` 中设置 `frontend.hook_import`，并在
-  `frontend/src/features/documents/typePlugins/<type>/register.tsx` 中调用
-  `registerYamlPreview` 注册实现；生成器会自动 import 这些 hook。
-- 对于概览类（HTML）类型，如需提供多套预览样式，可在 `frontend.themes` 中声明额外的 CSS 文件。
-  执行 `make generate-doc-types` 后，样式会出现在预览界面的主题选择下拉框中。
+  `frontend/src/features/documents/typePlugins/<type>/register.tsx` 中调用 `registerYamlPreview` 注册实现。
+- 概览类（HTML）类型可通过 `frontend.themes` 完全控制主题：
+  - CSS 放在 `doc-types/<type>/themes/` 目录。
+  - 配置新增条目后执行生成命令，实时预览与历史版本右上角即可出现主题下拉框。
+  - 未声明主题的类型仍会使用默认样式（无下拉框）。
 
 ## 5. 依赖与版本管理
 
