@@ -26,7 +26,7 @@ export const HTMLPreview: FC<HTMLPreviewProps> = ({ content, className, contentC
           'strong', 'em', 'u', 's', 'code', 'pre', 'blockquote',
           'a', 'img',
           'svg', 'g', 'path', 'circle', 'ellipse', 'rect', 'line', 'polyline', 'polygon',
-          'defs', 'linearGradient', 'radialGradient', 'stop', 'clipPath', 'mask',
+          'text', 'tspan', 'defs', 'linearGradient', 'radialGradient', 'stop', 'clipPath', 'mask',
         ],
         ALLOWED_ATTR: [
           'class', 'id', 'style',
@@ -34,6 +34,7 @@ export const HTMLPreview: FC<HTMLPreviewProps> = ({ content, className, contentC
           'src', 'alt', 'title',
           'width', 'height', 'viewBox', 'preserveAspectRatio',
           'fill', 'stroke', 'stroke-width', 'stroke-linecap', 'stroke-linejoin', 'stroke-dasharray',
+          'font-size', 'font-weight', 'font-family', 'text-anchor', 'dominant-baseline', 'alignment-baseline',
           'd', 'cx', 'cy', 'r', 'x', 'y', 'x1', 'y1', 'x2', 'y2',
           'points', 'transform', 'opacity', 'stop-color', 'stop-opacity',
           'colspan', 'rowspan',
