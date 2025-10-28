@@ -20,6 +20,11 @@ doc-types/
      hook_import: "github.com/yjxt/ydms/backend/internal/service/documents/types/<type-id>"
    frontend:
      hook_import: "../features/documents/typePlugins/<type-id>/register"
+      themes:
+        - id: "glass"
+          label: "玻璃拟态"
+          description: "可选，显示在主题下拉框中的备注"
+          path: "../overview_themes/glass.css"   # 相对于 <type-id>/ 目录
    ```
 3. 执行 `make generate-doc-types`，让前后端注册表同步最新配置。
 4. 在 `backend.hook_import` 指向的模块中补充后端逻辑（例如调用 `service.RegisterDocumentTypeHooks`）；

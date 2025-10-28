@@ -79,6 +79,8 @@ YDMS 由 Go 后端与 React 前端组成，面向资料管理及文档维护场�
 - 如果类型需要自定义前端预览/编辑逻辑，在 `config.yaml` 中设置 `frontend.hook_import`，并在
   `frontend/src/features/documents/typePlugins/<type>/register.tsx` 中调用
   `registerYamlPreview` 注册实现；生成器会自动 import 这些 hook。
+- 对于概览类（HTML）类型，如需提供多套预览样式，可在 `frontend.themes` 中声明额外的 CSS 文件。
+  执行 `make generate-doc-types` 后，样式会出现在预览界面的主题选择下拉框中。
 
 ## 5. 依赖与版本管理
 

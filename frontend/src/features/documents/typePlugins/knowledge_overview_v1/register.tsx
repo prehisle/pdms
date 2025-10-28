@@ -39,7 +39,7 @@ function renderKnowledgeOverviewV1Content(content: string): YamlPreviewRenderRes
 }
 
 const KnowledgeOverviewV1Preview: FC<{ data: KnowledgeOverviewV1DocumentHtml }> = ({ data }) => {
-  const { theme, selector } = useOverviewTheme();
+  const { theme, selector } = useOverviewTheme("knowledge_overview_v1");
 
   return (
     <div style={{ padding: "24px", overflow: "auto", height: "100%" }}>
@@ -62,7 +62,7 @@ const KnowledgeOverviewV1Preview: FC<{ data: KnowledgeOverviewV1DocumentHtml }> 
       ) : null}
 
       <OverviewThemeStyles css={theme.css} />
-      <HTMLPreview content={data.body} className={theme.className} contentClassName={theme.className ? `${theme.className}__content` : undefined} />
+      <HTMLPreview content={data.body} className={["overview-theme-wrapper", theme.className].filter(Boolean).join(" ")} />
     </div>
   );
 };

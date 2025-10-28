@@ -1,6 +1,8 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { FC, ReactNode } from "react";
-import { Select } from "antd";
+import { Select, Space, Typography } from "antd";
+
+import { DOCUMENT_TYPE_THEMES } from "../../../generated/documentTypeThemes";
 
 export interface OverviewTheme {
   id: string;
@@ -87,7 +89,7 @@ const nightCss = `
 }
 `;
 
-export const OVERVIEW_THEMES: OverviewTheme[] = [
+const BASE_OVERVIEW_THEMES: OverviewTheme[] = [
   {
     id: "classic",
     label: "经典蓝",
@@ -113,21 +115,73 @@ export interface OverviewThemeHookResult {
   selector: ReactNode;
 }
 
-export function useOverviewTheme(): OverviewThemeHookResult {
-  const [themeId, setThemeId] = useState<string>(OVERVIEW_THEMES[0].id);
-  const theme = useMemo(
-    () => OVERVIEW_THEMES.find((item) => item.id === themeId) ?? OVERVIEW_THEMES[0],
-    [themeId],
+export function useOverviewTheme(documentTypeId: string): OverviewThemeHookResult {
+  const extraThemes = useMemo(() => {
+    const entry = (DOCUMENT_TYPE_THEMES as Record<string, readonly { id: string; label: string; description?: string; css?: string }[] | undefined>)[documentTypeId];
+    if (!entry) {
+      return [] as OverviewTheme[];
+    }
+    return entry.map((item) => ({
+      id: item.id,
+      label: item.label,
+      description: item.description,
+      css: item.css,
+      className: `overview-theme-${item.id}`,
+    }));
+  }, [documentTypeId]);
+
+  const themes = useMemo(() => {
+    const merged: OverviewTheme[] = [];
+    const seen = new Set<string>();
+    for (const theme of [...BASE_OVERVIEW_THEMES, ...extraThemes]) {
+      if (theme && !seen.has(theme.id)) {
+        seen.add(theme.id);
+        merged.push(theme);
+      }
+    }
+    return merged;
+  }, [extraThemes]);
+
+  const [themeId, setThemeId] = useState<string>(themes[0]?.id ?? "");
+
+  useEffect(() => {
+    if (themes.length === 0) {
+      return;
+    }
+    if (!themes.some((theme) => theme.id === themeId)) {
+      setThemeId(themes[0].id);
+    }
+  }, [themes, themeId]);
+
+  const theme = useMemo(() => {
+    if (themes.length === 0) {
+      return BASE_OVERVIEW_THEMES[0];
+    }
+    return themes.find((item) => item.id === themeId) ?? themes[0];
+  }, [themes, themeId]);
+
+  const options = useMemo(
+    () =>
+      themes.map((item) => ({
+        value: item.id,
+        label: item.label,
+        title: item.description,
+      })),
+    [themes],
   );
 
   const selector = (
-    <Select
-      value={themeId}
-      onChange={setThemeId}
-      size="small"
-      options={OVERVIEW_THEMES.map((item) => ({ value: item.id, label: item.label }))}
-      style={{ width: 160 }}
-    />
+    <Space size={4} align="center">
+      <Typography.Text type="secondary">主题：</Typography.Text>
+      <Select
+        value={theme.id}
+        onChange={setThemeId}
+        size="small"
+        options={options}
+        style={{ minWidth: 160 }}
+        dropdownMatchSelectWidth={false}
+      />
+    </Space>
   );
 
   return { theme, selector };

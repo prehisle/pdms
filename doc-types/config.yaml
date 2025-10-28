@@ -57,9 +57,27 @@ types:
     template: "template.html"
     frontend:
       hook_import: "../features/documents/typePlugins/knowledge_overview_v1/register"
+      themes:
+        - id: "glass"
+          label: "玻璃拟态"
+          description: "半透明蓝紫色，强调高光与模糊"
+          path: "../overview_themes/glass.css"
+        - id: "forest"
+          label: "竹林墨韵"
+          description: "墨绿色调，适合国风内容"
+          path: "../overview_themes/forest.css"
   - id: chapter_overview_v1
     label: "章节概览(v1)"
     content_format: "html"
     template: "template.html"
     frontend:
       hook_import: "../features/documents/typePlugins/chapter_overview_v1/register"
+      themes:
+        - id: "glass"
+          label: "玻璃拟态"
+          description: "半透明蓝紫色，强调高光与模糊"
+          path: "../overview_themes/glass.css"
+        - id: "forest"
+          label: "竹林墨韵"
+          description: "墨绿色调，适合国风内容"
+          path: "../overview_themes/forest.css"

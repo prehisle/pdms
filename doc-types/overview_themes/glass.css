@@ -1,0 +1,38 @@
+/* 玻璃拟态主题：柔和蓝紫色调，配合高斯模糊 */
+.overview-theme-glass {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.08), rgba(147, 51, 234, 0.08));
+  padding: 12px;
+  border-radius: 20px;
+  backdrop-filter: blur(18px);
+}
+
+.overview-theme-glass .html-preview-content {
+  background: rgba(255, 255, 255, 0.65);
+  backdrop-filter: blur(24px);
+  border-radius: 18px;
+  padding: 28px;
+  box-shadow: 0 20px 45px rgba(79, 70, 229, 0.18);
+  border: 1px solid rgba(79, 70, 229, 0.15);
+}
+
+.overview-theme-glass .html-preview-content .yjxt-content-card {
+  border-radius: 16px;
+  border: 1px solid rgba(59, 130, 246, 0.18);
+  background: rgba(255, 255, 255, 0.85);
+  box-shadow: 0 12px 28px rgba(59, 130, 246, 0.12);
+}
+
+.overview-theme-glass .html-preview-content .yjxt-card-title {
+  color: #3b82f6;
+  border-bottom: 2px solid rgba(59, 130, 246, 0.3);
+}
+
+.overview-theme-glass .html-preview-content .yjxt-section-title {
+  color: #6d28d9;
+  border-bottom: 2px solid rgba(109, 40, 217, 0.25);
+}
+
+.overview-theme-glass .html-preview-content p,
+.overview-theme-glass .html-preview-content li {
+  color: rgba(31, 41, 55, 0.86);
+}

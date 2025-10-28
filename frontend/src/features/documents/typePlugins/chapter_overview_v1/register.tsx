@@ -39,7 +39,7 @@ function renderChapterOverviewV1Content(content: string): YamlPreviewRenderResul
 }
 
 const ChapterOverviewV1Preview: FC<{ data: ChapterOverviewV1DocumentHtml }> = ({ data }) => {
-  const { theme, selector } = useOverviewTheme();
+  const { theme, selector } = useOverviewTheme("chapter_overview_v1");
 
   return (
     <div style={{ padding: "24px", overflow: "auto", height: "100%" }}>
@@ -62,7 +62,7 @@ const ChapterOverviewV1Preview: FC<{ data: ChapterOverviewV1DocumentHtml }> = ({
       ) : null}
 
       <OverviewThemeStyles css={theme.css} />
-      <HTMLPreview content={data.body} className={theme.className} />
+      <HTMLPreview content={data.body} className={["overview-theme-wrapper", theme.className].filter(Boolean).join(" ")} />
     </div>
   );
 };
