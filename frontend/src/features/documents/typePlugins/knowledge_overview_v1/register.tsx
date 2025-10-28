@@ -6,6 +6,7 @@ import { registerYamlPreview } from "../../previewRegistry";
 import type { YamlPreviewRenderResult } from "../../previewRegistry";
 import { parseFrontMatterHtml, renderNumber } from "../shared";
 import type { KnowledgeOverviewV1DocumentHtml, KnowledgeOverviewV1Meta } from "./types";
+import "../overviewStyles.css";
 
 const { Title } = Typography;
 
