@@ -79,19 +79,11 @@ export function UserManagementDrawer({ open, onClose }: UserManagementDrawerProp
     }
   };
 
-  const canManageUsers =
-    currentUser?.role === "super_admin" || currentUser?.role === "course_admin";
+  const canManageUsers = currentUser?.role === "super_admin";
 
   const canDeleteUser = (user: User) => {
     // 超级管理员可以删除任何用户
-    if (currentUser?.role === "super_admin") {
-      return true;
-    }
-    // 课程管理员可以删除校对员
-    if (currentUser?.role === "course_admin" && user.role === "proofreader") {
-      return true;
-    }
-    return false;
+    return currentUser?.role === "super_admin";
   };
 
   const handleOpenPermissions = (user: User) => {

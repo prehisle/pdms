@@ -53,20 +53,9 @@ func (h *UserHandler) ListUsers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 课程管理员不应该看到超级管理员账号
-	if user.Role == "course_admin" {
-		filteredUsers := make([]*database.User, 0)
-		for _, u := range users {
-			if u.Role != "super_admin" {
-				filteredUsers = append(filteredUsers, u)
-			}
-		}
-		users = filteredUsers
-	}
-
-	writeJSON(w, http.StatusOK, map[string]interface{}{
-		"users": users,
-	})
+  writeJSON(w, http.StatusOK, map[string]interface{}{
+    "users": users,
+  })
 }
 
 // CreateUser 创建用户

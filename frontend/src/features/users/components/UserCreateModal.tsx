@@ -24,6 +24,11 @@ export function UserCreateModal({ open, onClose, onSuccess }: UserCreateModalPro
   const [form] = Form.useForm<UserCreateFormValues>();
 
   const handleSubmit = async (values: UserCreateFormValues) => {
+    if (!isSuperAdmin) {
+      message.error("只有超级管理员可以创建用户");
+      onClose();
+      return;
+    }
     setLoading(true);
     try {
       const payload: CreateUserRequest = {
@@ -51,15 +56,13 @@ export function UserCreateModal({ open, onClose, onSuccess }: UserCreateModalPro
     onClose();
   };
 
-  // 超级管理员可以创建所有角色，课程管理员只能创建校对员
-  const availableRoles: { value: UserRole; label: string }[] =
-    currentUser?.role === "super_admin"
-      ? [
-          { value: "super_admin", label: "超级管理员" },
-          { value: "course_admin", label: "课程管理员" },
-          { value: "proofreader", label: "校对员" },
-        ]
-      : [{ value: "proofreader", label: "校对员" }];
+  const availableRoles: { value: UserRole; label: string }[] = [
+    { value: "super_admin", label: "超级管理员" },
+    { value: "course_admin", label: "课程管理员" },
+    { value: "proofreader", label: "校对员" },
+  ];
+
+  const isSuperAdmin = currentUser?.role === "super_admin";
 
   return (
     <Modal
@@ -68,6 +71,7 @@ export function UserCreateModal({ open, onClose, onSuccess }: UserCreateModalPro
       onOk={() => form.submit()}
       onCancel={handleCancel}
       confirmLoading={loading}
+      okButtonProps={{ disabled: !isSuperAdmin }}
       okText="创建"
       cancelText="取消"
       destroyOnClose
