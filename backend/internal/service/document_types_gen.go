@@ -3,6 +3,12 @@ package service
 
 func init() {
 	documentTypeDefinitions = map[DocumentType]DocumentTypeDefinition{
+		DocumentType("markdown_v1"): {
+			ID: DocumentType("markdown_v1"),
+			Label: "Markdown文档(v1)",
+			ContentFormat: ContentFormatMarkdown,
+			TemplatePath: "../../../doc-types/markdown_v1/template.md",
+		},
 		DocumentType("comprehensive_choice_v1"): {
 			ID: DocumentType("comprehensive_choice_v1"),
 			Label: "综合知识选择题(v1)",
@@ -35,6 +41,7 @@ func init() {
 		},
 	}
 	documentTypeOrder = []DocumentType{
+		DocumentType("markdown_v1"),
 		DocumentType("comprehensive_choice_v1"),
 		DocumentType("case_analysis_v1"),
 		DocumentType("essay_v1"),

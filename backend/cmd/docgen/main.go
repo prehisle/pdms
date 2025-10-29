@@ -254,7 +254,7 @@ func generateFrontendDefinitions(defs []documentTypeDefinition, dest string) err
 	buf.WriteString("export interface DocumentTypeDefinition {\n")
 	buf.WriteString("  id: string;\n")
 	buf.WriteString("  label: string;\n")
-	buf.WriteString("  contentFormat: \"html\" | \"yaml\";\n")
+	buf.WriteString("  contentFormat: \"html\" | \"yaml\" | \"markdown\";\n")
 	buf.WriteString("  templatePath: string;\n")
 	buf.WriteString("}\n\n")
 
@@ -345,6 +345,8 @@ func contentFormatConst(format string) (string, error) {
 		return "ContentFormatHTML", nil
 	case "yaml":
 		return "ContentFormatYAML", nil
+	case "markdown":
+		return "ContentFormatMarkdown", nil
 	default:
 		return "", fmt.Errorf("unsupported content format %q", format)
 	}

@@ -4,11 +4,17 @@
 export interface DocumentTypeDefinition {
   id: string;
   label: string;
-  contentFormat: "html" | "yaml";
+  contentFormat: "html" | "yaml" | "markdown";
   templatePath: string;
 }
 
 export const DOCUMENT_TYPE_DEFINITIONS = [
+  {
+    id: "markdown_v1",
+    label: "Markdown文档(v1)",
+    contentFormat: "markdown",
+    templatePath: "../../../doc-types/markdown_v1/template.md",
+  },
   {
     id: "comprehensive_choice_v1",
     label: "综合知识选择题(v1)",
@@ -42,6 +48,7 @@ export const DOCUMENT_TYPE_DEFINITIONS = [
 ] as const satisfies readonly DocumentTypeDefinition[];
 
 export const DOCUMENT_TYPES = {
+  MARKDOWN_V1: "markdown_v1",
   COMPREHENSIVE_CHOICE_V1: "comprehensive_choice_v1",
   CASE_ANALYSIS_V1: "case_analysis_v1",
   ESSAY_V1: "essay_v1",
@@ -52,6 +59,10 @@ export const DOCUMENT_TYPES = {
 export type DocumentType = typeof DOCUMENT_TYPES[keyof typeof DOCUMENT_TYPES];
 
 export const DOCUMENT_TYPE_OPTIONS = [
+  {
+    value: "markdown_v1",
+    label: "Markdown文档(v1)",
+  },
   {
     value: "comprehensive_choice_v1",
     label: "综合知识选择题(v1)",
@@ -75,9 +86,10 @@ export const DOCUMENT_TYPE_OPTIONS = [
 ] as const;
 
 export const DOCUMENT_TYPE_MAP = {
-  comprehensive_choice_v1: DOCUMENT_TYPE_DEFINITIONS[0],
-  case_analysis_v1: DOCUMENT_TYPE_DEFINITIONS[1],
-  essay_v1: DOCUMENT_TYPE_DEFINITIONS[2],
-  dictation_v1: DOCUMENT_TYPE_DEFINITIONS[3],
-  knowledge_overview_v1: DOCUMENT_TYPE_DEFINITIONS[4],
+  markdown_v1: DOCUMENT_TYPE_DEFINITIONS[0],
+  comprehensive_choice_v1: DOCUMENT_TYPE_DEFINITIONS[1],
+  case_analysis_v1: DOCUMENT_TYPE_DEFINITIONS[2],
+  essay_v1: DOCUMENT_TYPE_DEFINITIONS[3],
+  dictation_v1: DOCUMENT_TYPE_DEFINITIONS[4],
+  knowledge_overview_v1: DOCUMENT_TYPE_DEFINITIONS[5],
 } as const;

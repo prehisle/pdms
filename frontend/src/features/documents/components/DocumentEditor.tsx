@@ -589,23 +589,6 @@ export const DocumentEditor: FC<DocumentEditorProps> = ({ mode, docId: docIdProp
             disabled={isEditMode}
           />
 
-          <InputNumber
-            placeholder="位置"
-            value={position}
-            onChange={(val) => setPosition(val ?? undefined)}
-            min={1}
-            style={{ width: "100px" }}
-          />
-
-          <InputNumber
-            placeholder="难度 1-5"
-            value={metadataDifficulty ?? undefined}
-            onChange={(val) => setMetadataDifficulty(val ?? null)}
-            min={1}
-            max={5}
-            style={{ width: "120px" }}
-          />
-
           <Select
             mode="tags"
             allowClear

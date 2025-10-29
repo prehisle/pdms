@@ -14,8 +14,9 @@ type DocumentType string
 type ContentFormat string
 
 const (
-	ContentFormatHTML ContentFormat = "html"
-	ContentFormatYAML ContentFormat = "yaml"
+	ContentFormatHTML     ContentFormat = "html"
+	ContentFormatYAML     ContentFormat = "yaml"
+	ContentFormatMarkdown ContentFormat = "markdown"
 )
 
 // DocumentContent represents the structured content of a document.

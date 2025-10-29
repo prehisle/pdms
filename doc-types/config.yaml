@@ -1,4 +1,10 @@
 types:
+  - id: markdown_v1
+    label: "Markdown文档(v1)"
+    content_format: "markdown"
+    template: "template.md"
+    frontend:
+      hook_import: "../features/documents/typePlugins/markdown_v1/register"
   - id: comprehensive_choice_v1
     label: "综合知识选择题(v1)"
     content_format: "yaml"
