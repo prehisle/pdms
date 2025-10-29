@@ -12,8 +12,6 @@ import {
   Typography,
   Layout,
   Result,
-  List,
-  Empty,
 } from "antd";
 import {
   SaveOutlined,
@@ -22,7 +20,6 @@ import {
   PlusOutlined,
   MinusCircleOutlined,
   LinkOutlined,
-  FileTextOutlined,
 } from "@ant-design/icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -45,97 +42,10 @@ import {
   type DocumentUpdatePayload,
 } from "../../../api/documents";
 import type { MetadataValueType } from "../types";
-import { DocumentReferenceManager } from "./DocumentReferenceManager";
-import { DocumentTreeSelector } from "./DocumentTreeSelector";
+import { DocumentReferenceModal } from "./DocumentReferenceModal";
 
 const { Header, Content } = Layout;
 const { Title, Text } = Typography;
-
-// 新建文档时的待添加引用管理器
-interface PendingReferencesManagerProps {
-  references: Array<{ document_id: number; title: string }>;
-  onAdd: (doc: Document) => void;
-  onRemove: (docId: number) => void;
-}
-
-function PendingReferencesManager({ references, onAdd, onRemove }: PendingReferencesManagerProps) {
-  const [selectorOpen, setSelectorOpen] = useState(false);
-
-  const excludeDocIds = references.map(ref => ref.document_id);
-
-  return (
-    <div>
-      <Space direction="vertical" style={{ width: "100%" }} size="middle">
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <Space>
-            <LinkOutlined />
-            <Typography.Text strong>引用的文档 ({references.length})</Typography.Text>
-            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-              （文档创建后生效）
-            </Typography.Text>
-          </Space>
-          <Button
-            size="small"
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={() => setSelectorOpen(true)}
-          >
-            添加引用
-          </Button>
-        </div>
-
-        {references.length === 0 ? (
-          <Empty
-            image={Empty.PRESENTED_IMAGE_SIMPLE}
-            description="暂无引用文档"
-            style={{ padding: "20px 0" }}
-          />
-        ) : (
-          <List
-            size="small"
-            dataSource={references}
-            renderItem={(ref) => (
-              <List.Item
-                actions={[
-                  <Button
-                    key="delete"
-                    type="text"
-                    size="small"
-                    danger
-                    icon={<MinusCircleOutlined />}
-                    onClick={() => onRemove(ref.document_id)}
-                  />
-                ]}
-              >
-                <List.Item.Meta
-                  avatar={<FileTextOutlined style={{ fontSize: 16 }} />}
-                  title={<Text>{ref.title}</Text>}
-                  description={
-                    <Text type="secondary" style={{ fontSize: 12 }}>
-                      待添加
-                    </Text>
-                  }
-                />
-              </List.Item>
-            )}
-          />
-        )}
-      </Space>
-
-      <DocumentTreeSelector
-        open={selectorOpen}
-        onCancel={() => setSelectorOpen(false)}
-        onSelect={(doc) => {
-          onAdd(doc);
-          setSelectorOpen(false);
-          message.success(`已选择：${doc.title}`);
-        }}
-        excludeDocIds={excludeDocIds}
-        title="选择要引用的文档"
-      />
-    </div>
-  );
-}
 
 function getDocumentTypeDefinition(type: string) {
   return DOCUMENT_TYPE_MAP[type as keyof typeof DOCUMENT_TYPE_MAP];
@@ -283,6 +193,7 @@ export const DocumentEditor: FC<DocumentEditorProps> = ({ mode, docId: docIdProp
   const [metadataTags, setMetadataTags] = useState<string[]>([]);
   const [metadataEntries, setMetadataEntries] = useState<MetadataEntry[]>([]);
   const [pendingReferences, setPendingReferences] = useState<Array<{ document_id: number; title: string }>>([]);
+  const [referenceModalOpen, setReferenceModalOpen] = useState(false);
 
   const closeEditor = useCallback(() => {
     if (onClose) {
@@ -712,6 +623,18 @@ export const DocumentEditor: FC<DocumentEditorProps> = ({ mode, docId: docIdProp
 
         <Space>
           <Button
+            icon={<LinkOutlined />}
+            onClick={() => setReferenceModalOpen(true)}
+          >
+            引用
+            {(() => {
+              const referenceCount = isEditMode
+                ? (existingDoc?.metadata?.references as any[])?.length || 0
+                : pendingReferences.length;
+              return referenceCount > 0 ? ` (${referenceCount})` : "";
+            })()}
+          </Button>
+          <Button
             type="primary"
             icon={<SaveOutlined />}
             onClick={handleSave}
@@ -833,37 +756,6 @@ export const DocumentEditor: FC<DocumentEditorProps> = ({ mode, docId: docIdProp
             </Space>
           </div>
 
-          {/* 文档引用管理区域 */}
-          <div
-            style={{
-              padding: "12px 16px",
-              borderBottom: "1px solid #f0f0f0",
-              maxHeight: "300px",
-              overflow: "auto",
-            }}
-          >
-            {isEditMode && existingDoc ? (
-              <DocumentReferenceManager
-                document={existingDoc}
-                canEdit={true}
-                onDocumentUpdated={(updatedDoc) => {
-                  // 更新缓存中的文档数据
-                  queryClient.setQueryData(["document-detail", effectiveDocId], updatedDoc);
-                }}
-              />
-            ) : (
-              <PendingReferencesManager
-                references={pendingReferences}
-                onAdd={(doc) => {
-                  setPendingReferences(prev => [...prev, { document_id: doc.id, title: doc.title }]);
-                }}
-                onRemove={(docId) => {
-                  setPendingReferences(prev => prev.filter(ref => ref.document_id !== docId));
-                }}
-              />
-            )}
-          </div>
-
           <div style={{ flex: 1, overflow: "hidden" }}>
             <Editor
               language={editorLanguage}
@@ -906,6 +798,22 @@ export const DocumentEditor: FC<DocumentEditorProps> = ({ mode, docId: docIdProp
           </div>
         </div>
       </Content>
+
+      <DocumentReferenceModal
+        open={referenceModalOpen}
+        onCancel={() => setReferenceModalOpen(false)}
+        document={isEditMode && existingDoc ? existingDoc : undefined}
+        onDocumentUpdated={(updatedDoc) => {
+          queryClient.setQueryData(["document-detail", effectiveDocId], updatedDoc);
+        }}
+        pendingReferences={isEditMode ? undefined : pendingReferences}
+        onPendingAdd={(doc) => {
+          setPendingReferences((prev) => [...prev, { document_id: doc.id, title: doc.title }]);
+        }}
+        onPendingRemove={(docId) => {
+          setPendingReferences((prev) => prev.filter((ref) => ref.document_id !== docId));
+        }}
+      />
     </Layout>
   );
 };
