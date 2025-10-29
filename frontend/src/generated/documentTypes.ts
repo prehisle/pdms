@@ -10,36 +10,6 @@ export interface DocumentTypeDefinition {
 
 export const DOCUMENT_TYPE_DEFINITIONS = [
   {
-    id: "overview",
-    label: "概览",
-    contentFormat: "html",
-    templatePath: "../../../doc-types/overview/template.html",
-  },
-  {
-    id: "dictation",
-    label: "默写",
-    contentFormat: "yaml",
-    templatePath: "../../../doc-types/dictation/template.yaml",
-  },
-  {
-    id: "comprehensive_choice",
-    label: "综合选择题",
-    contentFormat: "yaml",
-    templatePath: "../../../doc-types/comprehensive_choice/template.yaml",
-  },
-  {
-    id: "case_analysis",
-    label: "案例分析题",
-    contentFormat: "yaml",
-    templatePath: "../../../doc-types/case_analysis/template.yaml",
-  },
-  {
-    id: "essay",
-    label: "论文题",
-    contentFormat: "yaml",
-    templatePath: "../../../doc-types/essay/template.yaml",
-  },
-  {
     id: "comprehensive_choice_v1",
     label: "综合知识选择题(v1)",
     contentFormat: "yaml",
@@ -69,51 +39,19 @@ export const DOCUMENT_TYPE_DEFINITIONS = [
     contentFormat: "html",
     templatePath: "../../../doc-types/knowledge_overview_v1/template.html",
   },
-  {
-    id: "chapter_overview_v1",
-    label: "章节概览(v1)",
-    contentFormat: "html",
-    templatePath: "../../../doc-types/chapter_overview_v1/template.html",
-  },
 ] as const satisfies readonly DocumentTypeDefinition[];
 
 export const DOCUMENT_TYPES = {
-  OVERVIEW: "overview",
-  DICTATION: "dictation",
-  COMPREHENSIVE_CHOICE: "comprehensive_choice",
-  CASE_ANALYSIS: "case_analysis",
-  ESSAY: "essay",
   COMPREHENSIVE_CHOICE_V1: "comprehensive_choice_v1",
   CASE_ANALYSIS_V1: "case_analysis_v1",
   ESSAY_V1: "essay_v1",
   DICTATION_V1: "dictation_v1",
   KNOWLEDGE_OVERVIEW_V1: "knowledge_overview_v1",
-  CHAPTER_OVERVIEW_V1: "chapter_overview_v1",
 } as const;
 
 export type DocumentType = typeof DOCUMENT_TYPES[keyof typeof DOCUMENT_TYPES];
 
 export const DOCUMENT_TYPE_OPTIONS = [
-  {
-    value: "overview",
-    label: "概览",
-  },
-  {
-    value: "dictation",
-    label: "默写",
-  },
-  {
-    value: "comprehensive_choice",
-    label: "综合选择题",
-  },
-  {
-    value: "case_analysis",
-    label: "案例分析题",
-  },
-  {
-    value: "essay",
-    label: "论文题",
-  },
   {
     value: "comprehensive_choice_v1",
     label: "综合知识选择题(v1)",
@@ -134,22 +72,12 @@ export const DOCUMENT_TYPE_OPTIONS = [
     value: "knowledge_overview_v1",
     label: "知识点概览(v1)",
   },
-  {
-    value: "chapter_overview_v1",
-    label: "章节概览(v1)",
-  },
 ] as const;
 
 export const DOCUMENT_TYPE_MAP = {
-  overview: DOCUMENT_TYPE_DEFINITIONS[0],
-  dictation: DOCUMENT_TYPE_DEFINITIONS[1],
-  comprehensive_choice: DOCUMENT_TYPE_DEFINITIONS[2],
-  case_analysis: DOCUMENT_TYPE_DEFINITIONS[3],
-  essay: DOCUMENT_TYPE_DEFINITIONS[4],
-  comprehensive_choice_v1: DOCUMENT_TYPE_DEFINITIONS[5],
-  case_analysis_v1: DOCUMENT_TYPE_DEFINITIONS[6],
-  essay_v1: DOCUMENT_TYPE_DEFINITIONS[7],
-  dictation_v1: DOCUMENT_TYPE_DEFINITIONS[8],
-  knowledge_overview_v1: DOCUMENT_TYPE_DEFINITIONS[9],
-  chapter_overview_v1: DOCUMENT_TYPE_DEFINITIONS[10],
+  comprehensive_choice_v1: DOCUMENT_TYPE_DEFINITIONS[0],
+  case_analysis_v1: DOCUMENT_TYPE_DEFINITIONS[1],
+  essay_v1: DOCUMENT_TYPE_DEFINITIONS[2],
+  dictation_v1: DOCUMENT_TYPE_DEFINITIONS[3],
+  knowledge_overview_v1: DOCUMENT_TYPE_DEFINITIONS[4],
 } as const;

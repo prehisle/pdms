@@ -16,12 +16,17 @@ YDMS（资料管理系统）是一个全栈应用，采用 Go 后端和 React �
   - 领域服务：`backend/internal/service/`（category.go、documents.go、document_types.go）
   - NDR 客户端：`backend/internal/ndrclient/client.go` - 封装所有上游 NDR API 调用
   - 工具库：`backend/internal/config/`、`backend/internal/cache/`（cache.Provider 目前为空实现）
+  - 代码生成工具：`backend/cmd/docgen` - 基于配置生成文档类型相关代码
 
 - **前端**：Vite + React + Ant Design + TanStack Query
   - 入口：`frontend/src/main.tsx`
   - 按领域组织的功能：`frontend/src/features/categories/`、`frontend/src/features/documents/`
+  - 文档类型插件：`frontend/src/features/documents/typePlugins/` - 各文档类型的预览和编辑组件
+  - 生成的代码：`frontend/src/generated/` - docgen 工具生成的类型定义
   - API 客户端：`frontend/src/api/`（http.ts、categories.ts、documents.ts）
   - 输出：`frontend/dist/`（gitignore 排除）
+
+- **文档类型配置**：`doc-types/config.yaml` - 集中配置所有文档类型，驱动代码生成
 
 - **文档**：`docs/` 包含设计笔记和 `docs/backend/openapi.json`（NDR OpenAPI 规范）
 
@@ -52,6 +57,9 @@ make test-e2e
 
 # 运行 E2E 测试（UI 模式）
 make test-e2e-ui
+
+# 基于 doc-types 配置生成前后端代码
+make generate-doc-types
 
 # 安装所有依赖
 make install
@@ -140,19 +148,53 @@ PGPASSWORD=admin psql -h 192.168.1.4 -p 5432 -U admin -d ydms
 
 ## 关键领域概念
 
-### 文档类型系统
-应用最近从灵活的资料系统迁移到强类型文档系统。在 `backend/internal/service/document_types.go` 中定义了五种文档类型：
+### 文档类型系统与插件架构
 
+YDMS 实现了基于 YAML 配置驱动的文档类型系统，支持灵活扩展新的文档类型。
+
+#### 配置驱动的类型定义
+文档类型在 `doc-types/config.yaml` 中集中配置，包括：
+- 类型 ID 和显示标签
+- 内容格式（html 或 yaml）
+- 模板文件路径
+- 前端插件钩子导入路径
+- 主题配置（针对 HTML 类型）
+
+当前支持的文档类型：
 1. **overview** - HTML 格式，通用概览内容
 2. **dictation** - YAML 格式，听写练习
-3. **comprehensive_choice** - YAML 格式，多空选择题
-4. **case_analysis** - YAML 格式，案例分析题（原为 "security_analysis"）
+3. **comprehensive_choice** - YAML 格式，综合选择题
+4. **case_analysis** - YAML 格式，案例分析题
 5. **essay** - YAML 格式，论文题
+6. **knowledge_overview_v1** - HTML 格式，知识点概览（支持多主题）
+7. **chapter_overview_v1** - HTML 格式，章节概览（支持多主题）
+8. 以及对应的 v1 版本（dictation_v1, comprehensive_choice_v1 等）
+
+#### 代码生成工具
+使用 `backend/cmd/docgen` 工具基于配置自动生成代码：
+```bash
+make generate-doc-types
+# 或
+cd backend && go run ./cmd/docgen --config ../doc-types/config.yaml \
+  --repo-root .. --frontend-dir ../frontend --backend-dir .
+```
+
+生成的代码：
+- 后端：文档类型常量、验证逻辑
+- 前端：`frontend/src/generated/` 目录下的类型定义和元数据
+
+#### 前端插件系统
+- **注册机制**：`frontend/src/features/documents/previewRegistry.tsx` 提供插件注册接口
+- **类型插件**：位于 `frontend/src/features/documents/typePlugins/` 目录
+- 每个类型插件实现：
+  - `types.ts` - TypeScript 类型定义
+  - `register.tsx` - 预览渲染组件和注册逻辑
+- 插件通过 `registerYamlPreview()` 注册自定义渲染器
 
 每个文档包含：
-- `type`：上述常量之一
+- `type`：配置中定义的类型 ID
 - `content`：结构为 `{"format": "html"|"yaml", "data": "<内容字符串>"}`
-- `metadata`：灵活的 JSON 对象（如 `{"difficulty": 1-5, "tags": [...]}`），由 `ValidateDocumentMetadata()` 验证
+- `metadata`：灵活的 JSON 对象（如 `{"difficulty": 1-5, "tags": [...]}`）
 
 文档验证在服务层通过 `ValidateDocumentContent()` 和 `ValidateDocumentMetadata()` 进行。
 
@@ -427,9 +469,21 @@ PR 应包括：
   ```
 
 ## 生成的文件
-生成的输出应保持未跟踪状态：
-- `backend/tmp/`、`backend/.gocache/`、`backend/server.log`
-- `frontend/dist/`、`frontend/node_modules/`
+
+### 应保持未跟踪的文件
+以下生成的输出应保持在 `.gitignore` 中：
+- `backend/tmp/` - watch 模式编译的二进制文件
+- `backend/.gocache/` - Go 构建缓存
+- `backend/server.log` - 服务器运行日志
+- `frontend/dist/` - 前端构建产物
+- `frontend/node_modules/` - npm 依赖
+
+### 代码生成的文件（应提交）
+`make generate-doc-types` 命令会生成以下文件，这些**应该提交**到版本控制：
+- `frontend/src/generated/` - 自动生成的 TypeScript 类型定义和元数据
+  - 包含基于 `doc-types/config.yaml` 生成的文档类型常量和接口
+
+**重要**：修改 `doc-types/config.yaml` 后，务必运行 `make generate-doc-types` 并提交生成的代码。
 
 ## 生产部署
 
@@ -508,12 +562,23 @@ cd backend && go vet ./...    # 检查代码
 cd frontend && npm run build  # 验证构建
 ```
 
-### 添加新文档类型
-1. 在 `backend/internal/service/document_types.go` 中添加新的文档类型常量
+### 添加新文档类型（使用插件系统）
+1. **配置文档类型**：在 `doc-types/config.yaml` 中添加新类型定义
+2. **创建模板文件**：在 `doc-types/<type-id>/template.yaml` 或 `template.html` 创建模板
+3. **运行代码生成**：`make generate-doc-types` 自动生成后端和前端代码
+4. **实现前端插件**：
+   - 在 `frontend/src/features/documents/typePlugins/<type-id>/` 创建目录
+   - 添加 `types.ts` 定义 TypeScript 类型
+   - 添加 `register.tsx` 实现预览渲染逻辑
+   - 在组件中调用 `registerYamlPreview()` 注册插件
+5. **添加测试数据**：在 `backend/internal/service/testdata/` 添加测试数据
+6. **更新测试用例**：确保后端和前端测试覆盖新类型
+
+**旧方式（手动）**：
+如果不使用代码生成，需要手动：
+1. 在 `backend/internal/service/document_types.go` 中添加类型常量
 2. 更新 `ValidateDocumentContent()` 和 `ValidateDocumentMetadata()` 函数
-3. 在 `backend/internal/service/testdata/` 添加测试数据
-4. 更新相关测试用例
-5. 在前端添加相应的编辑器和预览组件
+3. 手动创建前端类型定义和预览组件
 
 ### 调试 NDR 集成问题
 ```bash

@@ -3,36 +3,6 @@ package service
 
 func init() {
 	documentTypeDefinitions = map[DocumentType]DocumentTypeDefinition{
-		DocumentType("overview"): {
-			ID: DocumentType("overview"),
-			Label: "概览",
-			ContentFormat: ContentFormatHTML,
-			TemplatePath: "../../../doc-types/overview/template.html",
-		},
-		DocumentType("dictation"): {
-			ID: DocumentType("dictation"),
-			Label: "默写",
-			ContentFormat: ContentFormatYAML,
-			TemplatePath: "../../../doc-types/dictation/template.yaml",
-		},
-		DocumentType("comprehensive_choice"): {
-			ID: DocumentType("comprehensive_choice"),
-			Label: "综合选择题",
-			ContentFormat: ContentFormatYAML,
-			TemplatePath: "../../../doc-types/comprehensive_choice/template.yaml",
-		},
-		DocumentType("case_analysis"): {
-			ID: DocumentType("case_analysis"),
-			Label: "案例分析题",
-			ContentFormat: ContentFormatYAML,
-			TemplatePath: "../../../doc-types/case_analysis/template.yaml",
-		},
-		DocumentType("essay"): {
-			ID: DocumentType("essay"),
-			Label: "论文题",
-			ContentFormat: ContentFormatYAML,
-			TemplatePath: "../../../doc-types/essay/template.yaml",
-		},
 		DocumentType("comprehensive_choice_v1"): {
 			ID: DocumentType("comprehensive_choice_v1"),
 			Label: "综合知识选择题(v1)",
@@ -63,24 +33,12 @@ func init() {
 			ContentFormat: ContentFormatHTML,
 			TemplatePath: "../../../doc-types/knowledge_overview_v1/template.html",
 		},
-		DocumentType("chapter_overview_v1"): {
-			ID: DocumentType("chapter_overview_v1"),
-			Label: "章节概览(v1)",
-			ContentFormat: ContentFormatHTML,
-			TemplatePath: "../../../doc-types/chapter_overview_v1/template.html",
-		},
 	}
 	documentTypeOrder = []DocumentType{
-		DocumentType("overview"),
-		DocumentType("dictation"),
-		DocumentType("comprehensive_choice"),
-		DocumentType("case_analysis"),
-		DocumentType("essay"),
 		DocumentType("comprehensive_choice_v1"),
 		DocumentType("case_analysis_v1"),
 		DocumentType("essay_v1"),
 		DocumentType("dictation_v1"),
 		DocumentType("knowledge_overview_v1"),
-		DocumentType("chapter_overview_v1"),
 	}
 }

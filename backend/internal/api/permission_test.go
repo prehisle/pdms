@@ -53,7 +53,7 @@ func TestProofreaderPermissions_DocumentOperations(t *testing.T) {
 	router := NewRouter(handler)
 
 	t.Run("校对员不能创建文档", func(t *testing.T) {
-		payload := `{"title":"New Document","type":"overview","content":{"format":"html","data":"<p>Test</p>"}}`
+		payload := `{"title":"New Document","type":"knowledge_overview_v1","content":{"format":"html","data":"<p>Test</p>"}}`
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/documents", strings.NewReader(payload))
 		req = withTestUser(req, testProofreader)
 		req.Header.Set("Content-Type", "application/json")
@@ -219,7 +219,7 @@ func TestCourseAdminPermissions_DocumentAndCategoryOperations(t *testing.T) {
 	router := NewRouter(handler)
 
 	t.Run("课程管理员可以创建文档", func(t *testing.T) {
-		payload := `{"title":"Course Admin Document","type":"overview","content":{"format":"html","data":"<p>Test</p>"}}`
+		payload := `{"title":"Course Admin Document","type":"knowledge_overview_v1","content":{"format":"html","data":"<p>Test</p>"}}`
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/documents", strings.NewReader(payload))
 		req = withTestUser(req, testCourseAdmin)
 		req.Header.Set("Content-Type", "application/json")
@@ -290,7 +290,7 @@ func TestSuperAdminPermissions(t *testing.T) {
 	router := NewRouter(handler)
 
 	t.Run("超级管理员可以创建文档", func(t *testing.T) {
-		payload := `{"title":"Super Admin Document","type":"overview","content":{"format":"html","data":"<p>Test</p>"}}`
+		payload := `{"title":"Super Admin Document","type":"knowledge_overview_v1","content":{"format":"html","data":"<p>Test</p>"}}`
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/documents", strings.NewReader(payload))
 		req = withTestUser(req, testSuperAdmin)
 		req.Header.Set("Content-Type", "application/json")
@@ -367,7 +367,7 @@ func TestUnauthenticatedRequests(t *testing.T) {
 	router := NewRouter(handler)
 
 	t.Run("未认证用户不能创建文档", func(t *testing.T) {
-		payload := `{"title":"Unauthorized Document","type":"overview","content":{"format":"html","data":"<p>Test</p>"}}`
+		payload := `{"title":"Unauthorized Document","type":"knowledge_overview_v1","content":{"format":"html","data":"<p>Test</p>"}}`
 		req := httptest.NewRequest(http.MethodPost, "/api/v1/documents", strings.NewReader(payload))
 		// 不添加用户上下文
 		req.Header.Set("Content-Type", "application/json")

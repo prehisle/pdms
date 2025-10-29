@@ -13,10 +13,10 @@ import (
 func TestCreateDocument(t *testing.T) {
 	fake := newFakeNDR()
 	now := time.Now().UTC()
-	fake.createDocResp = sampleDocument(1, "Test Doc", "overview", 1, now, now)
+	fake.createDocResp = sampleDocument(1, "Test Doc", "knowledge_overview_v1", 1, now, now)
 	svc := NewService(cache.NewNoop(), fake, nil)
 
-	docType := "overview"
+	docType := "knowledge_overview_v1"
 	position := 1
 	doc, err := svc.CreateDocument(context.Background(), RequestMeta{}, DocumentCreateRequest{
 		Title:    "Test Doc",
@@ -27,14 +27,14 @@ func TestCreateDocument(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
-	if doc.Title != "Test Doc" || doc.Type == nil || *doc.Type != "overview" {
+	if doc.Title != "Test Doc" || doc.Type == nil || *doc.Type != "knowledge_overview_v1" {
 		t.Fatalf("unexpected document %+v", doc)
 	}
 	if len(fake.createdDocs) != 1 {
 		t.Fatalf("expected one create call, got %d", len(fake.createdDocs))
 	}
 	created := fake.createdDocs[0]
-	if created.Title != "Test Doc" || created.Type == nil || *created.Type != "overview" {
+	if created.Title != "Test Doc" || created.Type == nil || *created.Type != "knowledge_overview_v1" {
 		t.Fatalf("unexpected created document payload %+v", created)
 	}
 }
@@ -63,11 +63,11 @@ func TestCreateDocumentWithoutType(t *testing.T) {
 func TestUpdateDocument(t *testing.T) {
 	fake := newFakeNDR()
 	now := time.Now().UTC()
-	fake.updateDocResp = sampleDocument(3, "Updated Doc", "dictation", 2, now, now)
+	fake.updateDocResp = sampleDocument(3, "Updated Doc", "dictation_v1", 2, now, now)
 	svc := NewService(cache.NewNoop(), fake, nil)
 
 	newTitle := "Updated Doc"
-	newType := "dictation"
+	newType := "dictation_v1"
 	newPosition := 2
 	doc, err := svc.UpdateDocument(context.Background(), RequestMeta{}, 3, DocumentUpdateRequest{
 		Title:    &newTitle,
@@ -78,7 +78,7 @@ func TestUpdateDocument(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if doc.Title != "Updated Doc" || doc.Type == nil || *doc.Type != "dictation" {
+	if doc.Title != "Updated Doc" || doc.Type == nil || *doc.Type != "dictation_v1" {
 		t.Fatalf("unexpected updated document %+v", doc)
 	}
 	if len(fake.updatedDocs) != 1 {
@@ -95,7 +95,7 @@ func TestReorderDocuments(t *testing.T) {
 	now := time.Now().UTC()
 
 	// Setup fake responses for each document update
-	doc1 := sampleDocument(10, "Doc A", "overview", 1, now, now)
+	doc1 := sampleDocument(10, "Doc A", "knowledge_overview_v1", 1, now, now)
 	fake.updateDocResp = doc1 // This will be reused for all updates
 
 	svc := NewService(cache.NewNoop(), fake, nil)

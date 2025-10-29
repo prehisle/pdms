@@ -1231,7 +1231,7 @@ func TestDocumentReorderEndpoint(t *testing.T) {
 	router := NewRouter(handler)
 
 	// Create some documents
-	docType := "overview"
+	docType := "knowledge_overview_v1"
 	doc1, err := ndr.CreateDocument(context.Background(), ndrclient.RequestMeta{}, ndrclient.DocumentCreate{
 		Title:   "Document A",
 		Type:    &docType,
@@ -1478,7 +1478,7 @@ func TestDocumentCreationWithTypeAndPosition(t *testing.T) {
 	handler := NewHandler(svc, nil, HeaderDefaults{})
 	router := NewRouter(handler)
 
-	payload := `{"title":"Test Document","type":"overview","position":5,"content":{"format":"html","data":"<p>Hello World</p>"}}`
+	payload := `{"title":"Test Document","type":"knowledge_overview_v1","position":5,"content":{"format":"html","data":"<p>Hello World</p>"}}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/documents", strings.NewReader(payload))
 	req = withTestUser(req, nil) // 添加测试用户
 	req.Header.Set("Content-Type", "application/json")
@@ -1497,8 +1497,8 @@ func TestDocumentCreationWithTypeAndPosition(t *testing.T) {
 	if doc.Title != "Test Document" {
 		t.Fatalf("expected title 'Test Document', got '%s'", doc.Title)
 	}
-	if doc.Type == nil || *doc.Type != "overview" {
-		t.Fatalf("expected type 'overview', got %v", doc.Type)
+	if doc.Type == nil || *doc.Type != "knowledge_overview_v1" {
+		t.Fatalf("expected type 'knowledge_overview_v1', got %v", doc.Type)
 	}
 	if doc.Position != 5 {
 		t.Fatalf("expected position 5, got %d", doc.Position)
@@ -1512,7 +1512,7 @@ func TestDocumentUpdateWithTypeAndPosition(t *testing.T) {
 	router := NewRouter(handler)
 
 	// Create a document first
-	docType := "overview"
+	docType := "knowledge_overview_v1"
 	doc, err := ndr.CreateDocument(context.Background(), ndrclient.RequestMeta{}, ndrclient.DocumentCreate{
 		Title:   "Original Title",
 		Type:    &docType,
@@ -1523,7 +1523,7 @@ func TestDocumentUpdateWithTypeAndPosition(t *testing.T) {
 	}
 
 	// Update the document
-	payload := `{"title":"Updated Title","type":"dictation","position":3,"content":{"format":"yaml","data":"word: 单词"}}`
+	payload := `{"title":"Updated Title","type":"dictation_v1","position":3,"content":{"format":"yaml","data":"word: 单词"}}`
 	req := httptest.NewRequest(http.MethodPut, fmt.Sprintf("/api/v1/documents/%d", doc.ID), strings.NewReader(payload))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -1541,8 +1541,8 @@ func TestDocumentUpdateWithTypeAndPosition(t *testing.T) {
 	if updatedDoc.Title != "Updated Title" {
 		t.Fatalf("expected updated title 'Updated Title', got '%s'", updatedDoc.Title)
 	}
-	if updatedDoc.Type == nil || *updatedDoc.Type != "dictation" {
-		t.Fatalf("expected updated type 'dictation', got %v", updatedDoc.Type)
+	if updatedDoc.Type == nil || *updatedDoc.Type != "dictation_v1" {
+		t.Fatalf("expected updated type 'dictation_v1', got %v", updatedDoc.Type)
 	}
 	if updatedDoc.Position != 3 {
 		t.Fatalf("expected updated position 3, got %d", updatedDoc.Position)

@@ -6,20 +6,8 @@ import themeCss_1 from "../../../doc-types/knowledge_overview_v1/themes/warm.css
 import themeCss_2 from "../../../doc-types/knowledge_overview_v1/themes/night.css?inline";
 import themeCss_3 from "../../../doc-types/knowledge_overview_v1/themes/glass.css?inline";
 import themeCss_4 from "../../../doc-types/knowledge_overview_v1/themes/forest.css?inline";
-import themeCss_5 from "../../../doc-types/chapter_overview_v1/themes/classic.css?inline";
-import themeCss_6 from "../../../doc-types/chapter_overview_v1/themes/warm.css?inline";
-import themeCss_7 from "../../../doc-types/chapter_overview_v1/themes/night.css?inline";
-import themeCss_8 from "../../../doc-types/chapter_overview_v1/themes/glass.css?inline";
-import themeCss_9 from "../../../doc-types/chapter_overview_v1/themes/forest.css?inline";
 
 export const DOCUMENT_TYPE_THEMES = {
-  "chapter_overview_v1": [
-    { id: "classic", label: "经典蓝", css: themeCss_5 },
-    { id: "warm", label: "暖色晨曦", css: themeCss_6 },
-    { id: "night", label: "夜间沉浸", css: themeCss_7 },
-    { id: "glass", label: "玻璃拟态", description: "半透明蓝紫色，强调高光与模糊", css: themeCss_8 },
-    { id: "forest", label: "竹林墨韵", description: "墨绿色调，适合国风内容", css: themeCss_9 },
-  ],
   "knowledge_overview_v1": [
     { id: "classic", label: "经典蓝", css: themeCss_0 },
     { id: "warm", label: "暖色晨曦", css: themeCss_1 },
