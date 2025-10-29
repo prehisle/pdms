@@ -41,6 +41,7 @@ import {
   type DocumentUpdatePayload,
 } from "../../../api/documents";
 import type { MetadataValueType } from "../types";
+import { DocumentReferenceManager } from "./DocumentReferenceManager";
 
 const { Header, Content } = Layout;
 const { Title } = Typography;
@@ -282,6 +283,12 @@ export const DocumentEditor: FC<DocumentEditorProps> = ({ mode, docId: docIdProp
 
   const buildMetadataPayload = useCallback((): Record<string, any> => {
     const payload: Record<string, any> = {};
+
+    // 保留原文档中的 references 字段（由 DocumentReferenceManager 管理）
+    if (isEditMode && existingDoc?.metadata?.references) {
+      payload.references = existingDoc.metadata.references;
+    }
+
     if (metadataDifficulty != null) {
       payload.difficulty = metadataDifficulty;
     }
@@ -295,7 +302,7 @@ export const DocumentEditor: FC<DocumentEditorProps> = ({ mode, docId: docIdProp
     }
     metadataEntries.forEach((entry) => {
       const key = entry.key.trim();
-      if (!key || key === "difficulty" || key === "tags") {
+      if (!key || key === "difficulty" || key === "tags" || key === "references") {
         return;
       }
       switch (entry.type) {
@@ -313,7 +320,7 @@ export const DocumentEditor: FC<DocumentEditorProps> = ({ mode, docId: docIdProp
           }
           const numeric = Number(raw);
           if (Number.isNaN(numeric)) {
-            throw new Error(`元数据字段“${key}”的值必须是数字`);
+            throw new Error(`元数据字段"${key}"的值必须是数字`);
           }
           payload[key] = numeric;
           break;
@@ -323,7 +330,7 @@ export const DocumentEditor: FC<DocumentEditorProps> = ({ mode, docId: docIdProp
           if (boolValue === "true" || boolValue === "false") {
             payload[key] = boolValue === "true";
           } else {
-            throw new Error(`元数据字段“${key}”的布尔值只能为 true 或 false`);
+            throw new Error(`元数据字段"${key}"的布尔值只能为 true 或 false`);
           }
           break;
         }
@@ -342,7 +349,7 @@ export const DocumentEditor: FC<DocumentEditorProps> = ({ mode, docId: docIdProp
       }
     });
     return payload;
-  }, [metadataDifficulty, metadataEntries, metadataTags]);
+  }, [metadataDifficulty, metadataEntries, metadataTags, isEditMode, existingDoc]);
 
   const renderMetadataValueControl = useCallback(
     (entry: MetadataEntry) => {
@@ -725,6 +732,28 @@ export const DocumentEditor: FC<DocumentEditorProps> = ({ mode, docId: docIdProp
               )}
             </Space>
           </div>
+
+          {/* 文档引用管理区域 */}
+          {isEditMode && existingDoc && (
+            <div
+              style={{
+                padding: "12px 16px",
+                borderBottom: "1px solid #f0f0f0",
+                maxHeight: "300px",
+                overflow: "auto",
+              }}
+            >
+              <DocumentReferenceManager
+                document={existingDoc}
+                canEdit={true}
+                onDocumentUpdated={(updatedDoc) => {
+                  // 更新缓存中的文档数据
+                  queryClient.setQueryData(["document-detail", effectiveDocId], updatedDoc);
+                }}
+              />
+            </div>
+          )}
+
           <div style={{ flex: 1, overflow: "hidden" }}>
             <Editor
               language={editorLanguage}

@@ -159,5 +159,60 @@ func ValidateDocumentMetadata(metadata map[string]any) error {
 		}
 	}
 
+	// Validate references if present
+	if refsVal, hasRefs := metadata["references"]; hasRefs {
+		refsArray, ok := refsVal.([]interface{})
+		if !ok {
+			return fmt.Errorf("references must be an array")
+		}
+
+		for i, refVal := range refsArray {
+			refMap, ok := refVal.(map[string]interface{})
+			if !ok {
+				return fmt.Errorf("references[%d] must be an object", i)
+			}
+
+			// Validate document_id
+			docIDVal, hasDocID := refMap["document_id"]
+			if !hasDocID {
+				return fmt.Errorf("references[%d] must have document_id field", i)
+			}
+			switch v := docIDVal.(type) {
+			case float64:
+				if v <= 0 {
+					return fmt.Errorf("references[%d].document_id must be positive", i)
+				}
+			case int:
+				if v <= 0 {
+					return fmt.Errorf("references[%d].document_id must be positive", i)
+				}
+			case int64:
+				if v <= 0 {
+					return fmt.Errorf("references[%d].document_id must be positive", i)
+				}
+			default:
+				return fmt.Errorf("references[%d].document_id must be a number", i)
+			}
+
+			// Validate title
+			titleVal, hasTitle := refMap["title"]
+			if !hasTitle {
+				return fmt.Errorf("references[%d] must have title field", i)
+			}
+			if _, ok := titleVal.(string); !ok {
+				return fmt.Errorf("references[%d].title must be a string", i)
+			}
+
+			// Validate added_at
+			addedAtVal, hasAddedAt := refMap["added_at"]
+			if !hasAddedAt {
+				return fmt.Errorf("references[%d] must have added_at field", i)
+			}
+			if _, ok := addedAtVal.(string); !ok {
+				return fmt.Errorf("references[%d].added_at must be a string", i)
+			}
+		}
+	}
+
 	return nil
 }

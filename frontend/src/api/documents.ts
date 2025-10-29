@@ -343,3 +343,48 @@ export async function restoreDocumentVersion(docId: number, versionNumber: numbe
     method: "POST",
   });
 }
+
+// Document references
+export interface DocumentReference {
+  document_id: number;
+  title: string;
+  added_at: string;
+}
+
+export interface AddReferencePayload {
+  document_id: number;
+}
+
+export interface ReferencingDocumentsResponse {
+  referencing_documents: Document[];
+  total: number;
+}
+
+export async function addDocumentReference(
+  docId: number,
+  payload: AddReferencePayload
+): Promise<Document> {
+  return http<Document>(`/api/v1/documents/${docId}/references`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function removeDocumentReference(
+  docId: number,
+  refDocId: number
+): Promise<Document> {
+  return http<Document>(`/api/v1/documents/${docId}/references/${refDocId}`, {
+    method: "DELETE",
+  });
+}
+
+export async function getReferencingDocuments(
+  docId: number,
+  params?: DocumentListParams
+): Promise<ReferencingDocumentsResponse> {
+  const query = buildDocumentQuery(params);
+  return http<ReferencingDocumentsResponse>(
+    `/api/v1/documents/${docId}/referencing${query}`
+  );
+}

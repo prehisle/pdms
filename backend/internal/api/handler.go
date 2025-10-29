@@ -229,6 +229,31 @@ func (h *Handler) DocumentRoutes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Handle reference-related routes
+	if parts[1] == "references" {
+		if len(parts) == 2 {
+			// POST /api/v1/documents/{id}/references - add reference
+			h.addDocumentReference(w, r, meta, id)
+			return
+		}
+		if len(parts) == 3 {
+			refID, err := strconv.ParseInt(parts[2], 10, 64)
+			if err != nil {
+				respondError(w, http.StatusBadRequest, errors.New("invalid reference document id"))
+				return
+			}
+			// DELETE /api/v1/documents/{id}/references/{refId} - remove reference
+			h.removeDocumentReference(w, r, meta, id, refID)
+			return
+		}
+	}
+
+	if parts[1] == "referencing" {
+		// GET /api/v1/documents/{id}/referencing - get documents that reference this one
+		h.getReferencingDocuments(w, r, meta, id)
+		return
+	}
+
 	// Handle version-related routes
 	if parts[1] == "versions" {
 		if len(parts) == 2 {
@@ -466,6 +491,84 @@ func (h *Handler) restoreDocumentVersion(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	writeJSON(w, http.StatusOK, doc)
+}
+
+// addDocumentReference handles adding a reference to another document.
+func (h *Handler) addDocumentReference(w http.ResponseWriter, r *http.Request, meta service.RequestMeta, docID int64) {
+	if r.Method != http.MethodPost {
+		respondError(w, http.StatusMethodNotAllowed, errors.New("method not allowed"))
+		return
+	}
+
+	// 权限检查：校对员不能添加引用（因为会修改 metadata）
+	_, httpErr := h.requireNotProofreader(r, "add document references")
+	if httpErr != nil {
+		respondError(w, httpErr.code, httpErr.message)
+		return
+	}
+
+	var payload struct {
+		DocumentID int64 `json:"document_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		respondAPIError(w, NewAPIError(ErrCodeValidation, http.StatusBadRequest, "请求格式错误", err.Error()))
+		return
+	}
+
+	if payload.DocumentID == 0 {
+		respondAPIError(w, NewAPIError(ErrCodeValidation, http.StatusBadRequest, "document_id 不能为空", ""))
+		return
+	}
+
+	doc, err := h.service.AddDocumentReference(r.Context(), meta, docID, payload.DocumentID)
+	if err != nil {
+		respondAPIError(w, WrapUpstreamError(err))
+		return
+	}
+
+	writeJSON(w, http.StatusOK, doc)
+}
+
+// removeDocumentReference handles removing a reference from a document.
+func (h *Handler) removeDocumentReference(w http.ResponseWriter, r *http.Request, meta service.RequestMeta, docID int64, refDocID int64) {
+	if r.Method != http.MethodDelete {
+		respondError(w, http.StatusMethodNotAllowed, errors.New("method not allowed"))
+		return
+	}
+
+	// 权限检查：校对员不能删除引用
+	_, httpErr := h.requireNotProofreader(r, "remove document references")
+	if httpErr != nil {
+		respondError(w, httpErr.code, httpErr.message)
+		return
+	}
+
+	doc, err := h.service.RemoveDocumentReference(r.Context(), meta, docID, refDocID)
+	if err != nil {
+		respondAPIError(w, WrapUpstreamError(err))
+		return
+	}
+
+	writeJSON(w, http.StatusOK, doc)
+}
+
+// getReferencingDocuments handles retrieving documents that reference the given document.
+func (h *Handler) getReferencingDocuments(w http.ResponseWriter, r *http.Request, meta service.RequestMeta, docID int64) {
+	if r.Method != http.MethodGet {
+		respondError(w, http.StatusMethodNotAllowed, errors.New("method not allowed"))
+		return
+	}
+
+	docs, err := h.service.GetReferencingDocuments(r.Context(), meta, docID, cloneQuery(r.URL.Query()))
+	if err != nil {
+		respondError(w, http.StatusBadGateway, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"referencing_documents": docs,
+		"total":                 len(docs),
+	})
 }
 
 // NodeRoutes handles node-related sub-resources.
