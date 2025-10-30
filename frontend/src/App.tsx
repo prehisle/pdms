@@ -14,7 +14,8 @@ import {
 } from "antd";
 import type { MenuProps } from "antd";
 import type { ColumnsType } from "antd/es/table";
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { MouseEvent as ReactMouseEvent, TouchEvent as ReactTouchEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -23,6 +24,8 @@ import {
   HistoryOutlined,
   KeyOutlined,
   LogoutOutlined,
+  MenuFoldOutlined,
+  MenuUnfoldOutlined,
   RollbackOutlined,
   TeamOutlined,
   UserOutlined,
@@ -67,16 +70,36 @@ const DocumentEditorFallback = () => (
 );
 
 const { Header, Sider, Content, Footer } = Layout;
+const TREE_MIN_WIDTH = 240;
+const TREE_MAX_WIDTH = 600;
+const CONTENT_MIN_WIDTH = 320;
+const TREE_WIDTH_STORAGE_KEY = "ydms_tree_width";
+const TREE_COLLAPSED_STORAGE_KEY = "ydms_tree_collapsed";
+const TREE_COLLAPSED_WIDTH = 48;
 
 const AppContent = () => {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
   const [messageApi, contextHolder] = message.useMessage();
   const queryClient = useQueryClient();
+  const mainLayoutRef = useRef<HTMLDivElement | null>(null);
 
   // Header 折叠状态
   const [headerCollapsed, setHeaderCollapsed] = useState(() => {
     const saved = localStorage.getItem("ydms_header_collapsed");
+    return saved === "true";
+  });
+  const [treeWidth, setTreeWidth] = useState(() => {
+    const saved = localStorage.getItem(TREE_WIDTH_STORAGE_KEY);
+    const parsed = saved ? Number.parseInt(saved, 10) : NaN;
+    if (Number.isFinite(parsed)) {
+      return Math.min(Math.max(parsed, TREE_MIN_WIDTH), TREE_MAX_WIDTH);
+    }
+    return 360;
+  });
+  const [isResizingTree, setIsResizingTree] = useState(false);
+  const [treeCollapsed, setTreeCollapsed] = useState(() => {
+    const saved = localStorage.getItem(TREE_COLLAPSED_STORAGE_KEY);
     return saved === "true";
   });
 
@@ -193,6 +216,52 @@ const AppContent = () => {
       queryClient.invalidateQueries({ queryKey: ["node-documents"] }),
     ]);
   }, [invalidateCategoryQueries, queryClient]);
+  const clampTreeWidth = useCallback((width: number) => {
+    const layoutRect = mainLayoutRef.current?.getBoundingClientRect();
+    const layoutWidth = layoutRect?.width ?? TREE_MAX_WIDTH;
+    const maxWidth = Math.max(
+      TREE_MIN_WIDTH,
+      Math.min(TREE_MAX_WIDTH, layoutWidth - CONTENT_MIN_WIDTH),
+    );
+    const clamped = Math.min(Math.max(width, TREE_MIN_WIDTH), maxWidth);
+    return Math.round(clamped);
+  }, []);
+  const handleTreeResize = useCallback(
+    (clientX: number) => {
+      if (treeCollapsed) {
+        return;
+      }
+      const layoutRect = mainLayoutRef.current?.getBoundingClientRect();
+      if (!layoutRect) {
+        return;
+      }
+      const offsetX = clientX - layoutRect.left;
+      setTreeWidth(clampTreeWidth(offsetX));
+    },
+    [clampTreeWidth, treeCollapsed],
+  );
+  const handleTreeResizeStart = useCallback(
+    (event: ReactMouseEvent<HTMLDivElement>) => {
+      if (treeCollapsed) {
+        return;
+      }
+      event.preventDefault();
+      setIsResizingTree(true);
+      handleTreeResize(event.clientX);
+    },
+    [handleTreeResize, treeCollapsed],
+  );
+  const handleTreeResizeTouchStart = useCallback(
+    (event: ReactTouchEvent<HTMLDivElement>) => {
+      if (treeCollapsed) {
+        return;
+      }
+      event.preventDefault();
+      setIsResizingTree(true);
+      handleTreeResize(event.touches[0].clientX);
+    },
+    [handleTreeResize, treeCollapsed],
+  );
 
   // 文档拖拽功能
   const { handleDocumentDragStart, handleDocumentDragEnd, handleDropOnNode } = useDocumentDrag({
@@ -209,10 +278,79 @@ const AppContent = () => {
   useEffect(() => {
     localStorage.setItem("ydms_header_collapsed", String(headerCollapsed));
   }, [headerCollapsed]);
+  useEffect(() => {
+    localStorage.setItem(TREE_WIDTH_STORAGE_KEY, String(treeWidth));
+  }, [treeWidth]);
+  useEffect(() => {
+    localStorage.setItem(TREE_COLLAPSED_STORAGE_KEY, String(treeCollapsed));
+  }, [treeCollapsed]);
 
   const handleToggleHeader = useCallback(() => {
     setHeaderCollapsed((prev: boolean) => !prev);
   }, []);
+  const handleToggleTreeCollapsed = useCallback(() => {
+    setTreeCollapsed((prev) => {
+      const next = !prev;
+      if (!next) {
+        setTreeWidth((prevWidth) => clampTreeWidth(prevWidth));
+      }
+      return next;
+    });
+  }, [clampTreeWidth]);
+  useEffect(() => {
+    setTreeWidth((prev) => clampTreeWidth(prev));
+  }, [clampTreeWidth]);
+  useEffect(() => {
+    const handleWindowResize = () => {
+      setTreeWidth((prev) => clampTreeWidth(prev));
+    };
+    window.addEventListener("resize", handleWindowResize);
+    return () => {
+      window.removeEventListener("resize", handleWindowResize);
+    };
+  }, [clampTreeWidth]);
+  useEffect(() => {
+    if (!isResizingTree) {
+      return;
+    }
+    const handleMouseMove = (event: MouseEvent) => {
+      handleTreeResize(event.clientX);
+    };
+    const handleMouseUp = () => {
+      setIsResizingTree(false);
+    };
+    const handleTouchMove = (event: TouchEvent) => {
+      if (event.touches.length > 0) {
+        handleTreeResize(event.touches[0].clientX);
+      }
+    };
+    const handleTouchEnd = () => {
+      setIsResizingTree(false);
+    };
+    const previousCursor = document.body.style.cursor;
+    const previousUserSelect = document.body.style.userSelect;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+    document.addEventListener("touchmove", handleTouchMove);
+    document.addEventListener("touchend", handleTouchEnd);
+    document.addEventListener("touchcancel", handleTouchEnd);
+    return () => {
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+      document.removeEventListener("touchmove", handleTouchMove);
+      document.removeEventListener("touchend", handleTouchEnd);
+      document.removeEventListener("touchcancel", handleTouchEnd);
+      document.body.style.cursor = previousCursor;
+      document.body.style.userSelect = previousUserSelect;
+    };
+  }, [handleTreeResize, isResizingTree]);
+  useEffect(() => {
+    if (treeCollapsed && isResizingTree) {
+      setIsResizingTree(false);
+    }
+  }, [isResizingTree, treeCollapsed]);
 
   // Sync rename modal form values
   useEffect(() => {
@@ -590,6 +728,25 @@ const AppContent = () => {
   const canManageUsers = user?.role === "super_admin";
   const isSuperAdmin = user?.role === "super_admin";
 
+  const treeToggleButtonStyle = treeCollapsed
+    ? {
+        width: 32,
+        height: 32,
+        position: "absolute" as const,
+        top: "50%",
+        left: "50%",
+        transform: "translate(-50%, -50%)",
+        zIndex: 20,
+      }
+    : {
+        width: 32,
+        height: 32,
+        position: "absolute" as const,
+        top: 16,
+        right: -12,
+        zIndex: 20,
+      };
+
   const userMenuItems: MenuProps["items"] = [
     {
       key: "user-info",
@@ -677,47 +834,102 @@ const AppContent = () => {
           </Space>
         </Dropdown>
       </Header>
-      <Layout style={{ flex: 1, overflow: "hidden" }}>
+      <Layout ref={mainLayoutRef} style={{ flex: 1, overflow: "hidden" }}>
         <Sider
-          width={360}
+          width={treeWidth}
+          collapsedWidth={TREE_COLLAPSED_WIDTH}
+          collapsed={treeCollapsed}
+          trigger={null}
           style={{
             background: "#fff",
-            padding: "16px",
+            padding: treeCollapsed ? "0" : "16px",
             borderRight: "1px solid #f0f0f0",
-            overflow: "auto",
+            position: "relative",
+            boxSizing: "border-box",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: treeCollapsed ? "center" : "stretch",
+            justifyContent: treeCollapsed ? "center" : "flex-start",
+            gap: treeCollapsed ? 0 : 16,
+            overflow: treeCollapsed ? "visible" : "hidden",
           }}
         >
-          <CategoryTreePanel
-            categories={categoriesList}
-            lookups={lookups}
-            isLoading={isLoading}
-            isFetching={isFetching}
-            error={error}
-            isMutating={isMutating}
-            selectedIds={selectedIds}
-            selectionParentId={selectionParentId}
-            lastSelectedId={lastSelectedId}
-            selectedNodeId={selectedNodeId}
-            includeDescendants={includeDescendants}
-            createLoading={createMutation.isPending}
-            trashIsFetching={trashQuery.isFetching}
-            messageApi={messageApi}
-            dragDebugEnabled={dragDebugEnabled}
-            menuDebugEnabled={menuDebugEnabled}
-            canManageCategories={user?.role !== "proofreader"}
-            canCreateRoot={user?.role === "super_admin"}
-            onSelectionChange={handleSelectionChange}
-            onRequestCreate={handleRequestCreate}
-            onRequestRename={handleRequestRename}
-            onRequestDelete={handleRequestDelete}
-            onOpenTrash={handleOpenTrashWithRefresh}
-            onOpenAddDocument={handleOpenAddDocument}
-            onIncludeDescendantsChange={handleIncludeDescendantsChange}
-            onRefresh={handleRefreshTree}
-            onInvalidateQueries={invalidateCategoryQueries}
-            setIsMutating={setMutating}
-            onDocumentDrop={handleDropOnNode}
-          />
+          <Tooltip title={treeCollapsed ? "展开目录树" : "折叠目录树"}>
+            <Button
+              icon={treeCollapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />}
+              shape="circle"
+              type="text"
+              aria-label={treeCollapsed ? "展开目录树" : "折叠目录树"}
+              onClick={handleToggleTreeCollapsed}
+              style={treeToggleButtonStyle}
+            />
+          </Tooltip>
+          {!treeCollapsed && (
+            <>
+              <div style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
+                <CategoryTreePanel
+                  categories={categoriesList}
+                  lookups={lookups}
+                  isLoading={isLoading}
+                  isFetching={isFetching}
+                  error={error}
+                  isMutating={isMutating}
+                  selectedIds={selectedIds}
+                  selectionParentId={selectionParentId}
+                  lastSelectedId={lastSelectedId}
+                  selectedNodeId={selectedNodeId}
+                  includeDescendants={includeDescendants}
+                  createLoading={createMutation.isPending}
+                  trashIsFetching={trashQuery.isFetching}
+                  messageApi={messageApi}
+                  dragDebugEnabled={dragDebugEnabled}
+                  menuDebugEnabled={menuDebugEnabled}
+                  canManageCategories={user?.role !== "proofreader"}
+                  canCreateRoot={user?.role === "super_admin"}
+                  onSelectionChange={handleSelectionChange}
+                  onRequestCreate={handleRequestCreate}
+                  onRequestRename={handleRequestRename}
+                  onRequestDelete={handleRequestDelete}
+                  onOpenTrash={handleOpenTrashWithRefresh}
+                  onOpenAddDocument={handleOpenAddDocument}
+                  onIncludeDescendantsChange={handleIncludeDescendantsChange}
+                  onRefresh={handleRefreshTree}
+                  onInvalidateQueries={invalidateCategoryQueries}
+                  setIsMutating={setMutating}
+                  onDocumentDrop={handleDropOnNode}
+                />
+              </div>
+              <div
+                role="separator"
+                aria-orientation="vertical"
+                aria-label="调整目录树宽度"
+                onMouseDown={handleTreeResizeStart}
+                onTouchStart={handleTreeResizeTouchStart}
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  right: -4,
+                  width: 8,
+                  cursor: "col-resize",
+                  height: "100%",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  zIndex: 10,
+                  touchAction: "none",
+                }}
+              >
+                <div
+                  style={{
+                    width: 2,
+                    height: "60%",
+                    borderRadius: 2,
+                    background: isResizingTree ? "#1677ff" : "transparent",
+                  }}
+                />
+              </div>
+            </>
+          )}
         </Sider>
         <Content style={{ padding: "24px", overflow: "auto" }}>
           <Space direction="vertical" size="large" style={{ width: "100%" }}>
