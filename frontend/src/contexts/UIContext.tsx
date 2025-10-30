@@ -31,6 +31,7 @@ interface UIContextValue {
   // 用户相关弹窗
   changePasswordOpen: boolean;
   userManagementOpen: boolean;
+  apiKeyManagementOpen: boolean;
 
   // Actions - Category
   handleOpenTrash: () => void;
@@ -65,6 +66,8 @@ interface UIContextValue {
   handleCloseChangePassword: () => void;
   handleOpenUserManagement: () => void;
   handleCloseUserManagement: () => void;
+  handleOpenAPIKeyManagement: () => void;
+  handleCloseAPIKeyManagement: () => void;
 }
 
 const UIContext = createContext<UIContextValue | undefined>(undefined);
@@ -115,6 +118,7 @@ export const UIProvider = ({ children }: UIProviderProps) => {
   // 用户相关弹窗
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
   const [userManagementOpen, setUserManagementOpen] = useState(false);
+  const [apiKeyManagementOpen, setAPIKeyManagementOpen] = useState(false);
 
   // Category Actions
   const handleOpenTrash = useCallback(() => {
@@ -202,6 +206,14 @@ export const UIProvider = ({ children }: UIProviderProps) => {
     setUserManagementOpen(false);
   }, []);
 
+  const handleOpenAPIKeyManagement = useCallback(() => {
+    setAPIKeyManagementOpen(true);
+  }, []);
+
+  const handleCloseAPIKeyManagement = useCallback(() => {
+    setAPIKeyManagementOpen(false);
+  }, []);
+
   const value: UIContextValue = {
     trashModalOpen,
     showCreateModal,
@@ -212,6 +224,7 @@ export const UIProvider = ({ children }: UIProviderProps) => {
     reorderModal,
     changePasswordOpen,
     userManagementOpen,
+    apiKeyManagementOpen,
     handleOpenTrash,
     handleCloseTrash,
     handleOpenCreateModal,
@@ -230,6 +243,8 @@ export const UIProvider = ({ children }: UIProviderProps) => {
     handleCloseChangePassword,
     handleOpenUserManagement,
     handleCloseUserManagement,
+    handleOpenAPIKeyManagement,
+    handleCloseAPIKeyManagement,
   };
 
   return <UIContext.Provider value={value}>{children}</UIContext.Provider>;

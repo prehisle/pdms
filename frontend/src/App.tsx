@@ -34,6 +34,7 @@ import { DocumentProvider, useDocumentContext } from "./contexts/DocumentContext
 import { UIProvider, useUIContext } from "./contexts/UIContext";
 import { ChangePasswordModal } from "./features/auth";
 import { UserManagementDrawer } from "./features/users/UserManagementDrawer";
+import { APIKeyManagementDrawer } from "./features/apikeys/APIKeyManagementDrawer";
 import { Document, DocumentTrashPage, DocumentVersionsPage } from "./api/documents";
 import { CategoryTreePanel } from "./features/categories/components/CategoryTreePanel";
 import { CategoryBreadcrumb } from "./features/categories/components/CategoryBreadcrumb";
@@ -158,6 +159,7 @@ const AppContent = () => {
     reorderModal,
     changePasswordOpen,
     userManagementOpen,
+    apiKeyManagementOpen,
     handleOpenTrash,
     handleCloseTrash,
     handleOpenCreateModal,
@@ -176,6 +178,8 @@ const AppContent = () => {
     handleCloseChangePassword,
     handleOpenUserManagement,
     handleCloseUserManagement,
+    handleOpenAPIKeyManagement,
+    handleCloseAPIKeyManagement,
   } = useUIContext();
 
   // 刷新分类和文档查询
@@ -581,6 +585,7 @@ const AppContent = () => {
   };
 
   const canManageUsers = user?.role === "super_admin";
+  const isSuperAdmin = user?.role === "super_admin";
 
   const userMenuItems: MenuProps["items"] = [
     {
@@ -602,6 +607,18 @@ const AppContent = () => {
             icon: <TeamOutlined />,
             onClick: () => {
               handleOpenUserManagement();
+            },
+          },
+        ]
+      : []),
+    ...(isSuperAdmin
+      ? [
+          {
+            key: "apikey-management",
+            label: "API Key 管理",
+            icon: <KeyOutlined />,
+            onClick: () => {
+              handleOpenAPIKeyManagement();
             },
           },
         ]
@@ -897,6 +914,7 @@ const AppContent = () => {
       />
       <ChangePasswordModal open={changePasswordOpen} onClose={handleCloseChangePassword} />
       <UserManagementDrawer open={userManagementOpen} onClose={handleCloseUserManagement} />
+      <APIKeyManagementDrawer open={apiKeyManagementOpen} onClose={handleCloseAPIKeyManagement} />
     </Layout>
   );
 };
