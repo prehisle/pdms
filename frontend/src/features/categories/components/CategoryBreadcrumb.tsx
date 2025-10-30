@@ -34,27 +34,36 @@ export function CategoryBreadcrumb({ selectedNodeId, lookups, onNavigate }: Cate
     return path;
   }, [selectedNodeId, lookups]);
 
-  const buildSiblingMenu = (parentId: ParentKey, activeId: number | null): MenuProps | undefined => {
-    const siblings = lookups.parentToChildren.get(parentId ?? null) ?? [];
-    if (siblings.length === 0) {
+  const buildMenuForParent = (parentId: ParentKey, options?: { selectedId?: number }): MenuProps | undefined => {
+    const children = lookups.parentToChildren.get(parentId ?? null) ?? [];
+    if (children.length === 0) {
       return undefined;
     }
 
+    const selectedId = options?.selectedId ?? null;
     return {
-      selectable: true,
-      selectedKeys: activeId != null ? [activeId.toString()] : [],
+      selectable: selectedId != null,
+      selectedKeys: selectedId != null ? [selectedId.toString()] : [],
       onClick: ({ key }) => {
         const targetId = Number(key);
         if (!Number.isNaN(targetId)) {
           onNavigate(targetId);
         }
       },
-      items: siblings.map((sibling) => ({
-        key: sibling.id.toString(),
+      items: children.map((node) => ({
+        key: node.id.toString(),
         label: (
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+          <span
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 4,
+              fontWeight: node.id === selectedId ? 600 : undefined,
+              color: node.id === selectedId ? "#1677ff" : undefined,
+            }}
+          >
             <FolderOutlined />
-            {sibling.name}
+            {node.name}
           </span>
         ),
       })),
@@ -80,7 +89,7 @@ export function CategoryBreadcrumb({ selectedNodeId, lookups, onNavigate }: Cate
   }
 
   const rootNode = breadcrumbPath[0] ?? null;
-  const rootMenu = buildSiblingMenu(null, rootNode?.id ?? null);
+  const rootMenu = rootNode ? buildMenuForParent(null, { selectedId: rootNode.id }) : undefined;
 
   const makeDropdownTrigger = (menu: MenuProps | undefined, children: ReactNode) => {
     if (!menu) {
@@ -127,7 +136,9 @@ export function CategoryBreadcrumb({ selectedNodeId, lookups, onNavigate }: Cate
     },
     ...breadcrumbPath.map((node, index) => {
       const isLast = index === breadcrumbPath.length - 1;
-      const menu = buildSiblingMenu(node.parent_id ?? null, node.id);
+      const menu = isLast
+        ? buildMenuForParent(node.id)
+        : buildMenuForParent(node.parent_id ?? null, { selectedId: node.id });
 
       const label = isLast ? (
         <span style={{ fontWeight: 600, color: "#1890ff", display: "inline-flex", gap: 4 }}>
