@@ -479,7 +479,7 @@ export function DocumentReferenceModal({
                                 | {new Date(ref.added_at).toLocaleDateString()}
                               </Text>
                             ) : (
-                              <Tag size="small" style={{ marginLeft: 8 }}>待添加</Tag>
+                              <Tag style={{ marginLeft: 8, fontSize: 12 }}>待添加</Tag>
                             )}
                           </div>
                         }
