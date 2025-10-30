@@ -1,0 +1,30 @@
+name: Docs Check
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run docs-check (internal links)
+        run: |
+          make docs-check
+
+      - name: Install markdownlint (optional)
+        run: |
+          npm i -g markdownlint-cli || true
+
+      - name: Run markdownlint (non-blocking)
+        run: |
+          make docs-lint || true
+
+      - name: Validate OpenAPI JSON (if present)
+        run: |
+          if [ -f docs/backend/openapi.json ]; then
+            jq . docs/backend/openapi.json >/dev/null
+          fi
