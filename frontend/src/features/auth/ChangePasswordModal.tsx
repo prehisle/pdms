@@ -60,7 +60,7 @@ export function ChangePasswordModal({ open, onClose }: ChangePasswordModalProps)
       confirmLoading={loading}
       okText="确定"
       cancelText="取消"
-      destroyOnClose
+      destroyOnHidden
     >
       <Form
         form={form}

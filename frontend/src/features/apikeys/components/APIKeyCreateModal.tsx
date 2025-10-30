@@ -121,25 +121,41 @@ export function APIKeyCreateModal({
     onClose();
   };
 
-  // 如果 API Key 已创建，显示 API Key
-  if (createdAPIKey) {
-    return (
-      <Modal
-        title={
-          <Space>
-            <CheckCircleOutlined style={{ color: "#52c41a" }} />
-            <span>API Key 创建成功</span>
-          </Space>
-        }
-        open={open}
-        onCancel={handleClose}
-        footer={[
-          <Button key="close" type="primary" onClick={handleClose}>
-            关闭
-          </Button>,
-        ]}
-        width={600}
-      >
+  const successMode = createdAPIKey != null;
+
+  const modalTitle = successMode && createdAPIKey ? (
+    <Space>
+      <CheckCircleOutlined style={{ color: "#52c41a" }} />
+      <span>API Key 创建成功</span>
+    </Space>
+  ) : (
+    "创建 API Key"
+  );
+
+  return (
+    <Modal
+      title={modalTitle}
+      open={open}
+      onCancel={handleClose}
+      onOk={successMode ? handleClose : () => form.submit()}
+      confirmLoading={!successMode && loading}
+      okButtonProps={successMode ? undefined : { disabled: !isSuperAdmin }}
+      okText={successMode ? "关闭" : "创建"}
+      cancelButtonProps={successMode ? { style: { display: "none" } } : undefined}
+      destroyOnHidden
+      forceRender
+      width={successMode ? 600 : 500}
+      footer={
+        successMode
+          ? [
+              <Button key="close" type="primary" onClick={handleClose}>
+                关闭
+              </Button>,
+            ]
+          : undefined
+      }
+    >
+      {successMode && createdAPIKey ? (
         <Space direction="vertical" size="large" style={{ width: "100%" }}>
           <Alert
             message="重要提示"
@@ -187,35 +203,18 @@ export function APIKeyCreateModal({
           <div>
             <Text type="secondary">关联用户：</Text>
             <Text>
-              {createdAPIKey.key_info.user?.username ||
-                `ID: ${createdAPIKey.key_info.user_id}`}
+              {createdAPIKey.key_info.user?.username || `ID: ${createdAPIKey.key_info.user_id}`}
             </Text>
           </div>
         </Space>
-      </Modal>
-    );
-  }
-
-  // 创建表单
-  return (
-    <Modal
-      title="创建 API Key"
-      open={open}
-      onOk={() => form.submit()}
-      onCancel={handleClose}
-      confirmLoading={loading}
-      okButtonProps={{ disabled: !isSuperAdmin }}
-      okText="创建"
-      cancelText="取消"
-      destroyOnClose
-      width={500}
-    >
+      ) : null}
       <Form
         form={form}
         name="createAPIKey"
         onFinish={handleSubmit}
         autoComplete="off"
         layout="vertical"
+        style={successMode ? { display: "none" } : undefined}
       >
         <Form.Item
           label="名称"
@@ -227,11 +226,7 @@ export function APIKeyCreateModal({
           ]}
           tooltip="为 API Key 设置一个描述性名称，方便识别用途"
         >
-          <Input
-            prefix={<KeyOutlined />}
-            placeholder="例如：批量导入工具"
-            maxLength={100}
-          />
+          <Input prefix={<KeyOutlined />} placeholder="例如：批量导入工具" maxLength={100} />
         </Form.Item>
 
         <Form.Item
@@ -244,14 +239,17 @@ export function APIKeyCreateModal({
             placeholder="选择用户"
             loading={!usersData}
             showSearch
-            optionFilterProp="children"
-            filterOption={(input, option) =>
-              (option?.label ?? "").toLowerCase().includes(input.toLowerCase())
+            optionFilterProp="label"
+            filterOption={(input, option) => {
+              const label = typeof option?.label === "string" ? option.label : "";
+              return label.toLowerCase().includes(input.toLowerCase());
+            }}
+            options={
+              usersData?.users.map((user) => ({
+                value: user.id,
+                label: `${user.username} (${user.display_name || "未设置显示名"})`,
+              })) ?? []
             }
-            options={usersData?.users.map((user) => ({
-              value: user.id,
-              label: `${user.username} (${user.role})`,
-            }))}
           />
         </Form.Item>
 
@@ -271,11 +269,7 @@ export function APIKeyCreateModal({
           />
         </Form.Item>
 
-        <Form.Item
-          label="过期时间"
-          name="expires_at"
-          tooltip="留空表示永不过期"
-        >
+        <Form.Item label="过期时间" name="expires_at" tooltip="留空表示永不过期">
           <DatePicker
             showTime
             format="YYYY-MM-DD HH:mm:ss"
@@ -284,11 +278,7 @@ export function APIKeyCreateModal({
           />
         </Form.Item>
 
-        <Alert
-          message="API Key 将以 SHA256 哈希方式存储，创建后仅显示一次完整密钥"
-          type="info"
-          showIcon
-        />
+        <Alert message="API Key 将以 SHA256 哈希方式存储，创建后仅显示一次完整密钥" type="info" showIcon />
       </Form>
     </Modal>
   );

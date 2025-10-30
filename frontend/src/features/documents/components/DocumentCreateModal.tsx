@@ -59,7 +59,7 @@ export const DocumentCreateModal: FC<DocumentCreateModalProps> = ({
       confirmLoading={confirmLoading}
       onCancel={onCancel}
       onOk={onOk}
-      destroyOnClose
+      destroyOnHidden
       width={800}
     >
       {nodeId ? (

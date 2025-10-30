@@ -1,6 +1,6 @@
 import { lazy, Suspense } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import { Spin } from "antd";
+import { Spin, Space, Typography } from "antd";
 import App from "./App";
 import { AuthProvider } from "./contexts/AuthContext";
 import { PrivateRoute } from "./components/PrivateRoute";
@@ -21,7 +21,10 @@ const LoadingFallback = () => (
       height: "100vh",
     }}
   >
-    <Spin size="large" tip="加载编辑器..." />
+    <Space direction="vertical" align="center" size="middle">
+      <Spin size="large" />
+      <Typography.Text type="secondary">加载编辑器...</Typography.Text>
+    </Space>
   </div>
 );
 

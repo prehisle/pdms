@@ -1,6 +1,6 @@
 import { ReactNode } from "react";
 import { Navigate, useLocation } from "react-router-dom";
-import { Spin } from "antd";
+import { Spin, Space, Typography } from "antd";
 import { useAuth } from "../contexts/AuthContext";
 
 /**
@@ -28,7 +28,10 @@ export function PrivateRoute({ children }: PrivateRouteProps) {
           minHeight: "100vh",
         }}
       >
-        <Spin size="large" tip="加载中..." />
+        <Space direction="vertical" align="center" size="middle">
+          <Spin size="large" />
+          <Typography.Text type="secondary">加载中...</Typography.Text>
+        </Space>
       </div>
     );
   }

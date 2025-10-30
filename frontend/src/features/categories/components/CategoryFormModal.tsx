@@ -26,7 +26,7 @@ export const CategoryFormModal: FC<CategoryFormModalProps> = ({
     confirmLoading={confirmLoading}
     onCancel={onCancel}
     onOk={onSubmit}
-    destroyOnClose
+    destroyOnHidden
   >
     <Form form={form} layout="vertical" preserve={false}>
       <Form.Item

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Modal, Transfer, message, Spin, Alert } from "antd";
+import { Modal, Transfer, message, Spin, Alert, Space, Typography } from "antd";
 import type { TransferProps } from "antd";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -156,14 +156,17 @@ export function UserPermissionsModal({
       okText="保存"
       cancelText="取消"
       width={700}
-      destroyOnClose
+      destroyOnHidden
       maskClosable={!saving}
       keyboard={!saving}
       okButtonProps={{ disabled: dataSource.length === 0 }}
     >
       {isLoading ? (
         <div style={{ textAlign: "center", padding: "40px 0" }}>
-          <Spin tip="加载中..." />
+          <Space direction="vertical" align="center" size="middle">
+            <Spin size="large" />
+            <Typography.Text type="secondary">加载中...</Typography.Text>
+          </Space>
         </div>
       ) : userCoursesError ? (
         <Alert

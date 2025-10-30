@@ -554,7 +554,10 @@ export const DocumentEditor: FC<DocumentEditorProps> = ({ mode, docId: docIdProp
   if (isEditMode && isLoadingDoc) {
     return (
       <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: containerHeight }}>
-        <Spin size="large" tip="加载中..." />
+        <Space direction="vertical" align="center" size="middle">
+          <Spin size="large" />
+          <Typography.Text type="secondary">加载中...</Typography.Text>
+        </Space>
       </div>
     );
   }

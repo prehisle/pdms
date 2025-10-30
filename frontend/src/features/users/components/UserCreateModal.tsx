@@ -74,7 +74,7 @@ export function UserCreateModal({ open, onClose, onSuccess }: UserCreateModalPro
       okButtonProps={{ disabled: !isSuperAdmin }}
       okText="创建"
       cancelText="取消"
-      destroyOnClose
+      destroyOnHidden
       width={500}
     >
       <Form
