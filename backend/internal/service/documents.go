@@ -1,7 +1,10 @@
 package service
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 	"strconv"
@@ -187,34 +190,69 @@ func (s *Service) UpdateDocument(ctx context.Context, meta RequestMeta, docID in
 	return s.ndr.UpdateDocument(ctx, toNDRMeta(meta), docID, body)
 }
 
-// DocumentReorderRequest represents a request to reorder documents within a node.
+// ErrInvalidDocumentReorder indicates the reorder payload is invalid.
+var ErrInvalidDocumentReorder = errors.New("ordered_ids cannot be empty")
+
+// DocumentReorderRequest represents a request to reorder documents.
 type DocumentReorderRequest struct {
-	NodeID     int64   `json:"node_id"`
-	OrderedIDs []int64 `json:"ordered_ids"`
+	OrderedIDs      []int64 `json:"ordered_ids"`
+	Type            *string `json:"type"`
+	ApplyTypeFilter bool    `json:"-"`
 }
 
-// ReorderDocuments reorders documents within a specific node by updating their positions.
+// UnmarshalJSON captures whether the optional type field is provided.
+func (r *DocumentReorderRequest) UnmarshalJSON(data []byte) error {
+	type alias struct {
+		OrderedIDs []int64          `json:"ordered_ids"`
+		Type       *json.RawMessage `json:"type"`
+	}
+
+	var payload alias
+	if err := json.Unmarshal(data, &payload); err != nil {
+		return err
+	}
+
+	r.OrderedIDs = payload.OrderedIDs
+	r.Type = nil
+	r.ApplyTypeFilter = false
+
+	if payload.Type != nil {
+		r.ApplyTypeFilter = true
+		raw := bytes.TrimSpace(*payload.Type)
+		if !bytes.Equal(raw, []byte("null")) {
+			var value string
+			if err := json.Unmarshal(raw, &value); err != nil {
+				return err
+			}
+			trimmed := strings.TrimSpace(value)
+			r.Type = &trimmed
+		}
+	}
+
+	return nil
+}
+
+// ReorderDocuments delegates document reordering to the upstream service.
 func (s *Service) ReorderDocuments(ctx context.Context, meta RequestMeta, req DocumentReorderRequest) ([]ndrclient.Document, error) {
 	if len(req.OrderedIDs) == 0 {
-		return nil, fmt.Errorf("ordered_ids cannot be empty")
+		return nil, ErrInvalidDocumentReorder
 	}
 
-	// Update each document's position based on its order in the array
-	var updatedDocs []ndrclient.Document
-	for i, docID := range req.OrderedIDs {
-		position := i + 1 // Position is 1-based
-		updateReq := DocumentUpdateRequest{
-			Position: &position,
-		}
-
-		doc, err := s.UpdateDocument(ctx, meta, docID, updateReq)
-		if err != nil {
-			return nil, fmt.Errorf("failed to update document %d position: %w", docID, err)
-		}
-		updatedDocs = append(updatedDocs, doc)
+	payload := ndrclient.DocumentReorderPayload{
+		OrderedIDs: req.OrderedIDs,
 	}
 
-	return updatedDocs, nil
+	if req.ApplyTypeFilter {
+		payload.ApplyTypeFilter = true
+		if req.Type != nil {
+			trimmed := strings.TrimSpace(*req.Type)
+			payload.Type = &trimmed
+		} else {
+			payload.Type = nil
+		}
+	}
+
+	return s.ndr.ReorderDocuments(ctx, toNDRMeta(meta), payload)
 }
 
 func extractIDFilter(query url.Values) map[int64]struct{} {

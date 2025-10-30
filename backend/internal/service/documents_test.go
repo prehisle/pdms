@@ -95,14 +95,14 @@ func TestReorderDocuments(t *testing.T) {
 	fake := newFakeNDR()
 	now := time.Now().UTC()
 
-	// Setup fake responses for each document update
-	doc1 := sampleDocument(10, "Doc A", "knowledge_overview_v1", 1, now, now)
-	fake.updateDocResp = doc1 // This will be reused for all updates
+	// Setup fake responses for reorder call
+	docA := sampleDocument(10, "Doc A", "knowledge_overview_v1", 0, now, now)
+	docB := sampleDocument(11, "Doc B", "knowledge_overview_v1", 1, now, now)
+	fake.reorderDocResp = []ndrclient.Document{docB, docA}
 
 	svc := NewService(cache.NewNoop(), fake, nil)
 
 	docs, err := svc.ReorderDocuments(context.Background(), RequestMeta{}, DocumentReorderRequest{
-		NodeID:     100,
 		OrderedIDs: []int64{10, 11},
 	})
 	if err != nil {
@@ -111,19 +111,47 @@ func TestReorderDocuments(t *testing.T) {
 	if len(docs) != 2 {
 		t.Fatalf("expected 2 documents, got %d", len(docs))
 	}
-	if len(fake.updatedDocs) != 2 {
-		t.Fatalf("expected 2 update calls, got %d", len(fake.updatedDocs))
+	if len(fake.reorderDocPayloads) != 1 {
+		t.Fatalf("expected 1 reorder call, got %d", len(fake.reorderDocPayloads))
+	}
+	payload := fake.reorderDocPayloads[0]
+	if len(payload.OrderedIDs) != 2 || payload.OrderedIDs[0] != 10 || payload.OrderedIDs[1] != 11 {
+		t.Fatalf("unexpected payload %+v", payload)
+	}
+	if payload.ApplyTypeFilter {
+		t.Fatalf("expected ApplyTypeFilter to be false")
+	}
+	if docs[0].ID != docB.ID || docs[1].ID != docA.ID {
+		t.Fatalf("unexpected reorder response %+v", docs)
+	}
+}
+
+func TestReorderDocumentsWithTypeFilter(t *testing.T) {
+	fake := newFakeNDR()
+	now := time.Now().UTC()
+	fake.reorderDocResp = []ndrclient.Document{
+		sampleDocument(20, "Doc", "dictation_v1", 0, now, now),
 	}
 
-	// Check that positions were set correctly (1-based)
-	firstUpdate := fake.updatedDocs[0]
-	secondUpdate := fake.updatedDocs[1]
-
-	if firstUpdate.ID != 10 || firstUpdate.Body.Position == nil || *firstUpdate.Body.Position != 1 {
-		t.Fatalf("expected first document to have position 1, got %+v", firstUpdate)
+	typeValue := " dictation_v1 "
+	svc := NewService(cache.NewNoop(), fake, nil)
+	_, err := svc.ReorderDocuments(context.Background(), RequestMeta{}, DocumentReorderRequest{
+		OrderedIDs:      []int64{20},
+		Type:            &typeValue,
+		ApplyTypeFilter: true,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
-	if secondUpdate.ID != 11 || secondUpdate.Body.Position == nil || *secondUpdate.Body.Position != 2 {
-		t.Fatalf("expected second document to have position 2, got %+v", secondUpdate)
+	if len(fake.reorderDocPayloads) != 1 {
+		t.Fatalf("expected 1 reorder call, got %d", len(fake.reorderDocPayloads))
+	}
+	payload := fake.reorderDocPayloads[0]
+	if !payload.ApplyTypeFilter {
+		t.Fatalf("expected ApplyTypeFilter to be true")
+	}
+	if payload.Type == nil || *payload.Type != "dictation_v1" {
+		t.Fatalf("unexpected type payload %+v", payload.Type)
 	}
 }
 
@@ -132,14 +160,16 @@ func TestReorderDocumentsEmptyOrderedIDs(t *testing.T) {
 	svc := NewService(cache.NewNoop(), fake, nil)
 
 	_, err := svc.ReorderDocuments(context.Background(), RequestMeta{}, DocumentReorderRequest{
-		NodeID:     100,
 		OrderedIDs: []int64{},
 	})
 	if err == nil {
 		t.Fatalf("expected error for empty ordered_ids")
 	}
-	if len(fake.updatedDocs) != 0 {
-		t.Fatalf("expected no update calls for invalid request")
+	if !errors.Is(err, ErrInvalidDocumentReorder) {
+		t.Fatalf("expected ErrInvalidDocumentReorder, got %v", err)
+	}
+	if len(fake.reorderDocPayloads) != 0 {
+		t.Fatalf("expected no reorder calls for invalid request")
 	}
 }
 
@@ -303,9 +333,9 @@ func TestAddDocumentReference(t *testing.T) {
 	callCount := 0
 	oldGetDoc := fake.getDocResp
 	fakeWithCounter := &fakeNDRWithGetDocCounter{
-		fakeNDR:  fake,
-		counter:  &callCount,
-		docs:     []ndrclient.Document{oldGetDoc, refDoc},
+		fakeNDR: fake,
+		counter: &callCount,
+		docs:    []ndrclient.Document{oldGetDoc, refDoc},
 	}
 	svc.ndr = fakeWithCounter
 

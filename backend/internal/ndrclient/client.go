@@ -30,6 +30,7 @@ type Client interface {
 	ListNodeDocuments(ctx context.Context, meta RequestMeta, id int64, query url.Values) ([]Document, error)
 	CreateDocument(ctx context.Context, meta RequestMeta, body DocumentCreate) (Document, error)
 	GetDocument(ctx context.Context, meta RequestMeta, docID int64) (Document, error)
+	ReorderDocuments(ctx context.Context, meta RequestMeta, payload DocumentReorderPayload) ([]Document, error)
 	UpdateDocument(ctx context.Context, meta RequestMeta, docID int64, body DocumentUpdate) (Document, error)
 	DeleteDocument(ctx context.Context, meta RequestMeta, docID int64) error
 	RestoreDocument(ctx context.Context, meta RequestMeta, docID int64) (Document, error)
@@ -59,6 +60,20 @@ type RequestMeta struct {
 	UserID    string
 	RequestID string
 	AdminKey  string
+}
+
+// Error represents an HTTP error returned by the NDR service.
+type Error struct {
+	StatusCode int
+	Status     string
+}
+
+// Error implements the error interface.
+func (e *Error) Error() string {
+	if e == nil {
+		return ""
+	}
+	return fmt.Sprintf("ndr request failed: %s", e.Status)
 }
 
 type httpClient struct {
@@ -252,6 +267,16 @@ func (c *httpClient) GetDocument(ctx context.Context, meta RequestMeta, docID in
 		return Document{}, err
 	}
 	var resp Document
+	_, err = c.do(req, &resp)
+	return resp, err
+}
+
+func (c *httpClient) ReorderDocuments(ctx context.Context, meta RequestMeta, payload DocumentReorderPayload) ([]Document, error) {
+	req, err := c.newRequest(ctx, http.MethodPost, "/api/v1/documents/reorder", meta, payload)
+	if err != nil {
+		return nil, err
+	}
+	var resp []Document
 	_, err = c.do(req, &resp)
 	return resp, err
 }
@@ -492,7 +517,7 @@ func (c *httpClient) do(req *http.Request, out any) (*http.Response, error) {
 
 	if resp.StatusCode >= 400 {
 		io.Copy(io.Discard, bytes.NewReader(respBody))
-		return resp, fmt.Errorf("ndr request failed: %s", resp.Status)
+		return resp, &Error{StatusCode: resp.StatusCode, Status: resp.Status}
 	}
 	if out != nil {
 		if len(respBody) == 0 {

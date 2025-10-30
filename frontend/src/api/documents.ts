@@ -88,8 +88,8 @@ export interface DocumentListParams {
 }
 
 export interface DocumentReorderPayload {
-  node_id: number;
   ordered_ids: number[];
+  type?: string | null;
 }
 
 export interface DocumentTrashParams {

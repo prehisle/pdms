@@ -45,26 +45,29 @@ type fakeNDR struct {
 		ID   int64
 		Body ndrclient.DocumentUpdate
 	}
-	createDocResp   ndrclient.Document
-	updateDocResp   ndrclient.Document
-	createDocErr    error
-	updateDocErr    error
-	docsListResp    ndrclient.DocumentsPage
-	nodeDocsResp    []ndrclient.Document
-	docsListErr     error
-	nodeDocsErr     error
-	docVersionsResp ndrclient.DocumentVersionsPage
-	docVersionsErr  error
-	deleteDocErr    error
-	restoreDocErr   error
-	restoreDocResp  ndrclient.Document
-	purgeDocErr     error
-	getDocResp      ndrclient.Document
-	getDocErr       error
-	deletedDocIDs   []int64
-	restoredDocIDs  []int64
-	purgedDocIDs    []int64
-	docBindings     map[int64]map[int64]struct{}
+	createDocResp      ndrclient.Document
+	updateDocResp      ndrclient.Document
+	createDocErr       error
+	updateDocErr       error
+	docsListResp       ndrclient.DocumentsPage
+	nodeDocsResp       []ndrclient.Document
+	docsListErr        error
+	nodeDocsErr        error
+	docVersionsResp    ndrclient.DocumentVersionsPage
+	docVersionsErr     error
+	deleteDocErr       error
+	restoreDocErr      error
+	restoreDocResp     ndrclient.Document
+	purgeDocErr        error
+	getDocResp         ndrclient.Document
+	getDocErr          error
+	deletedDocIDs      []int64
+	restoredDocIDs     []int64
+	purgedDocIDs       []int64
+	docBindings        map[int64]map[int64]struct{}
+	reorderDocPayloads []ndrclient.DocumentReorderPayload
+	reorderDocResp     []ndrclient.Document
+	reorderDocErr      error
 }
 
 func newFakeNDR() *fakeNDR {
@@ -165,6 +168,14 @@ func (f *fakeNDR) ListNodeDocuments(context.Context, ndrclient.RequestMeta, int6
 func (f *fakeNDR) CreateDocument(_ context.Context, _ ndrclient.RequestMeta, body ndrclient.DocumentCreate) (ndrclient.Document, error) {
 	f.createdDocs = append(f.createdDocs, body)
 	return f.createDocResp, f.createDocErr
+}
+
+func (f *fakeNDR) ReorderDocuments(_ context.Context, _ ndrclient.RequestMeta, payload ndrclient.DocumentReorderPayload) ([]ndrclient.Document, error) {
+	f.reorderDocPayloads = append(f.reorderDocPayloads, payload)
+	if f.reorderDocErr != nil {
+		return nil, f.reorderDocErr
+	}
+	return f.reorderDocResp, nil
 }
 
 func (f *fakeNDR) BindDocument(_ context.Context, _ ndrclient.RequestMeta, nodeID, docID int64) error {

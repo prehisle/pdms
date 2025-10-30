@@ -158,7 +158,6 @@ describe('documents API', () => {
       mockHttp.mockResolvedValue(mockDocuments);
 
       const payload: DocumentReorderPayload = {
-        node_id: 100,
         ordered_ids: [2, 1],
       };
 

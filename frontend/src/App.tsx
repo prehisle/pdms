@@ -415,18 +415,17 @@ const AppContent = () => {
     handleOpenReorderModal();
   }, [documents.length, selectedNodeId, handleOpenReorderModal]);
 
-  const handleReorderConfirm = useCallback(
-    (orderedIds: number[]) => {
-      if (selectedNodeId == null) {
-        return;
-      }
-      documentReorderMutation.mutate({
-        node_id: selectedNodeId,
-        ordered_ids: orderedIds,
-      });
-    },
-    [documentReorderMutation, selectedNodeId],
-  );
+	  const handleReorderConfirm = useCallback(
+	    (orderedIds: number[]) => {
+	      if (selectedNodeId == null) {
+	        return;
+	      }
+	      documentReorderMutation.mutate({
+	        ordered_ids: orderedIds,
+	      });
+	    },
+	    [documentReorderMutation, selectedNodeId],
+	  );
 
   const handleBreadcrumbNavigate = useCallback(
     (nodeId: number) => {

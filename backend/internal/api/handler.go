@@ -11,6 +11,7 @@ import (
 
 	"github.com/yjxt/ydms/backend/internal/auth"
 	"github.com/yjxt/ydms/backend/internal/database"
+	"github.com/yjxt/ydms/backend/internal/ndrclient"
 	"github.com/yjxt/ydms/backend/internal/service"
 )
 
@@ -393,6 +394,22 @@ func (h *Handler) reorderDocuments(w http.ResponseWriter, r *http.Request, meta 
 	}
 	docs, err := h.service.ReorderDocuments(r.Context(), meta, payload)
 	if err != nil {
+		if errors.Is(err, service.ErrInvalidDocumentReorder) {
+			respondError(w, http.StatusBadRequest, err)
+			return
+		}
+		var ndrErr *ndrclient.Error
+		if errors.As(err, &ndrErr) {
+			switch ndrErr.StatusCode {
+			case http.StatusBadRequest:
+				respondError(w, http.StatusBadRequest, err)
+			case http.StatusNotFound:
+				respondError(w, http.StatusNotFound, err)
+			default:
+				respondError(w, http.StatusBadGateway, err)
+			}
+			return
+		}
 		respondError(w, http.StatusBadGateway, err)
 		return
 	}

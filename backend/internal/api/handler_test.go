@@ -882,6 +882,70 @@ func (f *inMemoryNDR) CreateDocument(ctx context.Context, meta ndrclient.Request
 	return doc, nil
 }
 
+func (f *inMemoryNDR) ReorderDocuments(ctx context.Context, meta ndrclient.RequestMeta, payload ndrclient.DocumentReorderPayload) ([]ndrclient.Document, error) {
+	available := make([]ndrclient.Document, 0, len(f.documents))
+	for _, doc := range f.documents {
+		if doc.DeletedAt != nil {
+			continue
+		}
+		if payload.ApplyTypeFilter {
+			if payload.Type == nil {
+				if doc.Type != nil {
+					continue
+				}
+			} else {
+				if doc.Type == nil || *doc.Type != *payload.Type {
+					continue
+				}
+			}
+		}
+		available = append(available, doc)
+	}
+
+	sort.Slice(available, func(i, j int) bool {
+		if available[i].Position == available[j].Position {
+			return available[i].ID < available[j].ID
+		}
+		return available[i].Position < available[j].Position
+	})
+
+	docMap := make(map[int64]ndrclient.Document, len(available))
+	for _, doc := range available {
+		docMap[doc.ID] = doc
+	}
+
+	seen := make(map[int64]struct{}, len(payload.OrderedIDs))
+	ordered := make([]ndrclient.Document, 0, len(available))
+	for _, id := range payload.OrderedIDs {
+		doc, ok := docMap[id]
+		if !ok {
+			return nil, &ndrclient.Error{StatusCode: http.StatusNotFound, Status: "404 Not Found"}
+		}
+		if _, exists := seen[id]; exists {
+			return nil, &ndrclient.Error{StatusCode: http.StatusBadRequest, Status: "400 Bad Request"}
+		}
+		seen[id] = struct{}{}
+		ordered = append(ordered, doc)
+	}
+
+	for _, doc := range available {
+		if _, exists := seen[doc.ID]; exists {
+			continue
+		}
+		ordered = append(ordered, doc)
+	}
+
+	for idx := range ordered {
+		doc := ordered[idx]
+		doc.Position = idx
+		doc.UpdatedAt = f.tick()
+		f.documents[doc.ID] = doc
+		ordered[idx] = doc
+	}
+
+	return ordered, nil
+}
+
 func (f *inMemoryNDR) BindDocument(ctx context.Context, meta ndrclient.RequestMeta, nodeID, docID int64) error {
 	if _, ok := f.documents[docID]; !ok {
 		return fmt.Errorf("document %d not found", docID)
@@ -1251,7 +1315,7 @@ func TestDocumentReorderEndpoint(t *testing.T) {
 	}
 
 	// Test reordering documents
-	payload := fmt.Sprintf(`{"node_id":100,"ordered_ids":[%d,%d]}`, doc2.ID, doc1.ID)
+	payload := fmt.Sprintf(`{"ordered_ids":[%d,%d]}`, doc2.ID, doc1.ID)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/documents/reorder", strings.NewReader(payload))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -1270,20 +1334,19 @@ func TestDocumentReorderEndpoint(t *testing.T) {
 		t.Fatalf("expected 2 documents in response, got %d", len(docs))
 	}
 
-	// Check that positions were updated correctly
+	// Check that positions were updated correctly (zero-based)
 	for i, doc := range docs {
-		expectedPosition := i + 1
-		if doc.Position != expectedPosition {
-			t.Fatalf("expected document %d to have position %d, got %d", doc.ID, expectedPosition, doc.Position)
+		if doc.Position != i {
+			t.Fatalf("expected document %d to have position %d, got %d", doc.ID, i, doc.Position)
 		}
 	}
 
-	// Doc2 should be first (position 1), Doc1 should be second (position 2)
-	if docs[0].ID != doc2.ID || docs[0].Position != 1 {
-		t.Fatalf("expected first document to be doc2 with position 1, got ID=%d position=%d", docs[0].ID, docs[0].Position)
+	// Doc2 should be first (position 0), Doc1 should be second (position 1)
+	if docs[0].ID != doc2.ID || docs[0].Position != 0 {
+		t.Fatalf("expected first document to be doc2 with position 0, got ID=%d position=%d", docs[0].ID, docs[0].Position)
 	}
-	if docs[1].ID != doc1.ID || docs[1].Position != 2 {
-		t.Fatalf("expected second document to be doc1 with position 2, got ID=%d position=%d", docs[1].ID, docs[1].Position)
+	if docs[1].ID != doc1.ID || docs[1].Position != 1 {
+		t.Fatalf("expected second document to be doc1 with position 1, got ID=%d position=%d", docs[1].ID, docs[1].Position)
 	}
 }
 
@@ -1293,14 +1356,14 @@ func TestDocumentReorderEndpoint_EmptyOrderedIDs(t *testing.T) {
 	handler := NewHandler(svc, nil, HeaderDefaults{})
 	router := NewRouter(handler)
 
-	payload := `{"node_id":100,"ordered_ids":[]}`
+	payload := `{"ordered_ids":[]}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/documents/reorder", strings.NewReader(payload))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusBadGateway {
-		t.Fatalf("expected status 502 for empty ordered_ids, got %d", rec.Code)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400 for empty ordered_ids, got %d", rec.Code)
 	}
 }
 
@@ -1317,6 +1380,45 @@ func TestDocumentReorderEndpoint_InvalidJSON(t *testing.T) {
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected status 400 for invalid JSON, got %d", rec.Code)
+	}
+}
+
+func TestDocumentReorderEndpoint_NotFound(t *testing.T) {
+	ndr := newInMemoryNDR()
+	svc := service.NewService(cache.NewNoop(), ndr, nil)
+	handler := NewHandler(svc, nil, HeaderDefaults{})
+	router := NewRouter(handler)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/documents/reorder", strings.NewReader(`{"ordered_ids":[999]}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected status 404 for missing document, got %d", rec.Code)
+	}
+}
+
+func TestDocumentReorderEndpoint_BadRequest(t *testing.T) {
+	ndr := newInMemoryNDR()
+	svc := service.NewService(cache.NewNoop(), ndr, nil)
+	handler := NewHandler(svc, nil, HeaderDefaults{})
+	router := NewRouter(handler)
+
+	// Create a document so that duplicate detection can trigger
+	doc, err := ndr.CreateDocument(context.Background(), ndrclient.RequestMeta{}, ndrclient.DocumentCreate{Title: "Doc"})
+	if err != nil {
+		t.Fatalf("create document error: %v", err)
+	}
+
+	payload := fmt.Sprintf(`{"ordered_ids":[%d,%d]}`, doc.ID, doc.ID)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/documents/reorder", strings.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400 for duplicate ids, got %d", rec.Code)
 	}
 }
 

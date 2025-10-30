@@ -99,6 +99,28 @@ type DocumentUpdate struct {
 	Position *int           `json:"position,omitempty"`
 }
 
+// DocumentReorderPayload represents a request to reorder documents.
+type DocumentReorderPayload struct {
+	OrderedIDs      []int64 `json:"ordered_ids"`
+	Type            *string `json:"type,omitempty"`
+	ApplyTypeFilter bool    `json:"-"`
+}
+
+// MarshalJSON ensures the type field is only emitted when explicitly requested.
+func (p DocumentReorderPayload) MarshalJSON() ([]byte, error) {
+	if !p.ApplyTypeFilter {
+		type base struct {
+			OrderedIDs []int64 `json:"ordered_ids"`
+		}
+		return json.Marshal(base{OrderedIDs: p.OrderedIDs})
+	}
+	type withType struct {
+		OrderedIDs []int64 `json:"ordered_ids"`
+		Type       *string `json:"type"`
+	}
+	return json.Marshal(withType{OrderedIDs: p.OrderedIDs, Type: p.Type})
+}
+
 // DocumentsPage wraps paginated document results.
 type DocumentsPage struct {
 	Page  int        `json:"page"`
