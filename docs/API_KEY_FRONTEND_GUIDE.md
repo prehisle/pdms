@@ -1,5 +1,7 @@
 # API Key 管理前端使用指南
 
+> 提示：本文的最新合并版请见 `docs/guides/api-keys.md`。此页聚焦前端 UI 细节，作为补充参考。
+
 本文档介绍如何在 YDMS 前端界面中管理 API Keys。
 
 ## 访问入口

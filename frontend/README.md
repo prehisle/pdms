@@ -1,5 +1,7 @@
 # YDMS Frontend Skeleton
 
+参阅：`../README.md`（项目总览） · `../docs/README.md`（文档索引）
+
 A minimal Vite + React + Ant Design setup for the YDMS admin interface.
 
 ## Getting started

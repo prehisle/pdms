@@ -1,4 +1,4 @@
-.PHONY: help quick-reset reset-db reset-init test-e2e dev clean
+.PHONY: help quick-reset reset-db reset-init test-e2e dev clean docs-check docs-lint docs-openapi
 
 help: ## 显示帮助信息
 	@echo "YDMS 项目命令"
@@ -44,3 +44,19 @@ install-backend: ## 安装后端依赖
 	@cd backend && go mod tidy
 
 install: install-backend install-frontend ## 安装所有依赖
+
+docs-check: ## 检查 Markdown 内部链接有效性
+	@bash scripts/check-docs.sh
+
+docs-lint: ## 运行 markdownlint（若已安装）
+	@if command -v markdownlint >/dev/null 2>&1; then \
+	  markdownlint "**/*.md"; \
+	else \
+	  echo "markdownlint 未安装，跳过（可用: npm i -g markdownlint-cli）"; \
+	fi
+
+docs-openapi: ## 打开 OpenAPI 静态预览页面
+	@echo "打开 docs/api/index.html"
+	@if command -v xdg-open >/dev/null 2>&1; then xdg-open docs/api/index.html; \
+	elif command -v open >/dev/null 2>&1; then open docs/api/index.html; \
+	else echo "请手动在浏览器打开 docs/api/index.html"; fi

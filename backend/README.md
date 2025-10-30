@@ -1,5 +1,7 @@
 # YDMS Backend Skeleton
 
+参阅：`../README.md`（项目总览） · `../docs/README.md`（文档索引） · `../docs/api/usage.md`（API 使用指南）
+
 This module hosts the Go backend for the YDMS materials management system.
 
 ## Getting started
