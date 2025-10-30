@@ -1,4 +1,4 @@
-import { useMemo, type ReactNode } from "react";
+import { useCallback, useMemo, type ReactNode } from "react";
 
 import { Breadcrumb, Dropdown, Typography } from "antd";
 import type { MenuProps } from "antd";
@@ -34,41 +34,50 @@ export function CategoryBreadcrumb({ selectedNodeId, lookups, onNavigate }: Cate
     return path;
   }, [selectedNodeId, lookups]);
 
-  const buildMenuForParent = (parentId: ParentKey, options?: { selectedId?: number }): MenuProps | undefined => {
-    const children = lookups.parentToChildren.get(parentId ?? null) ?? [];
-    if (children.length === 0) {
-      return undefined;
-    }
+  const buildMenuForParent = useCallback(
+    (parentId: ParentKey, options?: { selectedId?: number }): MenuProps | undefined => {
+      const children = lookups.parentToChildren.get(parentId ?? null) ?? [];
+      if (children.length === 0) {
+        return undefined;
+      }
 
-    const selectedId = options?.selectedId ?? null;
-    return {
-      selectable: selectedId != null,
-      selectedKeys: selectedId != null ? [selectedId.toString()] : [],
-      onClick: ({ key }) => {
-        const targetId = Number(key);
-        if (!Number.isNaN(targetId)) {
-          onNavigate(targetId);
-        }
-      },
-      items: children.map((node) => ({
-        key: node.id.toString(),
-        label: (
-          <span
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 4,
-              fontWeight: node.id === selectedId ? 600 : undefined,
-              color: node.id === selectedId ? "#1677ff" : undefined,
-            }}
-          >
-            <FolderOutlined />
-            {node.name}
-          </span>
-        ),
-      })),
-    };
-  };
+      const selectedId = options?.selectedId ?? null;
+      return {
+        selectable: selectedId != null,
+        selectedKeys: selectedId != null ? [selectedId.toString()] : [],
+        onClick: ({ key }) => {
+          const targetId = Number(key);
+          if (!Number.isNaN(targetId)) {
+            onNavigate(targetId);
+          }
+        },
+        items: children.map((node) => ({
+          key: node.id.toString(),
+          label: (
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+                fontWeight: node.id === selectedId ? 600 : undefined,
+                color: node.id === selectedId ? "#1677ff" : undefined,
+              }}
+            >
+              <FolderOutlined />
+              {node.name}
+            </span>
+          ),
+        })),
+      };
+    },
+    [lookups.parentToChildren, onNavigate],
+  );
+
+  const rootNode = breadcrumbPath[0] ?? null;
+  const rootMenu = useMemo(
+    () => (rootNode ? buildMenuForParent(null, { selectedId: rootNode.id }) : undefined),
+    [buildMenuForParent, rootNode],
+  );
 
   if (selectedNodeId == null || breadcrumbPath.length === 0) {
     return (
@@ -87,9 +96,6 @@ export function CategoryBreadcrumb({ selectedNodeId, lookups, onNavigate }: Cate
       </div>
     );
   }
-
-  const rootNode = breadcrumbPath[0] ?? null;
-  const rootMenu = rootNode ? buildMenuForParent(null, { selectedId: rootNode.id }) : undefined;
 
   const makeDropdownTrigger = (menu: MenuProps | undefined, children: ReactNode) => {
     if (!menu) {
