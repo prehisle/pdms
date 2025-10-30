@@ -74,6 +74,17 @@
 - 运行 markdownlint（若已安装）：`make docs-lint`
 - 打开 OpenAPI 预览页面：`make docs-openapi`
 
+## CI 配置（GitHub Actions）
+
+- 工作流文件：
+  - 代码与测试：`.github/workflows/ci.yml`
+  - 文档校验：`.github/workflows/docs.yml`
+- 默认执行：
+  - 后端：`go vet`、`go build`、`go test ./... -cover`，上传覆盖率工件
+  - 前端：`npm ci`、`npm run typecheck`、`npm run test:coverage`、`npm run build`，上传覆盖率工件
+  - 文档：`make docs-check`（内部链接）、`markdownlint`（非阻塞）、OpenAPI JSON 校验
+- 可选启用 E2E：在 GitHub 仓库 Settings → Actions → Variables 添加变量 `E2E_ENABLED=true`，将触发 Playwright 子集用例（不依赖 NDR）。
+
  ## 贡献与规范
 
  - 代码风格、提交流程与沟通约定见 `AGENTS.md`

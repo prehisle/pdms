@@ -74,3 +74,81 @@ jobs:
           path: frontend/coverage
       - name: Build
         run: npm run build
+
+  e2e:
+    name: E2E (Playwright)
+    if: ${{ vars.E2E_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+          POSTGRES_DB: ydms
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.x'
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+
+      - name: Install frontend deps and browsers
+        working-directory: frontend
+        run: |
+          npm ci
+          npx playwright install --with-deps
+
+      - name: Reset DB (init tables + super admin)
+        working-directory: backend
+        env:
+          YDMS_DB_HOST: 127.0.0.1
+          YDMS_DB_PORT: '5432'
+          YDMS_DB_USER: postgres
+          YDMS_DB_PASSWORD: postgres
+          YDMS_DB_NAME: ydms
+          YDMS_DB_SSLMODE: disable
+          YDMS_JWT_SECRET: ci-secret-for-tests-1234567890
+        run: |
+          echo yes | go run ./cmd/reset-db
+
+      - name: Start backend server
+        working-directory: backend
+        env:
+          YDMS_DB_HOST: 127.0.0.1
+          YDMS_DB_PORT: '5432'
+          YDMS_DB_USER: postgres
+          YDMS_DB_PASSWORD: postgres
+          YDMS_DB_NAME: ydms
+          YDMS_DB_SSLMODE: disable
+          YDMS_JWT_SECRET: ci-secret-for-tests-1234567890
+          YDMS_HTTP_PORT: '9180'
+        run: |
+          nohup bash -c 'go run ./cmd/server' >/tmp/backend.log 2>&1 &
+          echo $! > /tmp/backend.pid
+
+      - name: Wait for backend ready
+        run: |
+          for i in {1..60}; do
+            if curl -fsS http://localhost:9180/api/v1/healthz >/dev/null; then
+              echo "backend is ready"; exit 0; fi; sleep 2; done; echo "backend not ready"; exit 1
+
+      - name: Run Playwright E2E (subset without NDR deps)
+        working-directory: frontend
+        env:
+          CI: 'true'
+        run: |
+          npx playwright test e2e/00.setup.spec.ts e2e/auth.spec.ts e2e/user-management.spec.ts --reporter=list

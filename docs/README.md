@@ -32,6 +32,13 @@
 - 检查 Markdown 内部链接：在项目根目录执行 `make docs-check`
 - 运行 markdownlint（若已安装）：`make docs-lint`
 
+## CI（GitHub Actions）
+- 代码与测试：`.github/workflows/ci.yml`
+  - 后端：`go vet`、`go build`、`go test -cover`（上传覆盖率工件）
+  - 前端：`npm ci`、`npm run typecheck`、`npm run test:coverage`、`npm run build`（上传覆盖率工件）
+  - 可选 E2E：设置仓库变量 `E2E_ENABLED=true`，运行不依赖 NDR 的 Playwright 用例子集
+- 文档校验：`.github/workflows/docs.yml`（文档链接检查、markdownlint、OpenAPI JSON 校验）
+
 ## 指南（Guides）
 - API Keys 指南（权威）：`guides/api-keys.md`
 - 历史与实现文档归档：`archive/`
