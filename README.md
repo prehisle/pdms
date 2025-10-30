@@ -43,17 +43,17 @@
    - Docker 部署：`docs/DOCKER_DEPLOYMENT.md`
    - 生产部署：`deploy/production/README.md`
    - 运维与维护：`docs/MAINTENANCE_GUIDE.md`
-   - 数据库重置：`DATABASE_RESET.md`
+   - 数据库重置与恢复：`docs/MAINTENANCE_GUIDE.md`
 - 规划与进展
   - 方案与设计：`docs/backend/项目规划与方案.md`
-  - 当前进度与待办：`docs/backend/当前进度与待办.md`
+  - 历史进度与问题归档：`docs/archive/`
 - 主题指南（将逐步整合）
   - API Keys 指南（权威）：`docs/guides/api-keys.md`
-  - 历史与实现文档：`docs/API_KEY_GUIDE.md`、`docs/API_KEY_FRONTEND_GUIDE.md`、`docs/API_KEY_COMPLETE_GUIDE.md`、`docs/API_KEY_IMPLEMENTATION_SUMMARY.md`
+  - 历史与实现文档归档：`docs/archive/`
  - 架构与权限
    - 架构概览与关键流程：`docs/architecture/overview.md`
    - 权限矩阵与请求头：`docs/architecture/permissions.md`
-   - 文档引用功能：`frontend/文档引用功能使用说明.md`
+   - 文档引用功能：`docs/guides/document-references.md`
 
  更多分类索引见：`docs/README.md`。
 

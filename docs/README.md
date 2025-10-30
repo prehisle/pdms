@@ -9,7 +9,6 @@
  - 常用命令与一键帮助：在项目根目录执行 `make help`
 
  ## 开发（Development）
- - 进度与迭代计划：`backend/当前进度与待办.md`
  - 项目规划与技术方案：`backend/项目规划与方案.md`
 
 ## API（OpenAPI 与用法）
@@ -27,7 +26,7 @@
 - Docker 部署指南：`DOCKER_DEPLOYMENT.md`
 - 生产环境部署：`../deploy/production/README.md`
 - 维护与巡检：`MAINTENANCE_GUIDE.md`
-- 数据库重置与故障排除：`../DATABASE_RESET.md`
+- 数据库重置与恢复：`MAINTENANCE_GUIDE.md`
 
 ## 文档工具
 - 检查 Markdown 内部链接：在项目根目录执行 `make docs-check`
@@ -35,15 +34,10 @@
 
 ## 指南（Guides）
 - API Keys 指南（权威）：`guides/api-keys.md`
-- 历史与实现文档：
-  - `API_KEY_GUIDE.md`
-  - `API_KEY_FRONTEND_GUIDE.md`
-  - `API_KEY_COMPLETE_GUIDE.md`
-  - `API_KEY_IMPLEMENTATION_SUMMARY.md`
-- 文档引用功能说明（前端）：`../frontend/文档引用功能使用说明.md`
+- 历史与实现文档归档：`archive/`
+- 文档引用功能说明：`guides/document-references.md`
 
- ## 汇报与问题（Reports & Issues）
- - 进展报告：`PROGRESS_REPORT.md`
- - 当前问题清单：`CURRENT_ISSUES.md`
+## 汇报与问题（已归档）
+- 归档目录：`archive/`
 
  —— 如需新增文档，请按以上分组放置并在此处添加索引。

@@ -1,6 +1,6 @@
  # API Keys 指南（权威版）
 
- 本文整合并取代分散的多篇 API Key 文档，覆盖概念、创建与管理、后端/前端使用、安全与排错。历史文档作为附录保留：`docs/API_KEY_GUIDE.md`、`docs/API_KEY_FRONTEND_GUIDE.md`、`docs/API_KEY_COMPLETE_GUIDE.md`、`docs/API_KEY_IMPLEMENTATION_SUMMARY.md`。
+本文整合并取代分散的多篇 API Key 文档，覆盖概念、创建与管理、后端/前端使用、安全与排错。历史文档已归档，参见索引：`docs/archive/`。
 
  ## 核心概念
  - 目的：为脚本与第三方集成提供长期凭证，绕过前端登录流程。
@@ -61,4 +61,3 @@
  - API 使用指南：`../api/usage.md`
  - OpenAPI：`../backend/openapi.json`
  - 历史文档：`../API_KEY_GUIDE.md`、`../API_KEY_FRONTEND_GUIDE.md`、`../API_KEY_COMPLETE_GUIDE.md`、`../API_KEY_IMPLEMENTATION_SUMMARY.md`
-

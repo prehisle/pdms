@@ -11,7 +11,7 @@ YELLOW() { printf "\033[33m%s\033[0m\n" "$*"; }
 # Collect Markdown files tracked by git
 if command -v git >/dev/null 2>&1; then
   MAPFILES=()
-  while IFS= read -r f; do MAPFILES+=("$f"); done < <(git ls-files "**/*.md")
+  while IFS= read -r f; do MAPFILES+=("$f"); done < <(git -c core.quotepath=false ls-files -- '*.md')
 else
   MAPFILES=( $(find . -type f -name "*.md") )
 fi
@@ -34,21 +34,22 @@ for file in "${MAPFILES[@]}"; do
       tmp="${right#*)}"
 
       # Normalize and filter external/anchors
-      case "$link" in
-        http://*|https://*|mailto:*|#*|data:*) continue;;
-      esac
+      if [[ "$link" == http://* || "$link" == https://* || "$link" == mailto:* || "$link" == \#* || "$link" == data:* ]]; then
+        continue
+      fi
 
       # Remove trailing anchor part (file.md#section)
       link_no_anchor="${link%%#*}"
       # Skip if empty after removal
       [[ -z "$link_no_anchor" ]] && continue
 
-      # Build absolute path relative to current file
+      # Build candidate paths
       candidate="$dir/$link_no_anchor"
+      candidate_root="$link_no_anchor"
       # Collapse ./
       candidate="${candidate#./}"
       # If ends with .md, .json, .html etc. check file exists; else also accept directories
-      if [[ -e "$candidate" ]]; then
+      if [[ -e "$candidate" || -e "$candidate_root" ]]; then
         :
       else
         RED "[missing] $file: $link_no_anchor"
@@ -64,4 +65,3 @@ if (( missing > 0 )); then
 else
   GREEN "All Markdown doc links look good"
 fi
-

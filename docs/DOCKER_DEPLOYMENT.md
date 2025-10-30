@@ -1,9 +1,13 @@
-# PDMS Docker Compose 部署方案
+# Docker 部署指南（统一入口）
 
-## 目标
-- 通过 `docker-compose up -d` 一键启动完整 PDMS 环境。
-- 统一管理 PostgreSQL、后端 Go 服务、前端静态站点。
-- 支持本地开发调试与生产近似环境。
+部署说明已统一到生产部署手册：`deploy/production/README.md`。
+
+如需快速浏览：
+- 构建镜像与启动：`docker build -t ydms:prod . && docker compose up -d`
+- 环境变量模板与配置：`deploy/production/.env.example`
+- Nginx 与端口暴露：`deploy/production/nginx.conf`
+
+以下为历史说明（保留以供参考）。
 
 ## 服务规划
 服务名称 | 说明

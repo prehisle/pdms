@@ -153,6 +153,16 @@ YDMS 由 Go 后端与 React 前端组成，面向资料管理及文档维护场�
   - 软删除的文档可通过 `GET /api/v1/documents/trash` 查看，`POST /api/v1/documents/{id}/restore` 恢复，`DELETE /api/v1/documents/{id}/purge` 彻底删除。
   - 历史版本通过 `GET /api/v1/documents/{id}/versions` 获取，`POST /api/v1/documents/{id}/versions/{version}/restore` 回退。前端抽屉中会展示更新时间、操作者、备注及源码预览，便于核对后执行回退。
 
+### 8.1 数据库重置与恢复（合并自 DATABASE_RESET）
+
+- 快速重置（推荐）：`make quick-reset`（清空数据、保留结构、创建默认管理员，约 2 秒）
+- 完整重置：`make reset-init`（重建数据库与结构，创建默认管理员）
+- Go 工具：`cd backend && go run ./cmd/reset-db`（交互式确认后执行重建）
+
+默认管理员账号：`super_admin / admin123456`（首次登录后请修改）。
+
+完整流程参考根目录 `DATABASE_RESET.md` 历史说明；后续本节作为唯一入口维护。
+
 ## 9. 安全与合规
 
 - 不得将真实的 `YDMS_*` 密钥写入仓库，使用 `.env` 本地管理并加入 `.gitignore`。
@@ -164,7 +174,7 @@ YDMS 由 Go 后端与 React 前端组成，面向资料管理及文档维护场�
 ## 10. 文档与沟通
 
 - 最新的 API 规格参考 `docs/backend/openapi.json`。
-- 当前缺陷与改进计划详见 `docs/CURRENT_ISSUES.md`、`docs/PROGRESS_REPORT.md`。
+- 历史缺陷与阶段性报告已归档于 `docs/archive/`。
 - 前端文档编辑器实现细节位于 `docs/frontend/EDITOR_IMPLEMENTATION.md`。
 - 若流程发生变化，请同步更新上述文档及本指南，确保团队信息一致。
 
