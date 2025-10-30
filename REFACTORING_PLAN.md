@@ -1256,7 +1256,7 @@ func (s *PermissionService) GetDocumentPermission(
 
 - [CLAUDE.md](./CLAUDE.md) - 项目开发指南
 - [REFACTORING_SUMMARY.md](./REFACTORING_SUMMARY.md) - 文档类型重构总结
-- [DATABASE_RESET.md](./DATABASE_RESET.md) - 数据库重置工具
+- `docs/MAINTENANCE_GUIDE.md` - 数据库重置与维护
 
 ### 参考资源
 

@@ -14,7 +14,7 @@
  - 生成文档类型代码（前后端同步）：`make generate-doc-types`
  - 运行后端测试：`make test-backend`
  - 运行前端 E2E 测试：`make test-e2e`
- - 快速重置数据库：`make quick-reset`（详见 `DATABASE_RESET.md`）
+ - 快速重置数据库：`make quick-reset`（详见 `docs/MAINTENANCE_GUIDE.md`）
 
  ## 目录结构
 
@@ -65,7 +65,7 @@
 
 ## 故障排除
 
- - 数据库一键重置与常见问题：`DATABASE_RESET.md`
+- 数据库一键重置与常见问题：`docs/MAINTENANCE_GUIDE.md`
 - 查看后端 NDR 请求调试：设置 `YDMS_DEBUG_TRAFFIC=1`（详见 `backend/README.md`）
 
 ## 文档工具

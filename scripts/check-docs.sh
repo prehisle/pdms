@@ -19,6 +19,7 @@ fi
 missing=0
 
 for file in "${MAPFILES[@]}"; do
+  [[ -f "$file" ]] || continue
   dir="$(dirname "$file")"
   # Extract links in the form [text](link)
   # naive parser: find occurrences of ]( and take until next )

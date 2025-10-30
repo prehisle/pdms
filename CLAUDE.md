@@ -180,7 +180,7 @@ PGPASSWORD=admin psql -h 192.168.1.4 -p 5432 -U admin -d ydms
 - 用户名：`super_admin`
 - 密码：`admin123456`
 
-详细的数据库重置指南请参阅 [DATABASE_RESET.md](DATABASE_RESET.md)。
+详细的数据库重置指南请参阅 `docs/MAINTENANCE_GUIDE.md`。
 
 ## 关键领域概念
 

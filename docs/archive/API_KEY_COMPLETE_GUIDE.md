@@ -469,7 +469,7 @@ def create_category_safe(client, name, parent_id=None):
 
 ### 技术文档
 - **[API Key 实现总结](./API_KEY_IMPLEMENTATION_SUMMARY.md)** - 架构设计和技术细节
-- **[CLAUDE.md](../CLAUDE.md)** - 项目完整文档
+- **[CLAUDE.md](../../CLAUDE.md)** - 项目完整文档
 
 ### API 参考
 - 后端 API 端点：`/api/v1/api-keys/*`
