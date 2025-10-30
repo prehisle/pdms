@@ -5,6 +5,10 @@ on:
     branches: [ "**" ]
   pull_request:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   backend:
     name: Backend (Go)
@@ -24,8 +28,24 @@ jobs:
         run: go version
       - name: Download deps
         run: go mod download
+      - name: Vet
+        run: go vet ./...
+      - name: Build
+        run: go build ./...
       - name: Run unit tests
-        run: go test ./... -cover -count=1
+        run: go test ./... -cover -covermode=atomic -coverprofile=coverage.out -count=1
+      - name: Upload Go coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-coverage
+          path: backend/coverage.out
+
+      - name: golangci-lint (non-blocking for initial adoption)
+        uses: golangci/golangci-lint-action@v6
+        continue-on-error: true
+        with:
+          version: latest
+          working-directory: backend
 
   frontend:
     name: Frontend (Node)
@@ -43,7 +63,14 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - name: Install dependencies
         run: npm ci
+      - name: Type check
+        run: npm run typecheck
       - name: Run unit tests
-        run: npm run test
+        run: npm run test:coverage
+      - name: Upload Frontend coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-coverage
+          path: frontend/coverage
       - name: Build
         run: npm run build

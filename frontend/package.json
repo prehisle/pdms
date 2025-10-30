@@ -8,6 +8,8 @@
     "build": "tsc && vite build",
     "preview": "vite preview --port 4173",
     "test": "vitest --config vite.config.test.ts --run",
+    "test:coverage": "vitest --config vite.config.test.ts --run --coverage",
+    "typecheck": "tsc --noEmit",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:headed": "playwright test --headed",
