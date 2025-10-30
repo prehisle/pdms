@@ -410,9 +410,24 @@ API_KEY=$(curl -X POST http://localhost:9180/api/v1/api-keys \
 curl -H "X-API-Key: $API_KEY" http://localhost:9180/api/v1/categories
 ```
 
-详细使用指南请参阅 [docs/API_KEY_GUIDE.md](docs/API_KEY_GUIDE.md)。
+**文档链接**：
+- [API Key 使用指南（命令行/Python）](docs/API_KEY_GUIDE.md) - 通过 API 批量管理
+- [API Key 前端使用指南](docs/API_KEY_FRONTEND_GUIDE.md) - Web 界面管理
+- [API Key 实现总结](docs/API_KEY_IMPLEMENTATION_SUMMARY.md) - 技术实现细节
 
-**实现细节**：完整的架构设计、技术决策和测试验证请参阅 [docs/API_KEY_IMPLEMENTATION_SUMMARY.md](docs/API_KEY_IMPLEMENTATION_SUMMARY.md)。
+#### 前端 UI 访问
+
+**仅超级管理员可见**，通过以下步骤访问：
+1. 登录 YDMS 系统
+2. 点击右上角用户头像
+3. 选择 "API Key 管理"
+
+**主要功能**：
+- 查看 API Key 列表和统计信息
+- 创建新 API Key（完整密钥仅显示一次）
+- 编辑 API Key 名称
+- 撤销/删除 API Key
+- 实时状态显示（活跃/过期/已撤销）
 
 ## 环境配置
 
