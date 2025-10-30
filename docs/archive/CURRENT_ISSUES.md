@@ -1,4 +1,4 @@
-# Current Issues
+# Current Issues（已归档）
 
 ## TypeScript Test Dependencies ✅ Resolved
 

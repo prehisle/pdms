@@ -1,6 +1,6 @@
-# API Key 管理前端使用指南
+# API Key 管理前端使用指南（已归档）
 
-> 提示：本文的最新合并版请见 `docs/guides/api-keys.md`。此页聚焦前端 UI 细节，作为补充参考。
+> 提示：本文的最新合并版请见 `../guides/api-keys.md`。此页聚焦前端 UI 细节，作为补充参考。
 
 本文档介绍如何在 YDMS 前端界面中管理 API Keys。
 
@@ -239,7 +239,7 @@ APIKeyManagementDrawer (主容器)
 
 - [API Key 使用指南（后端）](./API_KEY_GUIDE.md) - 命令行和 Python 使用
 - [API Key 实现总结](./API_KEY_IMPLEMENTATION_SUMMARY.md) - 技术实现细节
-- [CLAUDE.md](../CLAUDE.md) - 项目文档
+- [CLAUDE.md](../../CLAUDE.md) - 项目文档
 
 ## 反馈和支持
 

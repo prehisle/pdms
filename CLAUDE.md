@@ -411,9 +411,8 @@ curl -H "X-API-Key: $API_KEY" http://localhost:9180/api/v1/categories
 ```
 
 **文档链接**：
-- [API Key 使用指南（命令行/Python）](docs/API_KEY_GUIDE.md) - 通过 API 批量管理
-- [API Key 前端使用指南](docs/API_KEY_FRONTEND_GUIDE.md) - Web 界面管理
-- [API Key 实现总结](docs/API_KEY_IMPLEMENTATION_SUMMARY.md) - 技术实现细节
+- [API Keys 指南（权威）](docs/guides/api-keys.md)
+- 历史与实现文档（归档）：`docs/archive/`
 
 #### 前端 UI 访问
 
@@ -791,4 +790,4 @@ curl -H "Authorization: Bearer $TOKEN" \
   http://localhost:9180/api/v1/api-keys/stats
 ```
 
-详细的 Python 批量导入示例请参阅 [docs/API_KEY_GUIDE.md](docs/API_KEY_GUIDE.md)。
+详细的 Python 批量导入示例请参阅 `docs/guides/api-keys.md`。
