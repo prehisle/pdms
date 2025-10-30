@@ -136,9 +136,8 @@ func TestReorderDocumentsWithTypeFilter(t *testing.T) {
 	typeValue := " dictation_v1 "
 	svc := NewService(cache.NewNoop(), fake, nil)
 	_, err := svc.ReorderDocuments(context.Background(), RequestMeta{}, DocumentReorderRequest{
-		OrderedIDs:      []int64{20},
-		Type:            &typeValue,
-		ApplyTypeFilter: true,
+		OrderedIDs: []int64{20},
+		Type:       &typeValue,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -152,6 +151,34 @@ func TestReorderDocumentsWithTypeFilter(t *testing.T) {
 	}
 	if payload.Type == nil || *payload.Type != "dictation_v1" {
 		t.Fatalf("unexpected type payload %+v", payload.Type)
+	}
+}
+
+func TestReorderDocumentsWithWhitespaceType(t *testing.T) {
+	fake := newFakeNDR()
+	now := time.Now().UTC()
+	fake.reorderDocResp = []ndrclient.Document{
+		sampleDocument(30, "Doc", "knowledge_overview_v1", 0, now, now),
+	}
+
+	blank := "  \t"
+	svc := NewService(cache.NewNoop(), fake, nil)
+	_, err := svc.ReorderDocuments(context.Background(), RequestMeta{}, DocumentReorderRequest{
+		OrderedIDs: []int64{30},
+		Type:       &blank,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(fake.reorderDocPayloads) != 1 {
+		t.Fatalf("expected 1 reorder call, got %d", len(fake.reorderDocPayloads))
+	}
+	payload := fake.reorderDocPayloads[0]
+	if !payload.ApplyTypeFilter {
+		t.Fatalf("expected ApplyTypeFilter to be true")
+	}
+	if payload.Type != nil {
+		t.Fatalf("expected type to be nil for blank input, got %v", payload.Type)
 	}
 }
 

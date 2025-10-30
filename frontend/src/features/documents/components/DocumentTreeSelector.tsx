@@ -74,12 +74,13 @@ export function DocumentTreeSelector({
 
   const loadDocumentsForNode = async (nodeId: number): Promise<DataNode[]> => {
     try {
-      const documents = await getNodeDocuments(nodeId, {
+      const page = await getNodeDocuments(nodeId, {
         include_descendants: false,
+        size: 1000, // 获取足够多的文档
       });
 
       // 过滤排除的文档
-      const filteredDocs = documents.filter(
+      const filteredDocs = page.items.filter(
         (doc) => !excludeDocIds.includes(doc.id)
       );
 

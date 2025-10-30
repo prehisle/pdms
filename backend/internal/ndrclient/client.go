@@ -27,7 +27,7 @@ type Client interface {
 	ReorderNodes(ctx context.Context, meta RequestMeta, payload NodeReorderPayload) ([]Node, error)
 	PurgeNode(ctx context.Context, meta RequestMeta, id int64) error
 	ListDocuments(ctx context.Context, meta RequestMeta, query url.Values) (DocumentsPage, error)
-	ListNodeDocuments(ctx context.Context, meta RequestMeta, id int64, query url.Values) ([]Document, error)
+	ListNodeDocuments(ctx context.Context, meta RequestMeta, id int64, query url.Values) (DocumentsPage, error)
 	CreateDocument(ctx context.Context, meta RequestMeta, body DocumentCreate) (Document, error)
 	GetDocument(ctx context.Context, meta RequestMeta, docID int64) (Document, error)
 	ReorderDocuments(ctx context.Context, meta RequestMeta, payload DocumentReorderPayload) ([]Document, error)
@@ -236,18 +236,15 @@ func (c *httpClient) ListDocuments(ctx context.Context, meta RequestMeta, query 
 	return resp, err
 }
 
-func (c *httpClient) ListNodeDocuments(ctx context.Context, meta RequestMeta, id int64, query url.Values) ([]Document, error) {
+func (c *httpClient) ListNodeDocuments(ctx context.Context, meta RequestMeta, id int64, query url.Values) (DocumentsPage, error) {
 	endpoint := fmt.Sprintf("/api/v1/nodes/%d/subtree-documents", id)
 	req, err := c.newRequestWithQuery(ctx, http.MethodGet, endpoint, meta, nil, query)
 	if err != nil {
-		return nil, err
+		return DocumentsPage{}, err
 	}
 	var resp DocumentsPage
 	_, err = c.do(req, &resp)
-	if err != nil {
-		return nil, err
-	}
-	return resp.Items, nil
+	return resp, err
 }
 
 func (c *httpClient) CreateDocument(ctx context.Context, meta RequestMeta, body DocumentCreate) (Document, error) {

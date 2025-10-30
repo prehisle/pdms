@@ -37,6 +37,9 @@ interface DocumentContextValue {
   isDocumentsLoading: boolean;
   isDocumentsFetching: boolean;
   documentsError: Error | null;
+  documentListPage: number;
+  documentListSize: number;
+  documentListTotal: number;
 
   // 筛选器
   documentFilters: DocumentFilterFormValues;
@@ -71,6 +74,7 @@ interface DocumentContextValue {
   handleDocumentSearch: (values: DocumentFilterFormValues) => void;
   handleDocumentReset: () => void;
   handleIncludeDescendantsChange: (value: boolean) => void;
+  handleDocumentListPageChange: (page: number, pageSize?: number) => void;
   handleDocumentTrashSearch: (query?: string) => void;
   handleDocumentTrashPageChange: (page: number, pageSize?: number) => void;
   handleDocumentHistoryPageChange: (page: number, pageSize?: number) => void;
@@ -106,6 +110,12 @@ export const DocumentProvider = ({
   const [includeDescendants, setIncludeDescendants] = useState(true);
   const [documentFilterForm] = Form.useForm<DocumentFilterFormValues>();
 
+  // 文档列表分页参数
+  const [documentListParams, setDocumentListParams] = useState({
+    page: 1,
+    size: 10,
+  });
+
   // 回收站参数
 const [documentTrashParams, setDocumentTrashParams] = useState<DocumentTrashParams>({
   page: 1,
@@ -118,10 +128,10 @@ const [documentTrashParams, setDocumentTrashParams] = useState<DocumentTrashPara
 
   // 文档列表查询
   const documentsQuery = useQuery({
-    queryKey: ["node-documents", selectedNodeId, documentFilters, includeDescendants],
+    queryKey: ["node-documents", selectedNodeId, documentFilters, includeDescendants, documentListParams.page, documentListParams.size],
     queryFn: async () => {
       if (selectedNodeId == null) {
-        return [] as Document[];
+        return { page: 1, size: 10, total: 0, items: [] };
       }
       const params: DocumentListParams = {};
       if (documentFilters.query?.trim()) {
@@ -150,11 +160,14 @@ const [documentTrashParams, setDocumentTrashParams] = useState<DocumentTrashPara
       if (combinedClauses.length > 0) {
         params.metadataClauses = combinedClauses;
       }
-      params.size = 100;
+      params.page = documentListParams.page;
+      params.size = documentListParams.size;
       params.include_descendants = includeDescendants;
 
-      const docs = await getNodeDocuments(selectedNodeId, params);
-      return docs.sort((a, b) => a.position - b.position);
+      const page = await getNodeDocuments(selectedNodeId, params);
+      // Sort items by position
+      const sortedItems = [...page.items].sort((a, b) => a.position - b.position);
+      return { ...page, items: sortedItems };
     },
     enabled: selectedNodeId != null,
   });
@@ -305,10 +318,19 @@ const [documentTrashParams, setDocumentTrashParams] = useState<DocumentTrashPara
     setDocumentFilters({});
   }, [documentFilterForm]);
 
-  const handleIncludeDescendantsChange = useCallback(
-    (value: boolean) => setIncludeDescendants(value),
-    [],
-  );
+  const handleIncludeDescendantsChange = useCallback((value: boolean) => {
+    setIncludeDescendants(value);
+    // Reset to page 1 when changing descendants filter
+    setDocumentListParams((prev) => ({ ...prev, page: 1 }));
+  }, []);
+
+  const handleDocumentListPageChange = useCallback((page: number, pageSize?: number) => {
+    setDocumentListParams((prev) => ({
+      ...prev,
+      page,
+      size: pageSize ?? prev.size,
+    }));
+  }, []);
 
   const handleDocumentTrashSearch = useCallback((query?: string) => {
     setDocumentTrashParams((prev) => ({
@@ -345,7 +367,11 @@ const [documentTrashParams, setDocumentTrashParams] = useState<DocumentTrashPara
     void documentTrashQuery.refetch();
   }, [documentTrashQuery]);
 
-  const documents = selectedNodeId == null ? [] : documentsQuery.data ?? [];
+  const documentsPage = selectedNodeId == null
+    ? { page: 1, size: 10, total: 0, items: [] }
+    : documentsQuery.data ?? { page: 1, size: 10, total: 0, items: [] };
+
+  const documents = documentsPage.items;
   const deletingDocId = deleteDocumentMutation.isPending
     ? deleteDocumentMutation.variables ?? null
     : null;
@@ -364,6 +390,9 @@ const [documentTrashParams, setDocumentTrashParams] = useState<DocumentTrashPara
     isDocumentsLoading: documentsQuery.isLoading,
     isDocumentsFetching: documentsQuery.isFetching,
     documentsError: documentsQuery.error,
+    documentListPage: documentsPage.page,
+    documentListSize: documentsPage.size,
+    documentListTotal: documentsPage.total,
     documentFilters,
     includeDescendants,
     documentFilterForm,
@@ -384,6 +413,7 @@ const [documentTrashParams, setDocumentTrashParams] = useState<DocumentTrashPara
     handleDocumentSearch,
     handleDocumentReset,
     handleIncludeDescendantsChange,
+    handleDocumentListPageChange,
     handleDocumentTrashSearch,
     handleDocumentTrashPageChange,
     handleDocumentHistoryPageChange,

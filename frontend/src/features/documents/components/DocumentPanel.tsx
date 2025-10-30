@@ -37,6 +37,12 @@ interface DocumentPanelProps {
   isFetching: boolean;
   error: unknown;
   canCreateDocument?: boolean; // 是否有权限创建文档
+  pagination?: {
+    current: number;
+    pageSize: number;
+    total: number;
+    onChange: (page: number, pageSize?: number) => void;
+  };
   onSearch: (values: DocumentFilterFormValues) => void;
   onReset: () => void;
   onAddDocument: () => void;
@@ -56,6 +62,7 @@ export const DocumentPanel: FC<DocumentPanelProps> = ({
   isFetching,
   error,
   canCreateDocument = true,
+  pagination,
   onSearch,
   onReset,
   onAddDocument,
@@ -166,7 +173,20 @@ export const DocumentPanel: FC<DocumentPanelProps> = ({
           rowKey="id"
           dataSource={documents}
           columns={columns}
-          pagination={false}
+          pagination={
+            pagination
+              ? {
+                  current: pagination.current,
+                  pageSize: pagination.pageSize,
+                  total: pagination.total,
+                  showTotal: (total) => `共 ${total} 条`,
+                  showSizeChanger: true,
+                  pageSizeOptions: [10, 20, 50, 100],
+                  position: ["bottomCenter"],
+                  onChange: pagination.onChange,
+                }
+              : false
+          }
           loading={isFetching}
           components={{
             body: {

@@ -26,13 +26,18 @@ func sampleTime() time.Time {
 	return time.Unix(0, 0).UTC()
 }
 
-func (f *bulkCheckFakeNDR) ListNodeDocuments(ctx context.Context, meta ndrclient.RequestMeta, id int64, query url.Values) ([]ndrclient.Document, error) {
+func (f *bulkCheckFakeNDR) ListNodeDocuments(ctx context.Context, meta ndrclient.RequestMeta, id int64, query url.Values) (ndrclient.DocumentsPage, error) {
 	count := f.documents[id]
 	docs := make([]ndrclient.Document, 0, count)
 	for i := 0; i < count; i++ {
 		docs = append(docs, ndrclient.Document{ID: int64(i + 1)})
 	}
-	return docs, nil
+	return ndrclient.DocumentsPage{
+		Page:  1,
+		Size:  100,
+		Total: len(docs),
+		Items: docs,
+	}, nil
 }
 
 func TestCheckCategoryDependencies(t *testing.T) {

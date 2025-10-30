@@ -253,9 +253,9 @@ export async function getDocumentDetail(docId: number): Promise<Document> {
 export async function getNodeDocuments(
   nodeId: number,
   params?: DocumentListParams,
-): Promise<Document[]> {
+): Promise<DocumentsPage> {
   const query = buildDocumentQuery(params);
-  return http<Document[]>(`/api/v1/nodes/${nodeId}/subtree-documents${query}`);
+  return http<DocumentsPage>(`/api/v1/nodes/${nodeId}/subtree-documents${query}`);
 }
 
 export async function createDocument(payload: DocumentCreatePayload): Promise<Document> {

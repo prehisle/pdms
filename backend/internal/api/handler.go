@@ -616,12 +616,12 @@ func (h *Handler) NodeRoutes(w http.ResponseWriter, r *http.Request) {
 			respondError(w, http.StatusMethodNotAllowed, errors.New("method not allowed"))
 			return
 		}
-		docs, err := h.service.ListNodeDocuments(r.Context(), meta, id, cloneQuery(r.URL.Query()))
+		page, err := h.service.ListNodeDocuments(r.Context(), meta, id, cloneQuery(r.URL.Query()))
 		if err != nil {
 			respondError(w, http.StatusBadGateway, err)
 			return
 		}
-		writeJSON(w, http.StatusOK, docs)
+		writeJSON(w, http.StatusOK, page)
 	case "bind":
 		if len(parts) < 3 {
 			respondError(w, http.StatusNotFound, errors.New("not found"))

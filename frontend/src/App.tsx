@@ -122,6 +122,9 @@ const AppContent = () => {
     isDocumentsLoading,
     isDocumentsFetching,
     documentsError,
+    documentListPage,
+    documentListSize,
+    documentListTotal,
     documentFilterForm,
     includeDescendants,
     documentTrashParams,
@@ -141,6 +144,7 @@ const AppContent = () => {
     handleDocumentSearch,
     handleDocumentReset,
     handleIncludeDescendantsChange,
+    handleDocumentListPageChange,
     handleDocumentTrashSearch,
     handleDocumentTrashPageChange,
     handleDocumentHistoryPageChange,
@@ -647,7 +651,7 @@ const AppContent = () => {
   ];
 
   return (
-    <Layout style={{ minHeight: "100vh" }}>
+    <Layout style={{ height: "100vh", display: "flex", flexDirection: "column" }}>
       {contextHolder}
       <Header
         style={{
@@ -673,13 +677,14 @@ const AppContent = () => {
           </Space>
         </Dropdown>
       </Header>
-      <Layout>
+      <Layout style={{ flex: 1, overflow: "hidden" }}>
         <Sider
           width={360}
           style={{
             background: "#fff",
             padding: "16px",
             borderRight: "1px solid #f0f0f0",
+            overflow: "auto",
           }}
         >
           <CategoryTreePanel
@@ -714,7 +719,7 @@ const AppContent = () => {
             onDocumentDrop={handleDropOnNode}
           />
         </Sider>
-        <Content style={{ padding: "24px" }}>
+        <Content style={{ padding: "24px", overflow: "auto" }}>
           <Space direction="vertical" size="large" style={{ width: "100%" }}>
             <CategoryBreadcrumb
               selectedNodeId={selectedNodeId}
@@ -731,6 +736,12 @@ const AppContent = () => {
               isFetching={isDocumentsFetching}
               error={documentsError}
               canCreateDocument={user?.role !== "proofreader"}
+              pagination={{
+                current: documentListPage,
+                pageSize: documentListSize,
+                total: documentListTotal,
+                onChange: handleDocumentListPageChange,
+              }}
               onSearch={handleDocumentSearch}
               onReset={handleDocumentReset}
               onAddDocument={handleToolbarAddDocument}

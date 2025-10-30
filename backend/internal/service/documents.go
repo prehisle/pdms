@@ -42,19 +42,23 @@ func (s *Service) ListDocuments(ctx context.Context, meta RequestMeta, query url
 	return page, nil
 }
 
-// ListNodeDocuments fetches documents attached to the node subtree.
-func (s *Service) ListNodeDocuments(ctx context.Context, meta RequestMeta, nodeID int64, query url.Values) ([]ndrclient.Document, error) {
-	docs, err := s.ndr.ListNodeDocuments(ctx, toNDRMeta(meta), nodeID, query)
+// ListNodeDocuments fetches documents attached to the node subtree with pagination support.
+func (s *Service) ListNodeDocuments(ctx context.Context, meta RequestMeta, nodeID int64, query url.Values) (ndrclient.DocumentsPage, error) {
+	page, err := s.ndr.ListNodeDocuments(ctx, toNDRMeta(meta), nodeID, query)
 	if err != nil {
-		return nil, err
+		return ndrclient.DocumentsPage{}, err
 	}
 
 	ids := extractIDFilter(query)
 	if len(ids) == 0 {
-		return docs, nil
+		return page, nil
 	}
 
-	return filterDocumentsByID(docs, ids), nil
+	filtered := filterDocumentsByID(page.Items, ids)
+	page.Items = filtered
+	page.Total = len(filtered)
+	page.Size = len(filtered)
+	return page, nil
 }
 
 // ListDeletedDocuments returns documents that are currently soft-deleted.
@@ -242,14 +246,21 @@ func (s *Service) ReorderDocuments(ctx context.Context, meta RequestMeta, req Do
 		OrderedIDs: req.OrderedIDs,
 	}
 
-	if req.ApplyTypeFilter {
-		payload.ApplyTypeFilter = true
-		if req.Type != nil {
-			trimmed := strings.TrimSpace(*req.Type)
-			payload.Type = &trimmed
-		} else {
-			payload.Type = nil
+	applyFilter := req.ApplyTypeFilter
+	var outboundType *string
+	if req.Type != nil {
+		trimmed := strings.TrimSpace(*req.Type)
+		if trimmed != "" {
+			t := trimmed
+			outboundType = &t
 		}
+		// 一旦显式提供了 type，即便未设置 ApplyTypeFilter，也认为需要按类型筛选
+		applyFilter = true
+	}
+
+	if applyFilter {
+		payload.ApplyTypeFilter = true
+		payload.Type = outboundType
 	}
 
 	return s.ndr.ReorderDocuments(ctx, toNDRMeta(meta), payload)

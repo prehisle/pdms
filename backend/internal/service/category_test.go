@@ -161,8 +161,16 @@ func (f *fakeNDR) ListDocuments(context.Context, ndrclient.RequestMeta, url.Valu
 	return f.docsListResp, f.docsListErr
 }
 
-func (f *fakeNDR) ListNodeDocuments(context.Context, ndrclient.RequestMeta, int64, url.Values) ([]ndrclient.Document, error) {
-	return f.nodeDocsResp, f.nodeDocsErr
+func (f *fakeNDR) ListNodeDocuments(context.Context, ndrclient.RequestMeta, int64, url.Values) (ndrclient.DocumentsPage, error) {
+	if f.nodeDocsErr != nil {
+		return ndrclient.DocumentsPage{}, f.nodeDocsErr
+	}
+	return ndrclient.DocumentsPage{
+		Page:  1,
+		Size:  100,
+		Total: len(f.nodeDocsResp),
+		Items: f.nodeDocsResp,
+	}, nil
 }
 
 func (f *fakeNDR) CreateDocument(_ context.Context, _ ndrclient.RequestMeta, body ndrclient.DocumentCreate) (ndrclient.Document, error) {

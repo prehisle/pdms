@@ -57,7 +57,7 @@ func (s *Service) CheckCategoryDependencies(ctx context.Context, meta RequestMet
 			return CategoryCheckResponse{}, err
 		}
 
-		docs, err := s.ndr.ListNodeDocuments(ctx, ndrMeta, id, query)
+		page, err := s.ndr.ListNodeDocuments(ctx, ndrMeta, id, query)
 		if err != nil {
 			return CategoryCheckResponse{}, err
 		}
@@ -67,7 +67,7 @@ func (s *Service) CheckCategoryDependencies(ctx context.Context, meta RequestMet
 			Name:               node.Name,
 			Path:               node.Path,
 			HasChildren:        hasChildren,
-			DocumentCount:      len(docs),
+			DocumentCount:      len(page.Items),
 			IncludeDescendants: req.IncludeDescendants,
 		}
 

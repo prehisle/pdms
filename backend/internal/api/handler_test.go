@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -807,7 +808,7 @@ func (f *inMemoryNDR) ListDocuments(ctx context.Context, meta ndrclient.RequestM
 	}, nil
 }
 
-func (f *inMemoryNDR) ListNodeDocuments(ctx context.Context, meta ndrclient.RequestMeta, nodeID int64, query url.Values) ([]ndrclient.Document, error) {
+func (f *inMemoryNDR) ListNodeDocuments(ctx context.Context, meta ndrclient.RequestMeta, nodeID int64, query url.Values) (ndrclient.DocumentsPage, error) {
 	includeDescendants := true
 	if query != nil {
 		if val := strings.ToLower(strings.TrimSpace(query.Get("include_descendants"))); val != "" {
@@ -842,7 +843,40 @@ func (f *inMemoryNDR) ListNodeDocuments(ctx context.Context, meta ndrclient.Requ
 		}
 	}
 	sort.Slice(docs, func(i, j int) bool { return docs[i].ID < docs[j].ID })
-	return docs, nil
+
+	// Apply pagination
+	page := 1
+	size := 100 // default
+	if query != nil {
+		if p := query.Get("page"); p != "" {
+			if parsed, err := strconv.Atoi(p); err == nil && parsed > 0 {
+				page = parsed
+			}
+		}
+		if s := query.Get("size"); s != "" {
+			if parsed, err := strconv.Atoi(s); err == nil && parsed > 0 {
+				size = parsed
+			}
+		}
+	}
+
+	total := len(docs)
+	start := (page - 1) * size
+	end := start + size
+	if start >= total {
+		docs = []ndrclient.Document{}
+	} else if end > total {
+		docs = docs[start:]
+	} else {
+		docs = docs[start:end]
+	}
+
+	return ndrclient.DocumentsPage{
+		Page:  page,
+		Size:  size,
+		Total: total,
+		Items: docs,
+	}, nil
 }
 
 func (f *inMemoryNDR) CreateDocument(ctx context.Context, meta ndrclient.RequestMeta, body ndrclient.DocumentCreate) (ndrclient.Document, error) {
@@ -1270,18 +1304,21 @@ func TestListNodeDocumentsIDFilter(t *testing.T) {
 		t.Fatalf("expected status 200, got %d body=%s", rec.Code, rec.Body.String())
 	}
 
-	var docs []ndrclient.Document
-	if err := json.NewDecoder(rec.Body).Decode(&docs); err != nil {
-		t.Fatalf("decode documents error: %v", err)
+	var page ndrclient.DocumentsPage
+	if err := json.NewDecoder(rec.Body).Decode(&page); err != nil {
+		t.Fatalf("decode documents page error: %v", err)
 	}
 
-	if len(docs) != 2 {
-		t.Fatalf("expected 2 documents, got %d", len(docs))
+	if len(page.Items) != 2 {
+		t.Fatalf("expected 2 documents, got %d", len(page.Items))
 	}
-	if docs[0].ID != docA.ID || docs[1].ID != docC.ID {
-		t.Fatalf("expected document ids [%d %d], got [%d %d]", docA.ID, docC.ID, docs[0].ID, docs[1].ID)
+	if page.Total != 2 {
+		t.Fatalf("expected total 2, got %d", page.Total)
 	}
-	for _, doc := range docs {
+	if page.Items[0].ID != docA.ID || page.Items[1].ID != docC.ID {
+		t.Fatalf("expected document ids [%d %d], got [%d %d]", docA.ID, docC.ID, page.Items[0].ID, page.Items[1].ID)
+	}
+	for _, doc := range page.Items {
 		if doc.ID == docB.ID {
 			t.Fatalf("unexpected document id %d in response", docB.ID)
 		}
