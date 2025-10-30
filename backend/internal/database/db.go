@@ -29,7 +29,8 @@ func Connect(cfg Config) (*gorm.DB, error) {
 	)
 
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
-		Logger: logger.Default.LogMode(logger.Info),
+		Logger:                                   logger.Default.LogMode(logger.Info),
+		DisableForeignKeyConstraintWhenMigrating: true, // 禁用自动外键创建，我们手动管理
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to database: %w", err)
@@ -48,13 +49,63 @@ func AutoMigrate(db *gorm.DB) error {
 func AutoMigrateWithDefaults(db *gorm.DB, defaults AdminDefaults) error {
 	log.Println("Running database migrations...")
 
-	err := db.AutoMigrate(
-		&User{},
-		&CoursePermission{},
-	)
-
+	// 使用原始的 db（已在 Connect 时配置）迁移所有表
+	// 注意：我们在手动创建外键约束，所以不依赖 GORM 自动创建
+	err := db.AutoMigrate(&User{}, &CoursePermission{}, &APIKey{})
 	if err != nil {
-		return fmt.Errorf("failed to migrate database: %w", err)
+		return fmt.Errorf("failed to migrate tables: %w", err)
+	}
+
+	// 手动创建必要的外键约束
+	// User.CreatedBy -> User.ID (自引用)
+	err = db.Exec(`
+		DO $$
+		BEGIN
+			IF NOT EXISTS (
+				SELECT 1 FROM information_schema.table_constraints
+				WHERE constraint_name = 'fk_users_created_by' AND table_name = 'users'
+			) THEN
+				ALTER TABLE users ADD CONSTRAINT fk_users_created_by
+				FOREIGN KEY (created_by_id) REFERENCES users(id) ON DELETE SET NULL;
+			END IF;
+		END$$;
+	`).Error
+	if err != nil {
+		log.Printf("Warning: failed to create user self-reference FK: %v", err)
+	}
+
+	// APIKey.User -> User.ID
+	err = db.Exec(`
+		DO $$
+		BEGIN
+			IF NOT EXISTS (
+				SELECT 1 FROM information_schema.table_constraints
+				WHERE constraint_name = 'fk_api_keys_user' AND table_name = 'api_keys'
+			) THEN
+				ALTER TABLE api_keys ADD CONSTRAINT fk_api_keys_user
+				FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE;
+			END IF;
+		END$$;
+	`).Error
+	if err != nil {
+		log.Printf("Warning: failed to create api_keys.user FK: %v", err)
+	}
+
+	// APIKey.CreatedBy -> User.ID
+	err = db.Exec(`
+		DO $$
+		BEGIN
+			IF NOT EXISTS (
+				SELECT 1 FROM information_schema.table_constraints
+				WHERE constraint_name = 'fk_api_keys_created_by' AND table_name = 'api_keys'
+			) THEN
+				ALTER TABLE api_keys ADD CONSTRAINT fk_api_keys_created_by
+				FOREIGN KEY (created_by_id) REFERENCES users(id) ON DELETE SET NULL;
+			END IF;
+		END$$;
+	`).Error
+	if err != nil {
+		log.Printf("Warning: failed to create api_keys.created_by FK: %v", err)
 	}
 
 	log.Println("Database migrations completed successfully")

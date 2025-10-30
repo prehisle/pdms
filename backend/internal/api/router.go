@@ -8,16 +8,20 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"gorm.io/gorm"
+
 	"github.com/yjxt/ydms/backend/internal/auth"
 )
 
 // RouterConfig 路由器配置
 type RouterConfig struct {
-	Handler       *Handler
-	AuthHandler   *AuthHandler
-	UserHandler   *UserHandler
-	CourseHandler *CourseHandler
-	JWTSecret     string
+	Handler        *Handler
+	AuthHandler    *AuthHandler
+	UserHandler    *UserHandler
+	CourseHandler  *CourseHandler
+	APIKeyHandler  *APIKeyHandler
+	JWTSecret      string
+	DB             *gorm.DB // 用于 API Key 验证
 }
 
 // NewRouter creates the HTTP router and wires handler endpoints.
@@ -45,7 +49,7 @@ func NewRouterWithConfig(cfg RouterConfig) http.Handler {
 	mux := http.NewServeMux()
 
 	wrap := cfg.Handler.applyMiddleware
-	authWrap := cfg.Handler.applyAuthMiddleware(cfg.JWTSecret)
+	authWrap := cfg.Handler.applyAuthMiddleware(cfg.JWTSecret, cfg.DB)
 
 	// 健康检查端点（公开）
 	mux.Handle("/health", wrap(http.HandlerFunc(cfg.Handler.Health)))
@@ -69,6 +73,12 @@ func NewRouterWithConfig(cfg RouterConfig) http.Handler {
 	if cfg.CourseHandler != nil {
 		mux.Handle("/api/v1/courses", authWrap(http.HandlerFunc(cfg.CourseHandler.ListCourses)))
 		mux.Handle("/api/v1/courses/", authWrap(http.HandlerFunc(handleCourseRoutes(cfg.CourseHandler))))
+	}
+
+	// API Key 管理端点（需要认证，仅限管理员）
+	if cfg.APIKeyHandler != nil {
+		mux.Handle("/api/v1/api-keys", authWrap(http.HandlerFunc(cfg.APIKeyHandler.APIKeys)))
+		mux.Handle("/api/v1/api-keys/", authWrap(http.HandlerFunc(cfg.APIKeyHandler.APIKeyRoutes)))
 	}
 
 	// 业务端点（需要认证）
@@ -164,11 +174,11 @@ func (h *Handler) applyMiddleware(next http.Handler) http.Handler {
 	return handler
 }
 
-func (h *Handler) applyAuthMiddleware(jwtSecret string) func(http.Handler) http.Handler {
+func (h *Handler) applyAuthMiddleware(jwtSecret string, db *gorm.DB) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		handler := next
-		// 先应用认证中间件
-		handler = authMiddlewareWrapper(jwtSecret)(handler)
+		// 先应用认证中间件（支持 JWT 和 API Key）
+		handler = authMiddlewareWrapper(jwtSecret, db)(handler)
 		// 再应用其他中间件
 		handler = corsMiddleware(handler)
 		handler = loggingMiddleware(handler)
@@ -176,9 +186,13 @@ func (h *Handler) applyAuthMiddleware(jwtSecret string) func(http.Handler) http.
 	}
 }
 
-// authMiddlewareWrapper 认证中间件包装器
-func authMiddlewareWrapper(jwtSecret string) func(http.Handler) http.Handler {
-	// 直接使用 auth.AuthMiddleware
+// authMiddlewareWrapper 认证中间件包装器（支持 JWT 和 API Key）
+func authMiddlewareWrapper(jwtSecret string, db *gorm.DB) func(http.Handler) http.Handler {
+	if db != nil {
+		// 使用灵活的认证中间件（支持 JWT 和 API Key）
+		return auth.FlexibleAuthMiddleware(db, jwtSecret)
+	}
+	// 降级为仅支持 JWT
 	return auth.AuthMiddleware(jwtSecret)
 }
 

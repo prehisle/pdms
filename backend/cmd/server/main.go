@@ -95,6 +95,9 @@ func runServer() error {
 	courseService := service.NewCourseService(db, ndr, userService)
 	permissionService := service.NewPermissionService(db, userService, ndr)
 
+	// 创建服务层
+	apiKeyService := service.NewAPIKeyService(db)
+
 	// 创建 handlers
 	handler := api.NewHandler(svc, permissionService, api.HeaderDefaults{
 		APIKey:   cfg.NDR.APIKey,
@@ -104,6 +107,7 @@ func runServer() error {
 	authHandler := api.NewAuthHandler(userService, cfg.JWT.Secret, jwtExpiry)
 	userHandler := api.NewUserHandler(userService)
 	courseHandler := api.NewCourseHandler(courseService)
+	apiKeyHandler := api.NewAPIKeyHandler(apiKeyService)
 
 	// 创建路由器（使用新的配置方式）
 	router := api.NewRouterWithConfig(api.RouterConfig{
@@ -111,7 +115,9 @@ func runServer() error {
 		AuthHandler:   authHandler,
 		UserHandler:   userHandler,
 		CourseHandler: courseHandler,
+		APIKeyHandler: apiKeyHandler,
 		JWTSecret:     cfg.JWT.Secret,
+		DB:            db, // 传递 DB 用于 API Key 验证
 	})
 
 	server := &http.Server{

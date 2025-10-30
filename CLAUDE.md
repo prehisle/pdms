@@ -10,6 +10,13 @@
 
 YDMS（资料管理系统）是一个全栈应用，采用 Go 后端和 React 前端：
 
+**技术栈**：
+- **后端**：Go 1.24+、GORM、PostgreSQL、JWT 认证
+- **前端**：React 18、TypeScript、Vite、Ant Design、TanStack Query、Monaco Editor
+- **数据库**：PostgreSQL（通过 GORM ORM）
+- **测试**：Go testing、Playwright E2E、Vitest 单元测试
+- **部署**：Docker、Docker Compose
+
 - **后端**：Go 1.22+ 服务，充当上游 NDR（节点-文档-关系）服务的代理/门面
   - 入口：`backend/cmd/server/main.go`
   - HTTP 路由：`backend/internal/api/router.go` 和 `handler.go`
@@ -66,6 +73,35 @@ make install
 
 # 清理临时文件
 make clean
+```
+
+### 前端
+```bash
+cd frontend
+
+# 安装依赖（在修改 lockfile 后）
+npm install
+
+# 在 http://localhost:5173 启动开发服务器
+npm run dev
+
+# 启用拖拽调试（在浏览器控制台输出 [drag-debug] 日志）
+VITE_DEBUG_DRAG=1 npm run dev
+
+# 构建生产版本
+npm run build
+
+# 预览生产版本构建
+npm run preview
+
+# E2E 测试
+npm run test:e2e              # 无头模式运行测试
+npm run test:e2e:ui           # UI 模式运行测试
+npm run test:e2e:headed       # 有头模式运行测试
+npm run test:e2e:debug        # 调试模式运行测试
+
+# 运行前端单元测试
+npm test                      # Vitest 单元测试
 ```
 
 ### 后端
@@ -161,14 +197,13 @@ YDMS 实现了基于 YAML 配置驱动的文档类型系统，支持灵活扩展
 - 主题配置（针对 HTML 类型）
 
 当前支持的文档类型：
-1. **overview** - HTML 格式，通用概览内容
-2. **dictation** - YAML 格式，听写练习
-3. **comprehensive_choice** - YAML 格式，综合选择题
-4. **case_analysis** - YAML 格式，案例分析题
-5. **essay** - YAML 格式，论文题
+1. **markdown_v1** - Markdown 格式，基础文档
+2. **comprehensive_choice_v1** - YAML 格式，综合选择题
+3. **case_analysis_v1** - YAML 格式，案例分析题
+4. **essay_v1** - YAML 格式，论文题
+5. **dictation_v1** - YAML 格式，默写练习
 6. **knowledge_overview_v1** - HTML 格式，知识点概览（支持多主题）
-7. **chapter_overview_v1** - HTML 格式，章节概览（支持多主题）
-8. 以及对应的 v1 版本（dictation_v1, comprehensive_choice_v1 等）
+   - 内置主题：经典蓝、暖色晨曦、夜间沉浸、玻璃拟态、竹林墨韵
 
 #### 代码生成工具
 使用 `backend/cmd/docgen` 工具基于配置自动生成代码：
@@ -332,6 +367,53 @@ created_at   TIMESTAMP
 - 首次登录后请立即修改密码
 - 生产环境必须修改所有默认密码
 
+### API Key 认证系统
+
+YDMS 支持 API Key 认证，用于外部程序批量管理课程。
+
+#### 特性
+- **长期有效**：支持永不过期或设置过期时间
+- **权限继承**：API Key 关联到用户账号，自动继承用户的角色和课程权限
+- **灵活认证**：支持 `Authorization: Bearer <api-key>` 和 `X-API-Key: <api-key>` 两种方式
+- **安全存储**：API Key 以 SHA256 哈希存储，完整密钥仅在创建时返回一次
+
+#### API Key 格式
+```
+ydms_<environment>_<random-string>
+例如: ydms_prod_abc123defghijk456lmnopqrstuv789wxyz
+```
+
+#### 管理端点（需要认证）
+- `POST /api/v1/api-keys` - 创建 API Key（仅超级管理员）
+- `GET /api/v1/api-keys` - 列出 API Keys
+- `GET /api/v1/api-keys/{id}` - 获取详情
+- `PATCH /api/v1/api-keys/{id}` - 更新信息
+- `POST /api/v1/api-keys/{id}/revoke` - 撤销
+- `DELETE /api/v1/api-keys/{id}` - 永久删除（仅超级管理员）
+- `GET /api/v1/api-keys/stats` - 统计信息
+
+#### 快速开始
+```bash
+# 1. 登录获取 JWT token
+TOKEN=$(curl -X POST http://localhost:9180/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"super_admin","password":"admin123456"}' | jq -r '.token')
+
+# 2. 创建 API Key
+API_KEY=$(curl -X POST http://localhost:9180/api/v1/api-keys \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"批量管理工具","user_id":2,"environment":"prod"}' \
+  | jq -r '.api_key')
+
+# 3. 使用 API Key 访问 API
+curl -H "X-API-Key: $API_KEY" http://localhost:9180/api/v1/categories
+```
+
+详细使用指南请参阅 [docs/API_KEY_GUIDE.md](docs/API_KEY_GUIDE.md)。
+
+**实现细节**：完整的架构设计、技术决策和测试验证请参阅 [docs/API_KEY_IMPLEMENTATION_SUMMARY.md](docs/API_KEY_IMPLEMENTATION_SUMMARY.md)。
+
 ## 环境配置
 
 后端从 `backend/` 或环境变量读取 `.env`：
@@ -342,6 +424,7 @@ YDMS_HTTP_PORT=9180
 YDMS_DEFAULT_USER_ID=system
 YDMS_ADMIN_KEY=your-ndr-admin-key
 YDMS_DEBUG_TRAFFIC=1  # 记录向 NDR 的 HTTP 请求和响应
+YDMS_JWT_SECRET=your-jwt-secret  # JWT 签名密钥
 ```
 
 前端读取 `frontend/.env`：
@@ -360,7 +443,7 @@ VITE_DEBUG_MENU=1  # 启用菜单调试模式
 - 优先使用表驱动测试
 - 夹具在 `backend/internal/service/testdata/`
 - NDR 集成测试需要运行中的服务（见上面的命令）
-- 所有测试已更新为使用新的文档类型系统（overview, dictation, comprehensive_choice, case_analysis, essay）
+- 所有测试已更新为使用新的文档类型系统（markdown_v1, dictation_v1, comprehensive_choice_v1, case_analysis_v1, essay_v1, knowledge_overview_v1）
 
 ### 前端测试
 - **Playwright E2E 测试**: `frontend/e2e/` 目录包含端到端测试
@@ -371,7 +454,9 @@ VITE_DEBUG_MENU=1  # 启用菜单调试模式
   - 测试结果: `TEST_RESULTS.md`
 - 运行测试: `npm run test:e2e`
 - UI 模式调试: `npm run test:e2e:ui`
-- 测试基础设施已存在（package.json 中的 Vitest、React Testing Library）用于单元测试
+- **单元测试**: 使用 Vitest + React Testing Library
+  - 运行: `npm test`
+  - 配置: 已配置 React Testing Library 和 Jest DOM 匹配器
 
 ## 代码风格
 
@@ -388,6 +473,7 @@ VITE_DEBUG_MENU=1  # 启用菜单调试模式
 - 每个组件共置资源
 - 共享查询键在 `src/hooks/` 下（如适用）
 - 描述性的 prop 名称
+- 前端构建使用 Vite，配置了代码分割优化（Monaco Editor、YAML parser 等分离）
 
 ## 提交约定
 遵循常规提交：
@@ -638,3 +724,56 @@ kill -9 <PID>
 # 或使用 fuser
 fuser -k 9180/tcp
 ```
+
+### 使用 API Key 进行批量管理
+```bash
+# 1. 创建 API Key（需要超级管理员身份）
+TOKEN=$(curl -s -X POST http://localhost:9180/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"super_admin","password":"admin123456"}' | jq -r '.token')
+
+# 创建课程管理员账号
+USER_ID=$(curl -s -X POST http://localhost:9180/api/v1/users \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username":"batch_admin",
+    "password":"secure_pass",
+    "role":"course_admin",
+    "display_name":"批量管理账号"
+  }' | jq -r '.id')
+
+# 创建 API Key
+API_KEY=$(curl -s -X POST http://localhost:9180/api/v1/api-keys \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"name\":\"批量导入工具\",\"user_id\":$USER_ID,\"environment\":\"prod\"}" \
+  | jq -r '.api_key')
+
+echo "API Key: $API_KEY"
+# 保存此密钥！它只会显示一次
+
+# 2. 使用 API Key 批量创建分类
+curl -X POST http://localhost:9180/api/v1/categories \
+  -H "X-API-Key: $API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"label": "新课程", "parent_id": null}'
+
+# 3. 批量创建文档
+for i in {1..10}; do
+  curl -X POST http://localhost:9180/api/v1/documents \
+    -H "X-API-Key: $API_KEY" \
+    -H "Content-Type: application/json" \
+    -d "{
+      \"title\": \"文档 $i\",
+      \"type\": \"markdown_v1\",
+      \"content\": {\"format\": \"markdown\", \"data\": \"# 内容 $i\"}
+    }"
+done
+
+# 4. 查看 API Key 统计
+curl -H "Authorization: Bearer $TOKEN" \
+  http://localhost:9180/api/v1/api-keys/stats
+```
+
+详细的 Python 批量导入示例请参阅 [docs/API_KEY_GUIDE.md](docs/API_KEY_GUIDE.md)。
