@@ -1,5 +1,6 @@
 import type { FC } from "react";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { Typography } from "antd";
 
 import { registerYamlPreview } from "../../previewRegistry";
@@ -43,6 +44,7 @@ const MarkdownV1Preview: FC<{ content: string }> = ({ content }) => (
       }}
     >
       <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
         components={{
           // 自定义标题样式
           h1: ({ children }) => (

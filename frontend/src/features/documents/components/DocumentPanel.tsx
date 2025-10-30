@@ -50,6 +50,7 @@ interface DocumentPanelProps {
   onOpenTrash: () => void;
   onDocumentDragStart?: (event: DragEvent<HTMLElement>, document: Document) => void;
   onDocumentDragEnd?: (event: DragEvent<HTMLElement>) => void;
+  onRowDoubleClick?: (document: Document) => void;
 }
 
 export const DocumentPanel: FC<DocumentPanelProps> = ({
@@ -70,6 +71,7 @@ export const DocumentPanel: FC<DocumentPanelProps> = ({
   onOpenTrash,
   onDocumentDragStart,
   onDocumentDragEnd,
+  onRowDoubleClick,
 }) => (
   <Space direction="vertical" size="large" style={{ width: "100%" }}>
     <Card>
@@ -188,6 +190,13 @@ export const DocumentPanel: FC<DocumentPanelProps> = ({
               : false
           }
           loading={isFetching}
+          onRow={(record) => ({
+            onDoubleClick: () => {
+              if (onRowDoubleClick) {
+                onRowDoubleClick(record);
+              }
+            },
+          })}
           components={{
             body: {
               row: (props: any) => (

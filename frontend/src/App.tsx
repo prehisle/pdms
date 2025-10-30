@@ -961,6 +961,7 @@ const AppContent = () => {
               onOpenTrash={handleOpenDocumentTrashWithRefresh}
               onDocumentDragStart={handleDocumentDragStart}
               onDocumentDragEnd={handleDocumentDragEnd}
+              onRowDoubleClick={handleEditDocument}
             />
           </Space>
         </Content>

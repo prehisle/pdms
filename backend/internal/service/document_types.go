@@ -160,7 +160,13 @@ func ValidateDocumentMetadata(metadata map[string]any) error {
 	}
 
 	// Validate references if present
+	// Note: nil value is allowed (RFC 7396) to delete the field
 	if refsVal, hasRefs := metadata["references"]; hasRefs {
+		// Allow nil to delete the field
+		if refsVal == nil {
+			return nil
+		}
+
 		refsArray, ok := refsVal.([]interface{})
 		if !ok {
 			return fmt.Errorf("references must be an array")

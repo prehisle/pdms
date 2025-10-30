@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/url"
 	"strconv"
 	"strings"
@@ -475,7 +476,7 @@ func (s *Service) AddDocumentReference(ctx context.Context, meta RequestMeta, do
 	// Check if reference already exists
 	for _, ref := range references {
 		if ref.DocumentID == refDocID {
-			return ndrclient.Document{}, fmt.Errorf("reference already exists")
+			return ndrclient.Document{}, fmt.Errorf("reference already exists: document %d already references document %d (title: %s)", docID, refDocID, ref.Title)
 		}
 	}
 
@@ -553,9 +554,14 @@ func (s *Service) RemoveDocumentReference(ctx context.Context, meta RequestMeta,
 	}
 
 	// Update metadata with filtered references
+	// Per RFC 7396 (JSON Merge Patch), set field to nil to delete it
+	// This will be serialized as {"references": null} in JSON
 	if len(newRefs) == 0 {
-		delete(metadata, "references")
+		log.Printf("[DEBUG] 删除最后一个引用，设置 references 为 nil (docID=%d, refDocID=%d)", docID, refDocID)
+		metadata["references"] = nil
+		log.Printf("[DEBUG] 设置后 metadata: %+v", metadata)
 	} else {
+		log.Printf("[DEBUG] 还有 %d 个引用，更新 references 字段", len(newRefs))
 		metadata["references"] = newRefs
 	}
 
@@ -563,7 +569,14 @@ func (s *Service) RemoveDocumentReference(ctx context.Context, meta RequestMeta,
 	updateReq := DocumentUpdateRequest{
 		Metadata: metadata,
 	}
-	return s.UpdateDocument(ctx, meta, docID, updateReq)
+	log.Printf("[DEBUG] 准备更新文档 %d，metadata: %+v", docID, metadata)
+	updatedDoc, err := s.UpdateDocument(ctx, meta, docID, updateReq)
+	if err != nil {
+		log.Printf("[ERROR] 更新文档失败: %v", err)
+		return ndrclient.Document{}, err
+	}
+	log.Printf("[DEBUG] 更新后文档 metadata: %+v", updatedDoc.Metadata)
+	return updatedDoc, nil
 }
 
 // GetReferencingDocuments finds all documents that reference the given document.

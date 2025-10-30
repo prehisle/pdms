@@ -467,6 +467,55 @@ func TestRemoveDocumentReference(t *testing.T) {
 	}
 }
 
+func TestRemoveDocumentReference_LastReference(t *testing.T) {
+	fake := newFakeNDR()
+	now := time.Now().UTC()
+
+	// 创建一个只有一个引用的文档
+	docWithOneRef := sampleDocument(1, "Source Doc", "knowledge_overview_v1", 1, now, now)
+	docWithOneRef.Metadata = map[string]any{
+		"references": []any{
+			map[string]any{
+				"document_id": float64(2),
+				"title":       "Only Reference",
+				"added_at":    now.Format(time.RFC3339),
+			},
+		},
+		"other_field": "should remain",
+	}
+	fake.getDocResp = docWithOneRef
+
+	// 设置更新响应：删除最后一个引用后，references 字段应该被删除
+	updatedDoc := sampleDocument(1, "Source Doc", "knowledge_overview_v1", 1, now, now)
+	updatedDoc.Metadata = map[string]any{
+		"other_field": "should remain",
+		// references 字段已被删除
+	}
+	fake.updateDocResp = updatedDoc
+
+	svc := NewService(cache.NewNoop(), fake, nil)
+
+	doc, err := svc.RemoveDocumentReference(context.Background(), RequestMeta{}, 1, 2)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	// 验证 references 字段已被删除
+	_, hasReferences := doc.Metadata["references"]
+	if hasReferences {
+		t.Fatal("expected references field to be deleted when last reference is removed")
+	}
+
+	// 验证其他字段仍然存在
+	otherField, ok := doc.Metadata["other_field"]
+	if !ok {
+		t.Fatal("expected other_field to remain")
+	}
+	if otherField != "should remain" {
+		t.Fatalf("expected other_field to be 'should remain', got %v", otherField)
+	}
+}
+
 func TestGetReferencingDocuments(t *testing.T) {
 	now := time.Now().UTC()
 	fake := newFakeNDR()
