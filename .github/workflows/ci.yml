@@ -80,6 +80,31 @@ jobs:
     if: ${{ vars.E2E_ENABLED == 'true' }}
     runs-on: ubuntu-latest
     services:
+      ndrdb:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+          POSTGRES_DB: ndr
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+      ndr:
+        image: ghcr.io/prehisle/ndr-service:latest
+        env:
+          DB_URL: postgresql+psycopg2://postgres:postgres@ndrdb:5432/ndr
+          AUTO_APPLY_MIGRATIONS: "true"
+        ports:
+          - 8000:8000
+        options: >-
+          --health-cmd="curl -fsS http://localhost:8000/openapi.json >/dev/null || exit 1"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=12
       postgres:
         image: postgres:15
         env:
@@ -125,6 +150,12 @@ jobs:
         run: |
           echo yes | go run ./cmd/reset-db
 
+      - name: Wait for NDR ready
+        run: |
+          for i in {1..60}; do
+            if curl -fsS http://localhost:8000/openapi.json >/dev/null; then
+              echo "ndr is ready"; exit 0; fi; sleep 2; done; echo "ndr not ready"; exit 1
+
       - name: Start backend server
         working-directory: backend
         env:
@@ -136,6 +167,9 @@ jobs:
           YDMS_DB_SSLMODE: disable
           YDMS_JWT_SECRET: ci-secret-for-tests-1234567890
           YDMS_HTTP_PORT: '9180'
+          YDMS_NDR_BASE_URL: http://localhost:8000
+          YDMS_NDR_API_KEY: ''
+          YDMS_ADMIN_KEY: ''
         run: |
           nohup bash -c 'go run ./cmd/server' >/tmp/backend.log 2>&1 &
           echo $! > /tmp/backend.pid
@@ -146,9 +180,16 @@ jobs:
             if curl -fsS http://localhost:9180/api/v1/healthz >/dev/null; then
               echo "backend is ready"; exit 0; fi; sleep 2; done; echo "backend not ready"; exit 1
 
-      - name: Run Playwright E2E (subset without NDR deps)
+      - name: Run Playwright E2E (with NDR)
         working-directory: frontend
         env:
           CI: 'true'
         run: |
-          npx playwright test e2e/00.setup.spec.ts e2e/auth.spec.ts e2e/user-management.spec.ts --reporter=list
+          npx playwright test \
+            e2e/00.setup.spec.ts \
+            e2e/auth.spec.ts \
+            e2e/user-management.spec.ts \
+            e2e/01.document-setup.spec.ts \
+            e2e/permissions.spec.ts \
+            e2e/document-permissions.spec.ts \
+            --reporter=list

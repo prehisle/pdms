@@ -27,6 +27,7 @@
 - 生产环境部署：`../deploy/production/README.md`
 - 维护与巡检：`MAINTENANCE_GUIDE.md`
 - 数据库重置与恢复：`MAINTENANCE_GUIDE.md`
+ - 本地启动 NDR（仅供开发）：`../deploy/dev/docker-compose.ndr.yml`
 
 ## 文档工具
 - 检查 Markdown 内部链接：在项目根目录执行 `make docs-check`
