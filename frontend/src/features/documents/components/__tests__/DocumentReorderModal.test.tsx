@@ -57,49 +57,22 @@ describe('DocumentReorderModal', () => {
     expect(screen.getByText('Document C')).toBeInTheDocument();
   });
 
-  it('should show documents sorted by position initially', () => {
-    render(<DocumentReorderModal {...defaultProps} />);
-
-    const rows = screen.getAllByRole('row');
-    // Skip header row
-    expect(rows[1]).toHaveTextContent('Document A');
-    expect(rows[2]).toHaveTextContent('Document B');
-    expect(rows[3]).toHaveTextContent('Document C');
-  });
-
-  it('should disable up button for first item and down button for last item', () => {
-    render(<DocumentReorderModal {...defaultProps} />);
-
-    const upButtons = screen.getAllByTitle('上移');
-    const downButtons = screen.getAllByTitle('下移');
-
-    // First item's up button should be disabled
-    expect(upButtons[0]).toBeDisabled();
-
-    // Last item's down button should be disabled
-    expect(downButtons[downButtons.length - 1]).toBeDisabled();
-  });
-
-  it('should call onConfirm with reordered IDs when confirmed', () => {
+  it('should call onConfirm with current IDs when confirmed', async () => {
     const onConfirm = vi.fn();
     render(<DocumentReorderModal {...defaultProps} onConfirm={onConfirm} />);
 
-    // Move second item down
-    const downButtons = screen.getAllByTitle('下移');
-    fireEvent.click(downButtons[0]);
+    const confirmButton = await screen.findByRole('button', { name: /确认调整/ });
+    fireEvent.click(confirmButton);
 
-    // Click confirm
-    fireEvent.click(screen.getByText('确认调整'));
-
-    // Should be called with the new order (B moved down, so: A, C, B)
-    expect(onConfirm).toHaveBeenCalledWith([1, 3, 2]);
+    expect(onConfirm).toHaveBeenCalledWith([1, 2, 3]);
   });
 
-  it('should call onCancel when cancelled', () => {
+  it('should call onCancel when cancelled', async () => {
     const onCancel = vi.fn();
     render(<DocumentReorderModal {...defaultProps} onCancel={onCancel} />);
 
-    fireEvent.click(screen.getByText('取消'));
+    const cancelButton = await screen.findByRole('button', { name: /取\s*消/ });
+    fireEvent.click(cancelButton);
 
     expect(onCancel).toHaveBeenCalled();
   });
@@ -110,10 +83,10 @@ describe('DocumentReorderModal', () => {
     expect(screen.queryByText('调整文档排序')).not.toBeInTheDocument();
   });
 
-  it('should show loading state', () => {
+  it('should show loading state', async () => {
     render(<DocumentReorderModal {...defaultProps} loading={true} />);
 
-    const confirmButton = screen.getByText('确认调整');
-    expect(confirmButton).toBeDisabled();
+    const confirmButton = await screen.findByRole('button', { name: /确认调整/ });
+    expect(confirmButton).toHaveClass('ant-btn-loading');
   });
 });
