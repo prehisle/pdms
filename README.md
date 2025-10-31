@@ -85,6 +85,34 @@
   - 文档：`make docs-check`（内部链接）、`markdownlint`（非阻塞）、OpenAPI JSON 校验
 - 可选启用 E2E：在 GitHub 仓库 Settings → Actions → Variables 添加变量 `E2E_ENABLED=true`，将触发 Playwright 子集用例（不依赖 NDR）。
 
+## Docker 镜像（GHCR）
+
+- 自动构建与推送：`.github/workflows/docker.yml`
+  - 后端镜像：`ghcr.io/<owner>/ydms-backend`（main 分支打 `latest`，其它分支/提交打 `sha` 标签）
+  - 前端镜像：`ghcr.io/<owner>/ydms-frontend`（同上）
+- 试用拉取：
+  ```bash
+  docker pull ghcr.io/<owner>/ydms-backend:latest
+  docker pull ghcr.io/<owner>/ydms-frontend:latest
+  ```
+- 后端运行示例：
+  ```bash
+  docker run --rm -p 9180:9180 \
+    -e YDMS_DB_HOST=127.0.0.1 \
+    -e YDMS_DB_PORT=5432 \
+    -e YDMS_DB_USER=postgres \
+    -e YDMS_DB_PASSWORD=postgres \
+    -e YDMS_DB_NAME=ydms \
+    -e YDMS_JWT_SECRET=change-me-32-bytes \
+    -e YDMS_NDR_BASE_URL=http://host.docker.internal:8000 \
+    ghcr.io/<owner>/ydms-backend:latest
+  ```
+- 前端运行示例：
+  ```bash
+  docker run --rm -p 8080:80 ghcr.io/<owner>/ydms-frontend:latest
+  # 浏览器访问 http://localhost:8080
+  ```
+
  ## 贡献与规范
 
  - 代码风格、提交流程与沟通约定见 `AGENTS.md`
