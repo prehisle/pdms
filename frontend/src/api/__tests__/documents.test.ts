@@ -10,28 +10,34 @@ import {
   type DocumentReorderPayload,
 } from '../documents';
 
-// Mock the http utility
-vi.mock('../http', () => ({
-  http: vi.fn(),
-  buildQuery: vi.fn((params) => {
-    const query = new URLSearchParams();
-    Object.entries(params).forEach(([key, value]) => {
-      if (value !== undefined && value !== null) {
-        query.append(key, String(value));
-      }
-    });
-    const result = query.toString();
-    return result ? `?${result}` : '';
-  }),
+const mockHttp = vi.hoisted(() => vi.fn());
+
+const buildQueryMock = vi.hoisted(() => vi.fn((params: Record<string, unknown>) => {
+  const usp = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value === undefined || value === null) return;
+    if (Array.isArray(value)) {
+      value.forEach((item) => {
+        if (item === undefined || item === null) return;
+        usp.append(key, String(item));
+      });
+      return;
+    }
+    usp.set(key, String(value));
+  });
+  const query = usp.toString();
+  return query ? `?${query}` : '';
 }));
 
-const mockHttp = vi.hoisted(() => vi.fn());
+// Mock the http utility
+vi.mock('../http', () => ({
+  http: mockHttp,
+  buildQuery: buildQueryMock,
+}));
 
 beforeEach(() => {
   vi.clearAllMocks();
-  // Import http after mocking
-  const { http } = require('../http');
-  http.mockImplementation(mockHttp);
+  mockHttp.mockReset();
 });
 
 describe('documents API', () => {
@@ -215,14 +221,18 @@ describe('documents API', () => {
 
       mockHttp.mockResolvedValue(mockDocuments);
 
-      const result = await getNodeDocuments(100, {
-        query: 'search term',
-        include_descendants: false,
-      });
-
-      expect(mockHttp).toHaveBeenCalledWith('/api/v1/nodes/100/subtree-documents?query=search%20term&include_descendants=false');
-      expect(result).toEqual(mockDocuments);
+    const result = await getNodeDocuments(100, {
+      query: 'search term',
+      include_descendants: false,
     });
+
+    const calledUrl = mockHttp.mock.calls[0][0] as string;
+    const parsed = new URL(calledUrl, 'http://localhost');
+    expect(parsed.pathname).toBe('/api/v1/nodes/100/subtree-documents');
+    expect(parsed.searchParams.get('query')).toBe('search term');
+    expect(parsed.searchParams.get('include_descendants')).toBe('false');
+    expect(result).toEqual(mockDocuments);
+  });
 
     it('should fetch documents with id filter', async () => {
       const mockDocuments: Document[] = [
@@ -241,13 +251,17 @@ describe('documents API', () => {
 
       mockHttp.mockResolvedValue(mockDocuments);
 
-      const result = await getNodeDocuments(100, {
-        id: [123, 456],
-        include_descendants: true,
-      });
-
-      expect(mockHttp).toHaveBeenCalledWith('/api/v1/nodes/100/subtree-documents?id=123&id=456&include_descendants=true');
-      expect(result).toEqual(mockDocuments);
+    const result = await getNodeDocuments(100, {
+      id: [123, 456],
+      include_descendants: true,
     });
+
+    const calledUrl = mockHttp.mock.calls[0][0] as string;
+    const parsed = new URL(calledUrl, 'http://localhost');
+    expect(parsed.pathname).toBe('/api/v1/nodes/100/subtree-documents');
+    expect(parsed.searchParams.getAll('id')).toEqual(['123', '456']);
+    expect(parsed.searchParams.get('include_descendants')).toBe('true');
+    expect(result).toEqual(mockDocuments);
+  });
   });
 });
