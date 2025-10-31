@@ -18,11 +18,17 @@
 #   ./scripts/deploy_prod.sh --env-file ./deploy/production/.env.1.31
 #
 # 环境变量（可选）：
-#   REMOTE_HOST    - 远程服务器地址 (默认: 192.168.1.31)
-#   REMOTE_USER    - 远程用户名 (默认: dy_prod)
-#   REMOTE_DIR     - 远程部署目录 (默认: ~/ydms9001)
-#   IMAGE_NAME     - 镜像名称 (默认: ydms)
-#   IMAGE_TAG      - 镜像标签 (默认: prod)
+#   REMOTE_HOST          - 远程服务器地址 (默认: 192.168.1.31)
+#   REMOTE_USER          - 远程用户名 (默认: dy_prod)
+#   REMOTE_DIR           - 远程部署目录 (默认: ~/ydms9001)
+#   BACKEND_IMAGE        - 后端镜像（默认: ghcr.io/prehisle/ydms-backend:latest）
+#   FRONTEND_IMAGE       - 前端镜像（默认: ghcr.io/prehisle/ydms-frontend:latest）
+#   LOCAL_BACKEND_IMAGE  - docker compose 使用的后端镜像标签（默认: 同 BACKEND_IMAGE）
+#   LOCAL_FRONTEND_IMAGE - docker compose 使用的前端镜像标签（默认: 同 FRONTEND_IMAGE）
+#   REGISTRY             - 镜像仓库地址 (默认: ghcr.io)
+#   IMAGE_NAMESPACE      - 镜像命名空间/组织 (默认: prehisle)
+#   REGISTRY_USERNAME    - 拉取受保护镜像的账号（可选）
+#   REGISTRY_PASSWORD    - 拉取受保护镜像的密码或 PAT（可选）
 
 set -euo pipefail
 
@@ -75,18 +81,19 @@ log_error() {
 REMOTE_HOST="${REMOTE_HOST:-192.168.1.31}"
 REMOTE_USER="${REMOTE_USER:-dy_prod}"
 REMOTE_DIR="${REMOTE_DIR:-~/ydms9001}"
-IMAGE_NAME="${IMAGE_NAME:-ydms}"
-IMAGE_TAG="${IMAGE_TAG:-prod}"
+REGISTRY="${REGISTRY:-ghcr.io}"
+IMAGE_NAMESPACE="${IMAGE_NAMESPACE:-prehisle}"
+BACKEND_IMAGE="${BACKEND_IMAGE:-${REGISTRY}/${IMAGE_NAMESPACE}/ydms-backend:latest}"
+FRONTEND_IMAGE="${FRONTEND_IMAGE:-${REGISTRY}/${IMAGE_NAMESPACE}/ydms-frontend:latest}"
+LOCAL_BACKEND_IMAGE="${LOCAL_BACKEND_IMAGE:-${BACKEND_IMAGE}}"
+LOCAL_FRONTEND_IMAGE="${LOCAL_FRONTEND_IMAGE:-${FRONTEND_IMAGE}}"
+REGISTRY_USERNAME="${REGISTRY_USERNAME:-}"
+REGISTRY_PASSWORD="${REGISTRY_PASSWORD:-}"
 DEPLOY_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
 # 检查依赖
 check_dependencies() {
     log_info "检查本地依赖..."
-
-    if ! command -v docker &> /dev/null; then
-        log_error "Docker 未安装或不在 PATH 中"
-        exit 1
-    fi
 
     if ! command -v scp &> /dev/null; then
         log_error "scp 未安装或不在 PATH 中"
@@ -114,84 +121,33 @@ check_dependencies() {
     log_success "依赖检查通过"
 }
 
-# 构建镜像
-build_image() {
-    log_info "开始构建 Docker 镜像..."
-
-    cd "${DEPLOY_DIR}"
-
-    # 构建后端镜像
-    log_info "构建后端镜像..."
-    if [[ ! -f "Dockerfile" ]]; then
-        log_error "后端 Dockerfile 不存在"
-        exit 1
-    fi
-
-    if docker build -t "${IMAGE_NAME}:${IMAGE_TAG}" -f Dockerfile .; then
-        local backend_size
-        backend_size=$(docker images "${IMAGE_NAME}:${IMAGE_TAG}" --format "{{.Size}}")
-        log_success "后端镜像构建成功: ${IMAGE_NAME}:${IMAGE_TAG} (${backend_size})"
-    else
-        log_error "后端镜像构建失败"
-        exit 1
-    fi
-
-    # 构建前端镜像
-    log_info "构建前端镜像..."
-    if [[ ! -f "Dockerfile.frontend" ]]; then
-        log_error "前端 Dockerfile.frontend 不存在"
-        exit 1
-    fi
-
-    if docker build -t "${IMAGE_NAME}-frontend:${IMAGE_TAG}" -f Dockerfile.frontend .; then
-        local frontend_size
-        frontend_size=$(docker images "${IMAGE_NAME}-frontend:${IMAGE_TAG}" --format "{{.Size}}")
-        log_success "前端镜像构建成功: ${IMAGE_NAME}-frontend:${IMAGE_TAG} (${frontend_size})"
-    else
-        log_error "前端镜像构建失败"
-        exit 1
-    fi
-}
-
-# 导出镜像
-export_image() {
-    log_info "导出 Docker 镜像..."
-
-    local backend_tar="ydms_backend_prod.tar"
-    local frontend_tar="ydms_frontend_prod.tar"
-
-    # 删除旧的导出文件
-    rm -f "${backend_tar}" "${frontend_tar}"
-
-    # 导出后端镜像
-    log_info "导出后端镜像..."
-    if docker save "${IMAGE_NAME}:${IMAGE_TAG}" -o "${backend_tar}"; then
-        local backend_file_size
-        backend_file_size=$(ls -lh "${backend_tar}" | awk '{print $5}')
-        log_success "后端镜像导出成功: ${backend_tar} (${backend_file_size})"
-    else
-        log_error "后端镜像导出失败"
-        exit 1
-    fi
-
-    # 导出前端镜像
-    log_info "导出前端镜像..."
-    if docker save "${IMAGE_NAME}-frontend:${IMAGE_TAG}" -o "${frontend_tar}"; then
-        local frontend_file_size
-        frontend_file_size=$(ls -lh "${frontend_tar}" | awk '{print $5}')
-        log_success "前端镜像导出成功: ${frontend_tar} (${frontend_file_size})"
-    else
-        log_error "前端镜像导出失败"
-        exit 1
-    fi
-}
-
 # 准备部署文件
 prepare_deploy_files() {
     log_info "准备部署文件..."
 
     local deploy_temp_dir
     deploy_temp_dir=$(mktemp -d)
+
+    local backend_source_image="${BACKEND_IMAGE}"
+    local frontend_source_image="${FRONTEND_IMAGE}"
+    local local_backend_image="${LOCAL_BACKEND_IMAGE}"
+    local local_frontend_image="${LOCAL_FRONTEND_IMAGE}"
+
+    local backend_source_escaped
+    local frontend_source_escaped
+    local local_backend_escaped
+    local local_frontend_escaped
+    local registry_escaped
+    local username_escaped
+    local password_escaped
+
+    backend_source_escaped=$(printf '%q' "${backend_source_image}")
+    frontend_source_escaped=$(printf '%q' "${frontend_source_image}")
+    local_backend_escaped=$(printf '%q' "${local_backend_image}")
+    local_frontend_escaped=$(printf '%q' "${local_frontend_image}")
+    registry_escaped=$(printf '%q' "${REGISTRY}")
+    username_escaped=$(printf '%q' "${REGISTRY_USERNAME}")
+    password_escaped=$(printf '%q' "${REGISTRY_PASSWORD}")
 
     # 复制必要文件
     cp "${DEPLOY_DIR}/deploy/production/docker-compose.yml" "${deploy_temp_dir}/"
@@ -204,12 +160,18 @@ prepare_deploy_files() {
         cp "${LOCAL_ENV_FILE}" "${deploy_temp_dir}/.env"
     fi
 
-    # 复制镜像文件
-    cp "${DEPLOY_DIR}/ydms_backend_prod.tar" "${deploy_temp_dir}/"
-    cp "${DEPLOY_DIR}/ydms_frontend_prod.tar" "${deploy_temp_dir}/"
+    cat > "${deploy_temp_dir}/deploy_config.sh" <<EOF
+BACKEND_SOURCE_IMAGE=${backend_source_escaped}
+FRONTEND_SOURCE_IMAGE=${frontend_source_escaped}
+LOCAL_BACKEND_IMAGE=${local_backend_escaped}
+LOCAL_FRONTEND_IMAGE=${local_frontend_escaped}
+REGISTRY=${registry_escaped}
+REGISTRY_USERNAME=${username_escaped}
+REGISTRY_PASSWORD=${password_escaped}
+EOF
 
     # 创建部署脚本
-    cat > "${deploy_temp_dir}/remote_deploy.sh" << 'EOF'
+    cat > "${deploy_temp_dir}/remote_deploy.sh" <<'EOF'
 #!/bin/bash
 set -euo pipefail
 
@@ -227,8 +189,27 @@ log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
 # 配置
 REMOTE_DIR="${1:-~/ydms9001}"
-IMAGE_NAME="ydms"
-IMAGE_TAG="prod"
+
+if [[ ! -f "deploy_config.sh" ]]; then
+    log_error "deploy_config.sh 缺失，无法获取镜像信息"
+    exit 1
+fi
+
+# shellcheck disable=SC1091
+source "./deploy_config.sh"
+
+BACKEND_SOURCE_IMAGE="${BACKEND_SOURCE_IMAGE:-}"
+FRONTEND_SOURCE_IMAGE="${FRONTEND_SOURCE_IMAGE:-}"
+LOCAL_BACKEND_IMAGE="${LOCAL_BACKEND_IMAGE:-}"
+LOCAL_FRONTEND_IMAGE="${LOCAL_FRONTEND_IMAGE:-}"
+REGISTRY="${REGISTRY:-ghcr.io}"
+REGISTRY_USERNAME="${REGISTRY_USERNAME:-}"
+REGISTRY_PASSWORD="${REGISTRY_PASSWORD:-}"
+
+if [[ -z "${BACKEND_SOURCE_IMAGE}" || -z "${FRONTEND_SOURCE_IMAGE}" ]]; then
+    log_error "镜像来源信息缺失，请检查 deploy_config.sh"
+    exit 1
+fi
 
 log_info "开始远程部署..."
 
@@ -255,8 +236,21 @@ log_info "创建部署目录: ${REMOTE_DIR}"
 mkdir -p "${REMOTE_DIR}"
 cd "${REMOTE_DIR}"
 
-# 创建数据目录和运行时目录
-mkdir -p data/{postgres,logs,app} runtime
+# 创建数据目录
+mkdir -p data/{postgres,logs,app}
+
+# 登录镜像仓库（可选）
+if [[ -n "${REGISTRY_USERNAME}" && -n "${REGISTRY_PASSWORD}" ]]; then
+    log_info "登录镜像仓库 ${REGISTRY}..."
+    if echo "${REGISTRY_PASSWORD}" | docker login "${REGISTRY}" --username "${REGISTRY_USERNAME}" --password-stdin; then
+        log_success "镜像仓库登录成功"
+    else
+        log_error "镜像仓库登录失败，请检查凭证"
+        exit 1
+    fi
+else
+    log_info "未提供镜像仓库凭证，将直接尝试拉取镜像"
+fi
 
 # 调试：列出当前目录的文件
 log_info "当前目录: $(pwd)"
@@ -281,29 +275,35 @@ else
     fi
 fi
 
-# 移动镜像到 runtime 目录
-if [[ -f "ydms_backend_prod.tar" ]]; then
-    mv ydms_backend_prod.tar runtime/
-fi
-if [[ -f "ydms_frontend_prod.tar" ]]; then
-    mv ydms_frontend_prod.tar runtime/
-fi
+# 设置 docker compose 镜像环境变量
+export BACKEND_IMAGE="${LOCAL_BACKEND_IMAGE}"
+export FRONTEND_IMAGE="${LOCAL_FRONTEND_IMAGE}"
+log_info "docker compose 将使用后端镜像: ${BACKEND_IMAGE}"
+log_info "docker compose 将使用前端镜像: ${FRONTEND_IMAGE}"
 
-# 加载后端镜像
-log_info "加载后端 Docker 镜像..."
-if docker load -i runtime/ydms_backend_prod.tar; then
-    log_success "后端镜像加载成功"
+# 拉取并标记后端镜像
+log_info "拉取后端镜像: ${BACKEND_SOURCE_IMAGE}"
+if docker pull "${BACKEND_SOURCE_IMAGE}"; then
+    log_success "后端镜像拉取成功"
+    if [[ -n "${LOCAL_BACKEND_IMAGE}" && "${LOCAL_BACKEND_IMAGE}" != "${BACKEND_SOURCE_IMAGE}" ]]; then
+        log_info "重命名后端镜像为本地标签: ${LOCAL_BACKEND_IMAGE}"
+        docker tag "${BACKEND_SOURCE_IMAGE}" "${LOCAL_BACKEND_IMAGE}"
+    fi
 else
-    log_error "后端镜像加载失败"
+    log_error "后端镜像拉取失败"
     exit 1
 fi
 
-# 加载前端镜像
-log_info "加载前端 Docker 镜像..."
-if docker load -i runtime/ydms_frontend_prod.tar; then
-    log_success "前端镜像加载成功"
+# 拉取并标记前端镜像
+log_info "拉取前端镜像: ${FRONTEND_SOURCE_IMAGE}"
+if docker pull "${FRONTEND_SOURCE_IMAGE}"; then
+    log_success "前端镜像拉取成功"
+    if [[ -n "${LOCAL_FRONTEND_IMAGE}" && "${LOCAL_FRONTEND_IMAGE}" != "${FRONTEND_SOURCE_IMAGE}" ]]; then
+        log_info "重命名前端镜像为本地标签: ${LOCAL_FRONTEND_IMAGE}"
+        docker tag "${FRONTEND_SOURCE_IMAGE}" "${LOCAL_FRONTEND_IMAGE}"
+    fi
 else
-    log_error "前端镜像加载失败"
+    log_error "前端镜像拉取失败"
     exit 1
 fi
 
@@ -346,9 +346,8 @@ for i in {1..6}; do
     fi
 done
 
-# 清理临时文件
-log_info "清理临时文件..."
-rm -f runtime/ydms_backend_prod.tar runtime/ydms_frontend_prod.tar
+log_info "清理临时配置..."
+rm -f deploy_config.sh
 
 log_success "部署完成！"
 log_info "访问地址: http://$(hostname -I | awk '{print $1}')"
@@ -424,14 +423,6 @@ remote_deploy() {
 cleanup() {
     log_info "清理本地临时文件..."
 
-    if [[ -f "${DEPLOY_DIR}/ydms_backend_prod.tar" ]]; then
-        rm -f "${DEPLOY_DIR}/ydms_backend_prod.tar"
-    fi
-
-    if [[ -f "${DEPLOY_DIR}/ydms_frontend_prod.tar" ]]; then
-        rm -f "${DEPLOY_DIR}/ydms_frontend_prod.tar"
-    fi
-
     if [[ -f "${DEPLOY_DIR}/deploy_package.tar.gz" ]]; then
         rm -f "${DEPLOY_DIR}/deploy_package.tar.gz"
     fi
@@ -484,7 +475,11 @@ main() {
     log_info "部署配置："
     log_info "  远程服务器: ${REMOTE_USER}@${REMOTE_HOST}"
     log_info "  部署目录: ${REMOTE_DIR}"
-    log_info "  镜像标签: ${IMAGE_NAME}:${IMAGE_TAG}"
+    log_info "  镜像仓库: ${REGISTRY}"
+    log_info "  后端镜像来源: ${BACKEND_IMAGE}"
+    log_info "  前端镜像来源: ${FRONTEND_IMAGE}"
+    log_info "  docker compose 后端镜像: ${LOCAL_BACKEND_IMAGE}"
+    log_info "  docker compose 前端镜像: ${LOCAL_FRONTEND_IMAGE}"
     if [[ -n "${LOCAL_ENV_FILE}" ]]; then
         log_info "  环境配置: ${LOCAL_ENV_FILE} (将自动上传)"
     else
@@ -494,8 +489,6 @@ main() {
 
     # 执行部署步骤
     check_dependencies
-    build_image
-    export_image
 
     local deploy_temp_dir
     deploy_temp_dir=$(prepare_deploy_files)

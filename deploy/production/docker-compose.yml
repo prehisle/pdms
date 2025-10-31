@@ -26,7 +26,7 @@ services:
 
   # YDMS 应用服务
   ydms-app:
-    image: ydms:prod
+    image: ${BACKEND_IMAGE:-ghcr.io/prehisle/ydms-backend:latest}
     container_name: ydms-app
     restart: unless-stopped
     environment:
@@ -80,7 +80,7 @@ services:
 
   # 前端服务（Nginx + 静态文件）
   frontend:
-    image: ydms-frontend:prod
+    image: ${FRONTEND_IMAGE:-ghcr.io/prehisle/ydms-frontend:latest}
     container_name: ydms-frontend
     restart: unless-stopped
     volumes:
