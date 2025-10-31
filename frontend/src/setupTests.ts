@@ -31,12 +31,13 @@ if (typeof window !== 'undefined' && !window.matchMedia) {
 
 // Mock getComputedStyle to avoid jsdom "Not implemented" errors triggered by antd/rc-table
 if (typeof window !== 'undefined') {
-  window.getComputedStyle = () => ({
-    getPropertyValue: () => '',
-    display: 'block',
-    visibility: 'visible',
-    opacity: '1',
-    width: '0px',
-    height: '0px',
-  }) as CSSStyleDeclaration;
+  window.getComputedStyle = ((node: Element, pseudoElt?: string | null) => {
+    const style = document.createElement('div').style;
+    style.display = 'block';
+    style.visibility = 'visible';
+    style.opacity = '1';
+    style.width = '0px';
+    style.height = '0px';
+    return style;
+  }) as typeof window.getComputedStyle;
 }
