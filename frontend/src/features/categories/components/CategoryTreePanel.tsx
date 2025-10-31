@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { Key, MouseEvent as ReactMouseEvent, DragEvent as ReactDragEvent } from "react";
+import type {
+  CSSProperties,
+  Key,
+  MouseEvent as ReactMouseEvent,
+  DragEvent as ReactDragEvent,
+  ReactNode,
+} from "react";
 
 import { Alert, Empty, Menu, Spin, Tag, Tree, Typography } from "antd";
 import type { MenuProps, TreeProps } from "antd";
@@ -27,6 +33,36 @@ import { useTreeDrag } from "../hooks/useTreeDrag";
 type AntTreeProps = TreeProps<TreeDataNode>;
 type TreeRightClickInfo = Parameters<NonNullable<AntTreeProps["onRightClick"]>>[0];
 type TreeSelectInfo = Parameters<NonNullable<AntTreeProps["onSelect"]>>[1];
+
+const PANEL_ROOT_STYLE: CSSProperties = {
+  flex: 1,
+  display: "flex",
+  flexDirection: "column",
+  height: "100%",
+  minHeight: 0,
+  overflow: "hidden",
+};
+
+const PANEL_BODY_STYLE: CSSProperties = {
+  flex: 1,
+  minHeight: 0,
+  display: "flex",
+  flexDirection: "column",
+  overflow: "hidden",
+};
+
+const PANEL_SCROLL_STYLE: CSSProperties = {
+  flex: 1,
+  minHeight: 0,
+  overflow: "auto",
+};
+
+const PANEL_PLACEHOLDER_STYLE: CSSProperties = {
+  flex: 1,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+};
 
 export interface CategoryTreePanelProps {
   categories: Category[] | undefined;
@@ -681,8 +717,53 @@ export function CategoryTreePanel({
     ],
   );
 
+  let bodyContent: ReactNode;
+  if (isLoading) {
+    bodyContent = (
+      <div style={PANEL_PLACEHOLDER_STYLE}>
+        <Spin />
+      </div>
+    );
+  } else if (error) {
+    bodyContent = (
+      <div style={PANEL_PLACEHOLDER_STYLE}>
+        <Alert type="error" message="目录树加载失败" description={(error as Error).message} />
+      </div>
+    );
+  } else if (treeData.length === 0) {
+    bodyContent = (
+      <div style={PANEL_PLACEHOLDER_STYLE}>
+        <Empty description="暂无目录" />
+      </div>
+    );
+  } else {
+    bodyContent = (
+      <div style={PANEL_SCROLL_STYLE} onContextMenuCapture={suppressNativeContextMenu}>
+        <Tree<TreeDataNode>
+          blockNode
+          draggable={{ icon: false }}
+          showLine={{ showLeafIcon: false }}
+          multiple
+          treeData={treeData}
+          titleRender={renderTreeTitle}
+          onDrop={handleDrop}
+          selectedKeys={selectedIds.map(String)}
+          onSelect={handleSelect}
+          onRightClick={handleTreeRightClick}
+          expandedKeys={expandedKeys}
+          autoExpandParent={autoExpandParent}
+          onExpand={(keys) => {
+            setExpandedKeys(keys.map(String));
+            setAutoExpandParent(false);
+          }}
+          style={{ userSelect: "none" }}
+        />
+      </div>
+    );
+  }
+
   return (
-    <div>
+    <div style={PANEL_ROOT_STYLE}>
       {contextMenuVisible ? (
         <div
           ref={menuContainerRef}
@@ -729,42 +810,7 @@ export function CategoryTreePanel({
           剪贴板：{clipboard.mode === "cut" ? "剪切" : "复制"} {clipboard.sourceIds.length} 项
         </Tag>
       ) : null}
-      {isLoading ? (
-        <div style={{ display: "flex", justifyContent: "center", marginTop: 32 }}>
-          <Spin />
-        </div>
-      ) : error ? (
-        <Alert
-          type="error"
-          message="目录树加载失败"
-          description={(error as Error).message}
-        />
-      ) : treeData.length === 0 ? (
-        <Empty description="暂无目录" />
-      ) : (
-        <div onContextMenuCapture={suppressNativeContextMenu}>
-          <Tree<TreeDataNode>
-            blockNode
-            draggable={{ icon: false }}
-            showLine={{ showLeafIcon: false }}
-            multiple
-            treeData={treeData}
-            titleRender={renderTreeTitle}
-            onDrop={handleDrop}
-            selectedKeys={selectedIds.map(String)}
-            onSelect={handleSelect}
-            onRightClick={handleTreeRightClick}
-            expandedKeys={expandedKeys}
-            autoExpandParent={autoExpandParent}
-            onExpand={(keys) => {
-              setExpandedKeys(keys.map(String));
-              setAutoExpandParent(false);
-            }}
-            height={600}
-            style={{ userSelect: "none" }}
-          />
-        </div>
-      )}
+      <div style={PANEL_BODY_STYLE}>{bodyContent}</div>
     </div>
   );
 }

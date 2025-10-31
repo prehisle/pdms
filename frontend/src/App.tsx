@@ -105,8 +105,23 @@ const HEADER_BASE_STYLE: CSSProperties = {
 };
 const CONTENT_STYLE: CSSProperties = { padding: "24px", overflow: "auto" };
 const DOCUMENT_STACK_STYLE: CSSProperties = { width: "100%" };
-const SIDER_BASE_STYLE: CSSProperties = { background: "#fff", borderRight: "1px solid #f0f0f0" };
-const TREE_CONTAINER_STYLE: CSSProperties = { flex: 1, minHeight: 0, overflow: "auto" };
+const SIDER_BASE_STYLE: CSSProperties = {
+  background: "#fff",
+  borderRight: "1px solid #f0f0f0",
+  display: "flex",
+  flexDirection: "column",
+  position: "relative",
+  minHeight: 0,
+  height: "100%",
+};
+const TREE_CONTAINER_STYLE: CSSProperties = {
+  flex: 1,
+  minHeight: 0,
+  display: "flex",
+  flexDirection: "column",
+  height: "100%",
+  overflow: "hidden",
+};
 const RESIZER_WRAPPER_STYLE: CSSProperties = {
   position: "absolute",
   top: 0,
