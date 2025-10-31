@@ -88,9 +88,9 @@
 ## Docker 镜像（GHCR）
 
 - 自动构建与推送：`.github/workflows/docker.yml`
-  - 后端镜像：`ghcr.io/<owner>/ydms-backend`（main 分支打 `latest`，其它分支/提交打 `sha` 标签）
-  - 前端镜像：`ghcr.io/<owner>/ydms-frontend`（同上）
-- 试用拉取：
+  - 后端镜像：`ghcr.io/<owner>/ydms-backend`（multi-arch：amd64/arm64）
+  - 前端镜像：`ghcr.io/<owner>/ydms-frontend`（multi-arch：amd64/arm64）
+  - 试用拉取：
   ```bash
   docker pull ghcr.io/<owner>/ydms-backend:latest
   docker pull ghcr.io/<owner>/ydms-frontend:latest
