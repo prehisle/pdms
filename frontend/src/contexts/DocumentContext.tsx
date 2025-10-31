@@ -107,7 +107,7 @@ export const DocumentProvider = ({
 
   // 筛选器状态
   const [documentFilters, setDocumentFilters] = useState<DocumentFilterFormValues>({});
-  const [includeDescendants, setIncludeDescendants] = useState(true);
+  const [includeDescendants, setIncludeDescendants] = useState(false);
   const [documentFilterForm] = Form.useForm<DocumentFilterFormValues>();
 
   // 文档列表分页参数
