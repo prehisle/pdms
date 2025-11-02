@@ -23,6 +23,7 @@ import {
 } from "@ant-design/icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
+import { useAuth } from "../../../contexts/AuthContext";
 import {
   DOCUMENT_TYPES,
   DOCUMENT_TYPE_MAP,
@@ -32,6 +33,7 @@ import { getDocumentTemplate } from "../templates";
 import { HTMLPreview } from "./HTMLPreview";
 import { YAMLPreview } from "./YAMLPreview";
 import { resolveYamlPreview } from "../previewRegistry";
+import { useDocumentTagCache } from "../hooks/useDocumentTagCache";
 import {
   bindDocument,
   createDocument,
@@ -174,6 +176,8 @@ export const DocumentEditor: FC<DocumentEditorProps> = ({ mode, docId: docIdProp
   const [searchParams] = useSearchParams();
   const { docId: docIdParam } = useParams<{ docId: string }>();
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const { getTags, upsert } = useDocumentTagCache(user?.id ?? null);
 
   const parsedDocIdFromRoute = docIdParam ? Number.parseInt(docIdParam, 10) : undefined;
   const effectiveDocId = docIdProp ?? parsedDocIdFromRoute;
@@ -194,6 +198,11 @@ export const DocumentEditor: FC<DocumentEditorProps> = ({ mode, docId: docIdProp
   const [metadataEntries, setMetadataEntries] = useState<MetadataEntry[]>([]);
   const [pendingReferences, setPendingReferences] = useState<Array<{ document_id: number; title: string }>>([]);
   const [referenceModalOpen, setReferenceModalOpen] = useState(false);
+
+  const cachedTagOptions = useMemo(
+    () => getTags(documentType).map((tag) => ({ label: tag, value: tag })),
+    [documentType, getTags],
+  );
 
   const closeEditor = useCallback(() => {
     if (onClose) {
@@ -273,6 +282,13 @@ export const DocumentEditor: FC<DocumentEditorProps> = ({ mode, docId: docIdProp
     message.error(errorMessage);
     closeEditor();
   }, [isEditMode, loadError, closeEditor]);
+
+  useEffect(() => {
+    if (metadataTags.length === 0) {
+      return;
+    }
+    upsert(documentType, metadataTags);
+  }, [documentType, metadataTags, upsert]);
 
   const hasCustomPreview = useMemo(() => resolveYamlPreview(documentType) != null, [documentType]);
 
@@ -471,6 +487,7 @@ export const DocumentEditor: FC<DocumentEditorProps> = ({ mode, docId: docIdProp
       if (effectiveNodeId != null) {
         await queryClient.invalidateQueries({ queryKey: ["node-documents", effectiveNodeId] });
       }
+      upsert(documentType, metadataTags);
       closeEditor();
     },
     onError: (error: Error) => {
@@ -513,6 +530,7 @@ export const DocumentEditor: FC<DocumentEditorProps> = ({ mode, docId: docIdProp
       } else {
         await queryClient.invalidateQueries({ queryKey: ["node-documents"] });
       }
+      upsert(documentType, metadataTags);
       closeEditor();
     },
     onError: (error: Error) => {
@@ -615,6 +633,7 @@ export const DocumentEditor: FC<DocumentEditorProps> = ({ mode, docId: docIdProp
             allowClear
             placeholder="标签"
             value={metadataTags}
+            options={cachedTagOptions}
             onChange={(values) =>
               setMetadataTags(
                 Array.from(new Set(values.map((val) => val.trim()).filter((val) => val.length > 0))),

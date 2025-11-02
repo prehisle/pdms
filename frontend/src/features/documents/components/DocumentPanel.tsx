@@ -1,4 +1,4 @@
-import type { FC, DragEvent } from "react";
+import { type FC, type DragEvent, useEffect, useMemo } from "react";
 
 import {
   Alert,
@@ -25,6 +25,8 @@ import {
 } from "@ant-design/icons";
 
 import type { Document, MetadataOperator } from "../../../api/documents";
+import { useAuth } from "../../../contexts/AuthContext";
+import { useDocumentTagCache } from "../hooks/useDocumentTagCache";
 import type { DocumentFilterFormValues, MetadataFilterFormValue } from "../types";
 
 interface DocumentPanelProps {
@@ -72,161 +74,206 @@ export const DocumentPanel: FC<DocumentPanelProps> = ({
   onDocumentDragStart,
   onDocumentDragEnd,
   onRowDoubleClick,
-}) => (
-  <Space direction="vertical" size="large" style={{ width: "100%" }}>
-    <Card>
-      <Form
-        layout="inline"
-        form={filterForm}
-        onFinish={onSearch}
-        style={{ gap: 16, flexWrap: "wrap" }}
-      >
-        <Form.Item name="docId" label="文档 ID">
-          <Input
-            placeholder="例如 123"
-            allowClear
-            style={{ width: 160 }}
-            onKeyPress={(e) => {
-              // Allow only numbers, backspace, delete, and navigation keys
-              if (!/[0-9]/.test(e.key) && !['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'Tab'].includes(e.key)) {
-                e.preventDefault();
-              }
-            }}
-          />
-        </Form.Item>
-        <Form.Item name="query" label="关键字">
-          <Input placeholder="标题 / 内容" allowClear style={{ width: 200 }} />
-        </Form.Item>
-        <Form.Item name="type" label="文档类型">
-          <Select
-            allowClear
-            style={{ width: 160 }}
-            placeholder="选择类型"
-            options={documentTypes}
-          />
-        </Form.Item>
-        <Form.Item name="tags" label="标签">
-          <Select
-            mode="tags"
-            allowClear
-            style={{ minWidth: 200 }}
-            placeholder="输入或选择标签"
-          />
-        </Form.Item>
-        <Form.Item style={{ width: "100%", marginBottom: 0 }}>
-          <MetadataFiltersField filterForm={filterForm} onReset={onReset} />
-        </Form.Item>
-      </Form>
-    </Card>
-    <Card
-      title={
-        <Space>
-          <FileTextOutlined />
-          <span>文档列表</span>
-        </Space>
+}) => {
+  const { user } = useAuth();
+  const { getTags, upsert } = useDocumentTagCache(user?.id ?? null);
+  const selectedType = Form.useWatch("type", filterForm);
+
+  const cachedTagOptions = useMemo(() => {
+    const typeValue = typeof selectedType === "string" ? selectedType : undefined;
+    return getTags(typeValue).map((tag) => ({ label: tag, value: tag }));
+  }, [getTags, selectedType]);
+
+  useEffect(() => {
+    if (documents.length === 0) {
+      return;
+    }
+    const tagsByType = new Map<string, Set<string>>();
+    documents.forEach((doc) => {
+      if (typeof doc.type !== "string") {
+        return;
       }
-      extra={
-        <Space>
-          <Tooltip title="文档回收站">
-            <Button onClick={onOpenTrash}>
-              回收站
-            </Button>
-          </Tooltip>
-          <Tooltip title="调整排序">
-            <Button
-              icon={<SortAscendingOutlined />}
-              onClick={onReorderDocuments}
-              disabled={selectedNodeId == null || documents.length <= 1}
-              aria-label="调整文档排序"
+      const raw = doc.metadata?.tags as unknown;
+      if (!Array.isArray(raw) || raw.length === 0) {
+        return;
+      }
+      const bucket = tagsByType.get(doc.type) ?? new Set<string>();
+      raw.forEach((item) => {
+        const normalized =
+          typeof item === "string" ? item.trim() : String(item ?? "").trim();
+        if (normalized.length > 0) {
+          bucket.add(normalized);
+        }
+      });
+      if (bucket.size > 0) {
+        tagsByType.set(doc.type, bucket);
+      }
+    });
+    tagsByType.forEach((tagSet, docType) => {
+      upsert(docType, Array.from(tagSet));
+    });
+  }, [documents, upsert]);
+
+  return (
+    <Space direction="vertical" size="large" style={{ width: "100%" }}>
+      <Card>
+        <Form
+          layout="inline"
+          form={filterForm}
+          onFinish={onSearch}
+          style={{ gap: 16, flexWrap: "wrap" }}
+        >
+          <Form.Item name="docId" label="文档 ID">
+            <Input
+              placeholder="例如 123"
+              allowClear
+              style={{ width: 160 }}
+              onKeyPress={(e) => {
+                // Allow only numbers, backspace, delete, and navigation keys
+                if (
+                  !/[0-9]/.test(e.key) &&
+                  !["Backspace", "Delete", "ArrowLeft", "ArrowRight", "Tab"].includes(e.key)
+                ) {
+                  e.preventDefault();
+                }
+              }}
             />
-          </Tooltip>
-          {canCreateDocument && (
-            <Tooltip title="新增文档">
+          </Form.Item>
+          <Form.Item name="query" label="关键字">
+            <Input placeholder="标题 / 内容" allowClear style={{ width: 200 }} />
+          </Form.Item>
+          <Form.Item name="type" label="文档类型">
+            <Select
+              allowClear
+              style={{ width: 160 }}
+              placeholder="选择类型"
+              options={documentTypes}
+            />
+          </Form.Item>
+          <Form.Item name="tags" label="标签">
+            <Select
+              mode="tags"
+              allowClear
+              style={{ minWidth: 200 }}
+              placeholder="输入或选择标签"
+              options={cachedTagOptions}
+            />
+          </Form.Item>
+          <Form.Item style={{ width: "100%", marginBottom: 0 }}>
+            <MetadataFiltersField filterForm={filterForm} onReset={onReset} />
+          </Form.Item>
+        </Form>
+      </Card>
+      <Card
+        title={
+          <Space>
+            <FileTextOutlined />
+            <span>文档列表</span>
+          </Space>
+        }
+        extra={
+          <Space>
+            <Tooltip title="文档回收站">
+              <Button onClick={onOpenTrash}>
+                回收站
+              </Button>
+            </Tooltip>
+            <Tooltip title="调整排序">
               <Button
-                type="primary"
-                icon={<PlusOutlined />}
-                onClick={onAddDocument}
-                disabled={selectedNodeId == null}
-                aria-label="新增文档"
+                icon={<SortAscendingOutlined />}
+                onClick={onReorderDocuments}
+                disabled={selectedNodeId == null || documents.length <= 1}
+                aria-label="调整文档排序"
               />
             </Tooltip>
-          )}
-        </Space>
-      }
-    >
-      {selectedNodeId == null ? (
-        <Typography.Paragraph type="secondary">
-          请选择单个目录节点以查看文档。
-        </Typography.Paragraph>
-      ) : isLoading ? (
-        <div style={{ display: "flex", justifyContent: "center", padding: "48px 0" }}>
-          <Spin />
-        </div>
-      ) : error ? (
-        <Alert
-          type="error"
-          message="文档加载失败"
-          description={(error as Error).message}
-        />
-      ) : documents.length === 0 ? (
-        <Empty description="暂无文档" />
-      ) : (
-        <Table
-          rowKey="id"
-          dataSource={documents}
-          columns={columns}
-          pagination={
-            pagination
-              ? {
-                  current: pagination.current,
-                  pageSize: pagination.pageSize,
-                  total: pagination.total,
-                  showTotal: (total) => `共 ${total} 条`,
-                  showSizeChanger: true,
-                  pageSizeOptions: [10, 20, 50, 100],
-                  position: ["bottomCenter"],
-                  onChange: pagination.onChange,
-                }
-              : false
-          }
-          loading={isFetching}
-          onRow={(record) => ({
-            onDoubleClick: () => {
-              if (onRowDoubleClick) {
-                onRowDoubleClick(record);
-              }
-            },
-          })}
-          components={{
-            body: {
-              row: (props: any) => (
-                <tr
-                  {...props}
-                  draggable={onDocumentDragStart != null}
-                  onDragStart={(e) => {
-                    const rowKey = Number(props["data-row-key"]);
-                    const document = documents.find((doc) => doc.id === rowKey);
-                    if (document && onDocumentDragStart) {
-                      onDocumentDragStart(e, document);
-                    }
-                  }}
-                  onDragEnd={(e) => {
-                    if (onDocumentDragEnd) {
-                      onDocumentDragEnd(e);
-                    }
-                  }}
-                  style={{
-                    cursor: onDocumentDragStart ? "move" : "default",
-                  }}
+            {canCreateDocument && (
+              <Tooltip title="新增文档">
+                <Button
+                  type="primary"
+                  icon={<PlusOutlined />}
+                  onClick={onAddDocument}
+                  disabled={selectedNodeId == null}
+                  aria-label="新增文档"
                 />
-              ),
-            },
-          }}
-        />
-      )}
-    </Card>
-  </Space>
-);
+              </Tooltip>
+            )}
+          </Space>
+        }
+      >
+        {selectedNodeId == null ? (
+          <Typography.Paragraph type="secondary">
+            请选择单个目录节点以查看文档。
+          </Typography.Paragraph>
+        ) : isLoading ? (
+          <div style={{ display: "flex", justifyContent: "center", padding: "48px 0" }}>
+            <Spin />
+          </div>
+        ) : error ? (
+          <Alert
+            type="error"
+            message="文档加载失败"
+            description={(error as Error).message}
+          />
+        ) : documents.length === 0 ? (
+          <Empty description="暂无文档" />
+        ) : (
+          <Table
+            rowKey="id"
+            dataSource={documents}
+            columns={columns}
+            pagination={
+              pagination
+                ? {
+                    current: pagination.current,
+                    pageSize: pagination.pageSize,
+                    total: pagination.total,
+                    showTotal: (total) => `共 ${total} 条`,
+                    showSizeChanger: true,
+                    pageSizeOptions: [10, 20, 50, 100],
+                    position: ["bottomCenter"],
+                    onChange: pagination.onChange,
+                  }
+                : false
+            }
+            loading={isFetching}
+            onRow={(record) => ({
+              onDoubleClick: () => {
+                if (onRowDoubleClick) {
+                  onRowDoubleClick(record);
+                }
+              },
+            })}
+            components={{
+              body: {
+                row: (props: any) => (
+                  <tr
+                    {...props}
+                    draggable={onDocumentDragStart != null}
+                    onDragStart={(e) => {
+                      const rowKey = Number(props["data-row-key"]);
+                      const document = documents.find((doc) => doc.id === rowKey);
+                      if (document && onDocumentDragStart) {
+                        onDocumentDragStart(e, document);
+                      }
+                    }}
+                    onDragEnd={(e) => {
+                      if (onDocumentDragEnd) {
+                        onDocumentDragEnd(e);
+                      }
+                    }}
+                    style={{
+                      cursor: onDocumentDragStart ? "move" : "default",
+                    }}
+                  />
+                ),
+              },
+            }}
+          />
+        )}
+      </Card>
+    </Space>
+  );
+};
 
 const metadataOperatorOptions: { value: MetadataOperator; label: string }[] = [
   { value: "eq", label: "等于" },
