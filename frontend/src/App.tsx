@@ -556,6 +556,33 @@ const AppContent = () => {
         render: (value: string | undefined) => <Typography.Text>{value || "-"}</Typography.Text>,
       },
       {
+        title: "标签",
+        key: "tags",
+        render: (_: unknown, record: Document) => {
+          const rawTags = record.metadata?.tags as unknown;
+          if (!Array.isArray(rawTags) || rawTags.length === 0) {
+            return <Typography.Text type="secondary">-</Typography.Text>;
+          }
+          const normalized = rawTags
+            .map((item) => (typeof item === "string" ? item : String(item ?? "")))
+            .map((item) => item.trim())
+            .filter((item) => item.length > 0);
+          if (normalized.length === 0) {
+            return <Typography.Text type="secondary">-</Typography.Text>;
+          }
+          const displayTags = normalized.slice(0, 3);
+          const remaining = normalized.length - displayTags.length;
+          return (
+            <Space size={[4, 4]} wrap>
+              {displayTags.map((tag) => (
+                <Tag key={tag}>{tag}</Tag>
+              ))}
+              {remaining > 0 ? <Tag>+{remaining}</Tag> : null}
+            </Space>
+          );
+        },
+      },
+      {
         title: "版本",
         dataIndex: "version_number",
         key: "version_number",
