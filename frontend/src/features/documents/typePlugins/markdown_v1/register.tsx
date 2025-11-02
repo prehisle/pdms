@@ -1,5 +1,5 @@
 import type { FC } from "react";
-import ReactMarkdown from "react-markdown";
+import ReactMarkdown, { defaultUrlTransform, type UrlTransform } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Typography } from "antd";
 
@@ -7,6 +7,17 @@ import { registerYamlPreview } from "../../previewRegistry";
 import type { YamlPreviewRenderResult } from "../../previewRegistry";
 
 const { Title } = Typography;
+
+const allowDataImageUrl: UrlTransform = (url, key, node) => {
+  if (typeof url === "string") {
+    const trimmed = url.trim();
+    if (trimmed.toLowerCase().startsWith("data:image/")) {
+      return trimmed;
+    }
+    return defaultUrlTransform(trimmed);
+  }
+  return defaultUrlTransform(url);
+};
 
 // 注册 markdown_v1 预览插件
 registerYamlPreview("markdown_v1", {
@@ -45,6 +56,7 @@ const MarkdownV1Preview: FC<{ content: string }> = ({ content }) => (
     >
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
+        urlTransform={allowDataImageUrl}
         components={{
           // 自定义标题样式
           h1: ({ children }) => (
